@@ -20,8 +20,8 @@ configure_file("${PROJECT_SOURCE_DIR}/config.h.in" "${PROJECT_SOURCE_DIR}/config
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_BUILD_TYPE, RelWithDebInfo)
 
-include_directories(3rd-party /usr/local/include xfs contain)
-link_directories(/usr/local/lib)
+include_directories(3rd-party /usr/local/include xfs contain root/nc/usr/local/include)
+link_directories(/usr/local/lib root/nc/usr/local/lib)
 
 file(GLOB LIB_SOURCE_FILES lib/*.cc lib/*.h)
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
@@ -58,8 +58,10 @@ endif()
 enable_testing()
 file(GLOB TEST_SOURCE_FILES test/*.cc)
 
-add_executable(test_nvml test_nvml.cc)
-target_link_libraries(test_nvml atlasagent libatlasclient.a libatlascurl.a libatlaspcre.a z pthread dl -static-libgcc -static-libstdc++)
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+  add_executable(test_nvml test_nvml.cc)
+  target_link_libraries(test_nvml atlasagent libatlasclient.a libatlascurl.a libatlaspcre.a z pthread dl -static-libgcc -static-libstdc++)
+endif ()
 
 add_executable(runtests ${TEST_SOURCE_FILES})
 set_target_properties(runtests PROPERTIES COMPILE_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sign-compare")

@@ -10,3 +10,4 @@ root/
 .idea
 *.swp
 config.h
+nc/
