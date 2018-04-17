@@ -12,10 +12,25 @@ showinfo() { echo -e "${BG}$1${NC}"; }
 workingprocess() { echo -e "${BB}$1${NC}"; }
 allert () { echo -e "${RED}$1${NC}"; }
 
+# Fetch libatlasclient
+rm -rf nc
+mkdir nc
+cd nc
+git init
+git remote add origin https://github.com/Netflix-Skunkworks/atlas-native-client.git
+git fetch origin $NATIVE_CLIENT_VERSION
+git reset --hard FETCH_HEAD
+mkdir build root
+cd build
+cmake -DCMAKE_INSTALL_PREFIX=/ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+make -j8
+make install DESTDIR=../root
+cd ..
+
 # Building project
 mkdir -p build
 cd build
-cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT ..
 
 make -j8
 # Checks if last comand didn't output 0
