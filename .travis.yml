@@ -1,0 +1,19 @@
+language: cpp
+dist: trusty
+sudo: false
+script: ./run-build.sh
+env:
+  - TITUS_AGENT="-DTITUS_AGENT=ON .."
+  - TITUS_AGENT=""
+
+addons:
+  apt:
+    packages:
+      - zlib1g-dev 
+      - uuid-dev 
+      - libblkid-dev 
+      - libpcre3-dev
+
+env:
+  global:
+    - LANG="en_US.UTF-8"
