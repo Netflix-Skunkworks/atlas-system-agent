@@ -107,6 +107,7 @@ void collect_titus_metrics(container_handle* c) {
     auto now = clock.WallTime();
     auto next_run = now + 60 * 1000L;
     gather_titus_metrics(&cGroup, &proc, &disk);
+    gather_slow_system_metrics(&proc);
     time_to_sleep = next_run - clock.WallTime();
     if (time_to_sleep > 0) {
       Logger()->info("Sleeping {} milliseconds", time_to_sleep);
