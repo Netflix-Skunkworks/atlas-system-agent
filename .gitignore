@@ -1,0 +1,12 @@
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+Makefile
+cmake_install.cmake
+build/
+cmake-build-*
+logs/
+root/
+.idea
+*.swp
+config.h
