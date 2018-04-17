@@ -1,4 +1,7 @@
+[![Build Status](https://travis-ci.org/Netflix-Skunkworks/atlas-system-agent.svg?branch=master)](https://travis-ci.org/Netflix-Skunkworks/atlas-system-agent)
 # Atlas System Agent / Atlas Titus Agent
+
+> :warning: Experimental
 
 An agent that reports metrics for ec2 instances or titus containers.
 
