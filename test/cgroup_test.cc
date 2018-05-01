@@ -19,7 +19,7 @@ TEST(CGroup, ParseCpu) {
   cGroup.cpu_stats();
 
   registry.SetWall(121000);
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   measurement_map map = measurements_to_map(ms, atlas::util::intern_str("proto"));
   EXPECT_EQ(5, map.size()) << "5 cpu metrics generated";
   EXPECT_DOUBLE_EQ(2, map["cgroup.cpu.usageTime|system"]);
@@ -39,7 +39,7 @@ TEST(CGroup, ParseMemory) {
   registry.SetWall(61000);
   cGroup.memory_stats();
 
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   for (const auto& m : ms) {
     Logger()->info("Got {}", m);
   }

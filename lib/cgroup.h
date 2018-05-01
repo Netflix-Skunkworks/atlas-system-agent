@@ -10,9 +10,7 @@ class CGroup {
                   std::string path_prefix = "/sys/fs/cgroup") noexcept;
   void cpu_stats() noexcept;
   void memory_stats() noexcept;
-  void set_prefix(std::string new_prefix) noexcept {
-    path_prefix_ = std::move(new_prefix);
-  }
+  void set_prefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
  private:
   atlas::meter::Registry* registry_;

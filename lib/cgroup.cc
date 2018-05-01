@@ -42,8 +42,10 @@ void CGroup::cpu_processing_time() noexcept {
 
 void CGroup::cpu_usage_time() noexcept {
   using atlas::meter::Tags;
-  static auto user_usage = monotonic_counter(registry_, "cgroup.cpu.usageTime", Tags{{"id", "user"}});
-  static auto system_usage = monotonic_counter(registry_, "cgroup.cpu.usageTime", Tags{{"id", "system"}});
+  static auto user_usage =
+      monotonic_counter(registry_, "cgroup.cpu.usageTime", Tags{{"id", "user"}});
+  static auto system_usage =
+      monotonic_counter(registry_, "cgroup.cpu.usageTime", Tags{{"id", "system"}});
   std::unordered_map<std::string, int64_t> stats;
   parse_kv_from_file(path_prefix_, "cpuacct/cpuacct.stat", &stats);
   for (const auto& kv : stats) {

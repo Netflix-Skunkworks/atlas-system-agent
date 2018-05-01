@@ -62,19 +62,16 @@ class TestNvml {
     return true;
   }
 
-  bool get_fan_speed(NvmlDeviceHandle device, unsigned int* speed) noexcept {
-    return false;
-  }
+  bool get_fan_speed(NvmlDeviceHandle device, unsigned int* speed) noexcept { return false; }
 };
 
-static void expect_dist_summary(const Measurements& ms, const char* name, double total, double count, double max,
-                                double sq) {
+static void expect_dist_summary(const Measurements& ms, const char* name, double total,
+                                double count, double max, double sq) {
   auto stat_ref = atlas::util::intern_str("statistic");
   auto num_tags_found = 0;
   for (const auto& m : ms) {
     const auto& cur_name = m.id->Name();
     if (strcmp(name, cur_name) != 0) continue;
-
 
     const auto& tags = m.id->GetTags();
     auto it = tags.at(stat_ref);
@@ -83,13 +80,13 @@ static void expect_dist_summary(const Measurements& ms, const char* name, double
     } else {
       auto stat = it.get();
       if (strcmp("totalAmount", stat) == 0) {
-        EXPECT_DOUBLE_EQ(total/60.0, m.value) << "total does not match for " << name;
+        EXPECT_DOUBLE_EQ(total / 60.0, m.value) << "total does not match for " << name;
         num_tags_found++;
       } else if (strcmp("totalOfSquares", stat) == 0) {
-        EXPECT_DOUBLE_EQ(sq/60.0, m.value) << "totalOfSquares does not match for " << name;
+        EXPECT_DOUBLE_EQ(sq / 60.0, m.value) << "totalOfSquares does not match for " << name;
         num_tags_found++;
       } else if (strcmp("count", stat) == 0) {
-        EXPECT_DOUBLE_EQ(count/60.0, m.value) << "count does not match for " << name;
+        EXPECT_DOUBLE_EQ(count / 60.0, m.value) << "count does not match for " << name;
         num_tags_found++;
       } else if (strcmp("max", stat) == 0) {
         EXPECT_DOUBLE_EQ(max, m.value) << "max does not match for " << name;
@@ -109,7 +106,7 @@ TEST(Gpu, Metrics) {
   auto metrics = GpuMetrics<TestNvml>(&registry, &nvml);
   metrics.gpu_metrics();
   registry.SetWall(61000);
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   EXPECT_EQ(13, ms.size());
   auto gpu_ref = atlas::util::intern_str("gpu");
   auto values = measurements_to_map(ms, gpu_ref);
@@ -123,5 +120,5 @@ TEST(Gpu, Metrics) {
   expect_value(values, "gpu.memoryActivity|gpu-0", 0);
   expect_value(values, "gpu.memoryActivity|gpu-1", 25);
 
-  expect_dist_summary(ms, "gpu.temperature", 72 + 42, 2, 72, 72*72.0 + 42*42);
+  expect_dist_summary(ms, "gpu.temperature", 72 + 42, 2, 72, 72 * 72.0 + 42 * 42);
 }

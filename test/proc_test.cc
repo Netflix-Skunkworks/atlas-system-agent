@@ -20,7 +20,7 @@ TEST(Proc, ParseNetwork) {
   registry.SetWall(61000);
   proc.network_stats();
 
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   EXPECT_EQ(3 * 9, ms.size()) << "3 interfaces x 9 net metrics per iface generated";
 
   for (const auto& m : ms) {
@@ -38,7 +38,7 @@ TEST(Proc, ParseSnmp) {
   registry.SetWall(61000);
   proc.snmp_stats();
 
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   EXPECT_EQ(22 + 5 + 10 + 3, ms.size())
       << "5 metrics for ip, 10 for tcp, 3 for udp + 22 for netstat.tcp";
 
@@ -56,7 +56,7 @@ TEST(Proc, ParseLoadAvg) {
   registry.SetWall(1000);
   Proc proc{&registry, "./resources/proc"};
   proc.loadavg_stats();
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   EXPECT_EQ(3, ms.size()) << "3 metrics for loadavg";
 
   for (const auto& m : ms) {
@@ -95,7 +95,7 @@ TEST(Proc, CpuStats) {
   Proc proc{&registry, "./resources/proc"};
   proc.cpu_stats();
   registry.SetWall(60000);
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   EXPECT_EQ(16, ms.size());
 
   for (const auto& m : ms) {
@@ -109,7 +109,7 @@ TEST(Proc, CpuStats) {
   proc.set_prefix("./resources/proc2");
   proc.cpu_stats();
   registry.SetWall(120000);
-  const auto& ms2 = registry.AllMeasurements();
+  const auto& ms2 = registry.my_measurements();
   EXPECT_EQ(16, ms2.size());
   for (const auto& m : ms2) {
     EXPECT_FALSE(std::isnan(m.value)) << m;
@@ -121,7 +121,7 @@ TEST(Proc, VmStats) {
   Proc proc{&registry, "./resources/proc"};
   proc.vmstats();
   registry.SetWall(60000);
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   const auto ms_map = measurements_to_map(ms, proto_ref);
   EXPECT_EQ(4, ms.size());
   expect_value(ms_map, "vmstat.procs|blocked", 1);
@@ -133,7 +133,7 @@ TEST(Proc, VmStats) {
   proc.set_prefix("./resources/proc2");
   proc.vmstats();
   registry.SetWall(120000);
-  const auto& ms2 = registry.AllMeasurements();
+  const auto& ms2 = registry.my_measurements();
   const auto ms2_map = measurements_to_map(ms2, proto_ref);
   EXPECT_EQ(9, ms2.size());
   expect_value(ms2_map, "vmstat.procs|blocked", 2);
@@ -151,7 +151,7 @@ TEST(Proc, MemoryStats) {
   TestRegistry registry;
   Proc proc{&registry, "./resources/proc"};
   proc.memory_stats();
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   const auto ms_map = measurements_to_map(ms, proto_ref);
   EXPECT_EQ(9, ms.size());
   expect_value(ms_map, "mem.freeReal", 1024.0 * 9631224);
