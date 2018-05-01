@@ -6,17 +6,17 @@
 namespace atlasagent {
 std::string get_id_from_mountpoint(const std::string& mp);
 std::string get_dev_from_device(const std::string& device);
-}
+}  // namespace atlasagent
 
 using namespace atlasagent;
 using atlas::meter::Tags;
 
 class TestDisk : public Disk {
  public:
-  explicit TestDisk(atlas::meter::Registry* registry)
-      : Disk(registry, "./resources") {}
+  explicit TestDisk(atlas::meter::Registry* registry) : Disk(registry, "./resources") {}
 
-  std::vector<MountPoint> filter_interesting_mount_points(const std::vector<MountPoint>& mount_points) const noexcept {
+  std::vector<MountPoint> filter_interesting_mount_points(
+      const std::vector<MountPoint>& mount_points) const noexcept {
     auto v = Disk::filter_interesting_mount_points(mount_points);
     std::sort(v.begin(), v.end(), [](const MountPoint& a, const MountPoint& b) {
       return a.mount_point < b.mount_point;
@@ -24,21 +24,13 @@ class TestDisk : public Disk {
     return v;
   }
 
-  std::vector<MountPoint> get_mount_points() const noexcept {
-    return Disk::get_mount_points();
-  }
+  std::vector<MountPoint> get_mount_points() const noexcept { return Disk::get_mount_points(); }
 
-  std::vector<DiskIo> get_disk_stats() const noexcept {
-    return Disk::get_disk_stats();
-  }
+  std::vector<DiskIo> get_disk_stats() const noexcept { return Disk::get_disk_stats(); }
 
-  void update_titus_stats_for(const MountPoint& mp) noexcept {
-    Disk::update_titus_stats_for(mp);
-  }
+  void update_titus_stats_for(const MountPoint& mp) noexcept { Disk::update_titus_stats_for(mp); }
 
-  void diskio_stats() noexcept {
-    Disk::diskio_stats();
-  }
+  void diskio_stats() noexcept { Disk::diskio_stats(); }
 };
 
 TEST(Disk, MountPoints) {
@@ -65,7 +57,7 @@ TEST(Disk, InterestingMountPoints) {
   TestDisk disk(&registry);
 
   auto interesting = disk.filter_interesting_mount_points(disk.get_mount_points());
-  for (const auto& mp: interesting) {
+  for (const auto& mp : interesting) {
     std::cerr << mp << "\n";
   }
   ASSERT_EQ(interesting.size(), 5);
@@ -78,7 +70,7 @@ TEST(Disk, InterestingMountPoints) {
   // titus example
   disk.set_prefix("./resources2");
   auto interesting2 = disk.filter_interesting_mount_points(disk.get_mount_points());
-  for (const auto& mp: interesting2) {
+  for (const auto& mp : interesting2) {
     std::cerr << mp << "\n";
   }
 
@@ -95,7 +87,7 @@ TEST(Disk, UpdateTitusStats) {
 
   disk.titus_disk_stats();
 
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   for (const auto& m : ms) {
     Logger()->info("Got {}", m);
   }
@@ -107,7 +99,7 @@ TEST(Disk, UpdateDiskStats) {
 
   disk.disk_stats();
 
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   for (const auto& m : ms) {
     Logger()->info("Got {}", m);
   }
@@ -126,7 +118,7 @@ TEST(Disk, diskio_stats) {
   TestDisk disk(&registry);
 
   disk.diskio_stats();
-  const auto& first = registry.AllMeasurements();
+  const auto& first = registry.my_measurements();
   EXPECT_EQ(first.size(), 0);
 
   disk.set_prefix("./resources2");
@@ -134,7 +126,7 @@ TEST(Disk, diskio_stats) {
   disk.diskio_stats();
 
   registry.SetWall(120000);
-  const auto& ms = registry.AllMeasurements();
+  const auto& ms = registry.my_measurements();
   for (const auto& m : ms) {
     Logger()->info("Got {}", m);
   }

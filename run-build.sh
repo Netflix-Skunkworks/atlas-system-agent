@@ -10,9 +10,9 @@ BG='\033[0;32m' # Green
 error() { >&2 echo -e "${RED}$1${NC}"; }
 showinfo() { echo -e "${BG}$1${NC}"; }
 workingprocess() { echo -e "${BB}$1${NC}"; }
-allert () { echo -e "${RED}$1${NC}"; }
+alert () { echo -e "${RED}$1${NC}"; }
 
-# Fetch libatlasclient
+# Fetch and build libatlasclient
 rm -rf nc
 mkdir nc
 cd nc
@@ -25,14 +25,14 @@ cd build
 cmake -DCMAKE_INSTALL_PREFIX=/ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 make -j8
 make install DESTDIR=../root
-cd ..
+cd ../..
 
 # Building project
 mkdir -p build
 cd build
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT ..
 
-make -j8
+make -j4
 # Checks if last comand didn't output 0
 # $? checks what last command outputed
 # If output is 0 then command is succesfuly executed

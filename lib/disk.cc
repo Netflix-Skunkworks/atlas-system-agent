@@ -12,7 +12,6 @@
 #include "xfsquota.h"
 #endif
 
-
 namespace atlasagent {
 
 using atlas::meter::IdPtr;
@@ -55,10 +54,10 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept {
     }
     in >> ignored;
     in >> mp.device_major;
-    in >> ch; // ':';
+    in >> ch;  // ':';
     in >> mp.device_minor;
-    in >> ignored_str; // root
-    in >> mp.mount_point; // relative to root, but we only concern ourselves with root = /
+    in >> ignored_str;     // root
+    in >> mp.mount_point;  // relative to root, but we only concern ourselves with root = /
     in.ignore(std::numeric_limits<std::streamsize>::max(), '-');
     in >> mp.fs_type;
     in >> mp.device;
@@ -68,13 +67,15 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept {
   return res;
 }
 
-std::vector<MountPoint> Disk::filter_interesting_mount_points(const std::vector<MountPoint>& mount_points) const noexcept {
+std::vector<MountPoint> Disk::filter_interesting_mount_points(
+    const std::vector<MountPoint>& mount_points) const noexcept {
   std::vector<MountPoint> interesting;
   std::unordered_map<uint64_t, const MountPoint*> candidates;
 
-  for (const auto& mp: mount_points) {
-    if (starts_with(mp.mount_point.c_str(), "/sys") || starts_with(mp.mount_point.c_str(), "/proc")
-        || starts_with(mp.mount_point.c_str(), "/dev")) {
+  for (const auto& mp : mount_points) {
+    if (starts_with(mp.mount_point.c_str(), "/sys") ||
+        starts_with(mp.mount_point.c_str(), "/proc") ||
+        starts_with(mp.mount_point.c_str(), "/dev")) {
       continue;
     }
 
@@ -245,10 +246,8 @@ void Disk::update_stats_for(const MountPoint& mp, const char* prefix) noexcept {
 
 // for debugging
 std::ostream& operator<<(std::ostream& os, const MountPoint& mp) {
-  os << "MP{dev#="
-     << mp.device_major << ':' << mp.device_minor
-     << ",mp=" << mp.mount_point << ",dev=" << mp.device
-     << ",type=" << mp.fs_type << '}';
+  os << "MP{dev#=" << mp.device_major << ':' << mp.device_minor << ",mp=" << mp.mount_point
+     << ",dev=" << mp.device << ",type=" << mp.fs_type << '}';
   return os;
 }
 

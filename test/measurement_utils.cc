@@ -32,4 +32,3 @@ void expect_value(const measurement_map& measurements, const char* name, double 
     FAIL() << "Unable to find measurement for " << name;
   }
 }
-
