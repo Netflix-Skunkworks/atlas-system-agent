@@ -6,9 +6,7 @@
 namespace atlasagent {
 
 StdIoFile open_file(const std::string& prefix, const char* name) {
-  std::ostringstream os;
-  os << prefix << '/' << name;
-  auto resolved_path = os.str();
+  auto resolved_path = fmt::format("{}/{}", prefix, name);
   return StdIoFile(resolved_path.c_str());
 }
 

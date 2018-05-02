@@ -6,6 +6,7 @@
 namespace atlasagent {
 std::string get_id_from_mountpoint(const std::string& mp);
 std::string get_dev_from_device(const std::string& device);
+std::set<std::string> get_nodev_filesystems(const std::string& prefix);
 }  // namespace atlasagent
 
 using namespace atlasagent;
@@ -33,11 +34,16 @@ class TestDisk : public Disk {
   void diskio_stats() noexcept { Disk::diskio_stats(); }
 };
 
+TEST(Disk, NodevFS) {
+  auto fs = atlasagent::get_nodev_filesystems("./resources");
+  EXPECT_EQ(fs.size(), 25);
+}
+
 TEST(Disk, MountPoints) {
   TestRegistry registry;
   TestDisk disk(&registry);
   auto mount_points = disk.get_mount_points();
-  EXPECT_EQ(mount_points.size(), 34);
+  EXPECT_EQ(mount_points.size(), 11);
 }
 
 TEST(Disk, id) {
