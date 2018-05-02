@@ -27,4 +27,3 @@ TEST(Utils, SplitStartsEndsWithSpaces) {
   atlasagent::split("  \t\nfoo: bar  \t baz 43.2 x&z\t\n", &res);
   EXPECT_EQ(expected, res);
 }
-

@@ -51,7 +51,8 @@ class Disk {
  protected:
   // protected for testing
   void stats_for_interesting_mps(std::function<void(Disk*, const MountPoint&)> stats_fn) noexcept;
-  std::vector<MountPoint> filter_interesting_mount_points(const std::vector<MountPoint>& mount_points) const noexcept;
+  std::vector<MountPoint> filter_interesting_mount_points(
+      const std::vector<MountPoint>& mount_points) const noexcept;
   std::vector<MountPoint> get_mount_points() const noexcept;
   std::vector<DiskIo> get_disk_stats() const noexcept;
   void update_titus_stats_for(const MountPoint& mp) noexcept;

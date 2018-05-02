@@ -2,10 +2,10 @@
 #include "lib/logger.h"
 #include <iostream>
 
-using std::cout;
+using atlasagent::Logger;
 using atlasagent::Nvml;
 using atlasagent::NvmlDeviceHandle;
-using atlasagent::Logger;
+using std::cout;
 
 int main() {
   atlasagent::UseConsoleLogger();
