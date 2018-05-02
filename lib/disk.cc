@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sstream>
 #include <sys/statvfs.h>
+#include <set>
 
 #if __linux__
 #include <btrfs/btrfs.h>
@@ -30,11 +31,30 @@ Disk::Disk(Registry* registry, std::string path_prefix, container_handle* contai
   }
 }
 
+std::set<std::string> get_nodev_filesystems(const std::string& prefix) {
+  std::set<std::string> res;
+  auto fp = open_file(prefix, "/proc/filesystems");
+  if (!fp) {
+    return res;
+  }
+  char line[2048];
+  while (fgets(line, sizeof line, fp) != nullptr) {
+    std::vector<std::string> fields;
+    split(line, &fields);
+    // if the fs line has 2 entries and the first entry is 'nodev'
+    // then the filesystem is special, and should be ignored for
+    // our reporting (with the exception of tmpfs)
+    if (fields.size() == 2 && fields[0] == "nodev") {
+      res.emplace(std::move(fields[1]));
+    }
+  }
+  return res;
+}
+
 // parse /proc/self/mountinfo
 std::vector<MountPoint> Disk::get_mount_points() const noexcept {
-  std::ostringstream os;
-  os << path_prefix_ << "/proc/self/mountinfo";
-  std::string file_name = os.str();
+  auto nodev_types = get_nodev_filesystems(path_prefix_);
+  auto file_name = fmt::format("{}/proc/self/mountinfo", path_prefix_);
   std::ifstream in(file_name);
   std::vector<MountPoint> res;
 
@@ -62,7 +82,12 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept {
     in >> mp.fs_type;
     in >> mp.device;
     in.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    res.push_back(mp);
+
+    // add filesystems backed by a device only (plus tmpfs)
+    if (mp.fs_type == "tmpfs" ||
+        std::find(nodev_types.begin(), nodev_types.end(), mp.fs_type) == nodev_types.end()) {
+      res.push_back(mp);
+    }
   }
   return res;
 }
