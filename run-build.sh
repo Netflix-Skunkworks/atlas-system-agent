@@ -22,15 +22,15 @@ git fetch origin $NATIVE_CLIENT_VERSION
 git reset --hard FETCH_HEAD
 mkdir build root
 cd build
-cmake -DCMAKE_INSTALL_PREFIX=/ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
-make -j8
+cmake -DCMAKE_INSTALL_PREFIX=/ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=gcc-5 -DCMAKE_CXX_COMPILER=g++-5 ..
+make -j4
 make install DESTDIR=../root
 cd ../..
 
 # Building project
 mkdir -p build
 cd build
-cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT ..
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT -DCMAKE_C_COMPILER=gcc-5 -DCMAKE_CXX_COMPILER=g++-5 ..
 
 make -j4
 # Checks if last comand didn't output 0
