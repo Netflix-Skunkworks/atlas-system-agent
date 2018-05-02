@@ -41,7 +41,7 @@ endif()
 
 set_target_properties(atlasagent PROPERTIES COMPILE_FLAGS "${CMAKE_CXX_FLAGS} -Wextra -Wno-missing-braces")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFMT_HEADER_ONLY -DSPDLOG_FMT_EXTERNAL -pedantic -fno-rtti -Werror -Wall -Wno-missing-braces -std=c++11 -DBTRFS_FLAT_INCLUDES=1")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFMT_HEADER_ONLY -DSPDLOG_FMT_EXTERNAL -fno-rtti -Werror -Wall -Wno-missing-braces -std=c++11 -DBTRFS_FLAT_INCLUDES=1")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DBTRFS_FLAT_INCLUDES=1")
 
 set(APP_SOURCE_FILES atlas-agent.cc)
