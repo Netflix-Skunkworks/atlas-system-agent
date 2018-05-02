@@ -7,8 +7,6 @@ compiler:
 env:
   global:
     - NATIVE_CLIENT_VERSION=v4.0.0
-    - CC=gcc-5
-    - CXX=g++-5
   matrix:
     - TITUS_AGENT="-DTITUS_AGENT=ON .."
     - TITUS_AGENT=""
