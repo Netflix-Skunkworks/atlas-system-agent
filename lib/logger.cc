@@ -76,11 +76,10 @@ static void initialize_logger(const std::string& log_dir) {
   if (writable_or_missing(file_name)) {
     spdlog::set_error_handler(
         [](const std::string& msg) { std::cerr << "Log error: " << msg << "\n"; });
-    auto logger = spdlog::create<spdlog::sinks::rotating_file_sink_mt>(
-        kMainLogger, join_path(log_dir, "atlasclient"), SPDLOG_FILENAME_T("log"), 1 * 1024 * 1024,
-        8);
+    auto logger_ = spdlog::rotating_logger_mt(kMainLogger, join_path(log_dir, "atlasclient.log"),
+                                              1024 * 1024, 8);
     current_logging_directory = log_dir;
-    logger->flush_on(spdlog::level::info);
+    logger_->flush_on(spdlog::level::info);
   } else {
     fallback_init_for_logger();
   }

@@ -10,9 +10,9 @@ BG='\033[0;32m' # Green
 error() { >&2 echo -e "${RED}$1${NC}"; }
 showinfo() { echo -e "${BG}$1${NC}"; }
 workingprocess() { echo -e "${BB}$1${NC}"; }
-allert () { echo -e "${RED}$1${NC}"; }
+alert () { echo -e "${RED}$1${NC}"; }
 
-# Fetch libatlasclient
+# Fetch and build libatlasclient
 rm -rf nc
 mkdir nc
 cd nc
@@ -22,17 +22,17 @@ git fetch origin $NATIVE_CLIENT_VERSION
 git reset --hard FETCH_HEAD
 mkdir build root
 cd build
-cmake -DCMAKE_INSTALL_PREFIX=/ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
-make -j8
+cmake -DCMAKE_INSTALL_PREFIX=/ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=gcc-5 -DCMAKE_CXX_COMPILER=g++-5 ..
+make -j4
 make install DESTDIR=../root
-cd ..
+cd ../..
 
 # Building project
 mkdir -p build
 cd build
-cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT ..
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT -DCMAKE_C_COMPILER=gcc-5 -DCMAKE_CXX_COMPILER=g++-5 ..
 
-make -j8
+make -j4
 # Checks if last comand didn't output 0
 # $? checks what last command outputed
 # If output is 0 then command is succesfuly executed

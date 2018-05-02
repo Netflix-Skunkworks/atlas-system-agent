@@ -3,7 +3,6 @@
 #include "atlas-helpers.h"
 #include <cstring>
 #include <cinttypes>
-#include <atlas/meter/subscription_distribution_summary.h>
 
 namespace atlasagent {
 
@@ -17,10 +16,10 @@ static void discard_line(FILE* fp) {
 }
 
 using atlas::meter::IdPtr;
+using atlas::meter::kEmptyTags;
 using atlas::meter::MonotonicCounter;
 using atlas::meter::Registry;
 using atlas::meter::Tags;
-using atlas::meter::kEmptyTags;
 
 static IdPtr id_for(Registry* registry, const char* name, const char* iface,
                     const char* idStr) noexcept {
@@ -36,8 +35,9 @@ void Proc::handle_line(FILE* fp) noexcept {
   int64_t bytes, packets, errs, drop, fifo, frame, compressed, multicast, colls, carrier;
 
   auto assigned =
-      fscanf(fp, "%s %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
-                 " %" PRId64 " %" PRId64,
+      fscanf(fp,
+             "%s %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
+             " %" PRId64,
              iface, &bytes, &packets, &errs, &drop, &fifo, &frame, &compressed, &multicast);
   if (assigned > 0) {
     iface[strlen(iface) - 1] = '\0';  // strip trailing ':'
@@ -48,8 +48,9 @@ void Proc::handle_line(FILE* fp) noexcept {
     counters_.get(id_for(registry_, "net.iface.droppedPackets", iface, "in"))->Set(drop);
   }
 
-  assigned = fscanf(fp, " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
-                        " %" PRId64 " %" PRId64,
+  assigned = fscanf(fp,
+                    " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64
+                    " %" PRId64 " %" PRId64,
                     &bytes, &packets, &errs, &drop, &fifo, &colls, &carrier, &compressed);
   if (assigned > 0) {
     counters_.get(id_for(registry_, "net.iface.bytes", iface, "out"))->Set(bytes);
@@ -209,8 +210,8 @@ void Proc::parse_ip_stats(const char* buf) noexcept {
 }
 
 void Proc::parse_tcp_stats(const char* buf) noexcept {
-  static MonotonicCounter tcpInSegsCtr(
-      registry_, registry_->CreateId("net.tcp.segments", Tags{{"id", "in"}}));
+  static MonotonicCounter tcpInSegsCtr(registry_,
+                                       registry_->CreateId("net.tcp.segments", Tags{{"id", "in"}}));
   static MonotonicCounter tcpOutSegsCtr(
       registry_, registry_->CreateId("net.tcp.segments", Tags{{"id", "out"}}));
   static MonotonicCounter tcpRetransSegsCtr(
@@ -367,27 +368,13 @@ struct cpu_gauges {
 };
 
 struct cores_dist_summary {
-  using DistSum = atlas::meter::SubscriptionDistributionSummaryNum<double>;
-  using DistSumPtr = std::shared_ptr<DistSum>;
-  static DistSumPtr dist_summary(Registry* registry, const char* name) {
-    auto ds = std::make_shared<DistSum>(registry->CreateId(name, Tags{}),
-                                        registry->clock(), registry->pollers());
-    registry->RegisterMonitor(std::static_pointer_cast<atlas::meter::Meter>(ds));
-    return ds;
-  }
-
   cores_dist_summary(Registry* registry, const char* name)
-      : usage_ds(dist_summary(registry, name)) {}
+      : usage_ds(registry->ddistribution_summary(name)) {}
 
-  DistSumPtr usage_ds;
+  std::shared_ptr<atlas::meter::DDistributionSummary> usage_ds;
 
   void update(const cpu_gauge_vals& vals) {
-    auto usage = vals.user
-      + vals.system
-      + vals.stolen
-      + vals.nice
-      + vals.wait
-      + vals.interrupt;
+    auto usage = vals.user + vals.system + vals.stolen + vals.nice + vals.wait + vals.interrupt;
     usage_ds->Record(usage);
   }
 };
@@ -458,14 +445,14 @@ void Proc::vmstats() noexcept {
   static auto procs_blocked =
       registry_->gauge(registry_->CreateId("vmstat.procs", {{"id", "blocked"}}));
 
-  static MonotonicCounter page_in{
-      registry_, registry_->CreateId("vmstat.paging", Tags{{"id", "in"}})};
-  static MonotonicCounter page_out{
-      registry_, registry_->CreateId("vmstat.paging", Tags{{"id", "out"}})};
-  static MonotonicCounter swap_in{
-      registry_, registry_->CreateId("vmstat.swapping", Tags{{"id", "in"}})};
-  static MonotonicCounter swap_out{
-      registry_, registry_->CreateId("vmstat.swapping", Tags{{"id", "out"}})};
+  static MonotonicCounter page_in{registry_,
+                                  registry_->CreateId("vmstat.paging", Tags{{"id", "in"}})};
+  static MonotonicCounter page_out{registry_,
+                                   registry_->CreateId("vmstat.paging", Tags{{"id", "out"}})};
+  static MonotonicCounter swap_in{registry_,
+                                  registry_->CreateId("vmstat.swapping", Tags{{"id", "in"}})};
+  static MonotonicCounter swap_out{registry_,
+                                   registry_->CreateId("vmstat.swapping", Tags{{"id", "out"}})};
 
   static auto fh_alloc = registry_->gauge(registry_->CreateId("vmstat.fh.allocated", kEmptyTags));
   static auto fh_max = registry_->gauge(registry_->CreateId("vmstat.fh.max", kEmptyTags));

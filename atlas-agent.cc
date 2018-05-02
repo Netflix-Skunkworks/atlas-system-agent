@@ -96,11 +96,11 @@ static void init_signals() {
 }
 
 #ifdef TITUS_AGENT
-void collect_titus_metrics(container_handle* c) {
-  const auto& clock = atlas_registry.clock();
-  CGroup cGroup{&atlas_registry};
-  Proc proc{&atlas_registry};
-  Disk disk{&atlas_registry, "", c};
+void collect_titus_metrics(atlas::meter::Registry* registry, container_handle* c) {
+  const auto& clock = registry->clock();
+  CGroup cGroup{registry};
+  Proc proc{registry};
+  Disk disk{registry, "", c};
 
   int64_t time_to_sleep;
   do {
@@ -115,15 +115,15 @@ void collect_titus_metrics(container_handle* c) {
   } while (runner.wait_for(std::chrono::milliseconds(time_to_sleep)));
 }
 #else
-void collect_system_metrics() {
-  const auto& clock = atlas_registry.clock();
-  Proc proc{&atlas_registry};
-  Disk disk{&atlas_registry, "", nullptr};
+void collect_system_metrics(atlas::meter::Registry* registry) {
+  const auto& clock = registry->clock();
+  Proc proc{registry};
+  Disk disk{registry, "", nullptr};
 
-  auto gpu = std::unique_ptr<GpuMetrics<Nvml>>(nullptr);
+  auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
   try {
     Nvml nvml;
-    gpu.reset(new GpuMetrics<Nvml>(&atlas_registry, &nvml));
+    gpu.reset(new GpuMetrics<Nvml>(registry, &nvml));
   } catch (...) {
     Logger()->debug("Unable to start collection of GPU metrics");
   }
@@ -162,23 +162,24 @@ int main(int argc, const char* argv[]) {
   const char* process = argc > 1 ? argv[1] : "atlas-system-agent";
 #endif
 
-  atlas::UseConsoleLogger(spdlog::level::info);
+  atlas::Client atlas_client;
+  atlas_client.UseConsoleLogger(spdlog::level::info);
   init_signals();
   atlasagent::UseConsoleLogger();
-  atlas::Init();
-  atlas::SetNotifyAlertServer(false);
-  atlas::AddCommonTag("xatlas.process", process);
+  atlas_client.AddCommonTag("xatlas.process", process);
+  atlas_client.Start();
+  auto registry = atlas_client.GetRegistry();
 
 #ifdef TITUS_AGENT
   auto titus_host = std::getenv("EC2_INSTANCE_ID");
   if (titus_host != nullptr) {
-    atlas::AddCommonTag("titus.host", titus_host);
+    atlas_client.AddCommonTag("titus.host", titus_host);
   }
-  collect_titus_metrics(&c);
+  collect_titus_metrics(registry.get(), &c);
 #else
-  collect_system_metrics();
+  collect_system_metrics(registry.get());
 #endif
   Logger()->info("Shutting down atlas");
-  atlas::Shutdown();
+  atlas_client.Stop();
   return 0;
 }
