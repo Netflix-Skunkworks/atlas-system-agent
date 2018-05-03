@@ -66,12 +66,9 @@ TEST(Disk, InterestingMountPoints) {
   for (const auto& mp : interesting) {
     std::cerr << mp << "\n";
   }
-  ASSERT_EQ(interesting.size(), 5);
+  ASSERT_EQ(interesting.size(), 2);
   EXPECT_EQ(interesting[0].mount_point, "/");
   EXPECT_EQ(interesting[1].mount_point, "/mnt");
-  EXPECT_EQ(interesting[2].mount_point, "/run");
-  EXPECT_EQ(interesting[3].mount_point, "/run/lock");
-  EXPECT_EQ(interesting[4].mount_point, "/run/user/0");
 
   // titus example
   disk.set_prefix("./resources2");

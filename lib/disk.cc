@@ -53,7 +53,9 @@ std::set<std::string> get_nodev_filesystems(const std::string& prefix) {
 
 // parse /proc/self/mountinfo
 std::vector<MountPoint> Disk::get_mount_points() const noexcept {
-  auto nodev_types = get_nodev_filesystems(path_prefix_);
+  auto unwanted_filesystems = get_nodev_filesystems(path_prefix_);
+  unwanted_filesystems.erase("tmpfs");
+
   auto file_name = fmt::format("{}/proc/self/mountinfo", path_prefix_);
   std::ifstream in(file_name);
   std::vector<MountPoint> res;
@@ -83,9 +85,8 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept {
     in >> mp.device;
     in.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
-    // add filesystems backed by a device only (plus tmpfs)
-    if (mp.fs_type == "tmpfs" ||
-        std::find(nodev_types.begin(), nodev_types.end(), mp.fs_type) == nodev_types.end()) {
+    // add only if the filesystem is not in our unwanted blacklist
+    if (unwanted_filesystems.find(mp.fs_type) == unwanted_filesystems.end()) {
       res.push_back(mp);
     }
   }
@@ -99,12 +100,13 @@ std::vector<MountPoint> Disk::filter_interesting_mount_points(
 
   for (const auto& mp : mount_points) {
     if (starts_with(mp.mount_point.c_str(), "/sys") ||
+        starts_with(mp.mount_point.c_str(), "/run") ||
         starts_with(mp.mount_point.c_str(), "/proc") ||
         starts_with(mp.mount_point.c_str(), "/dev")) {
       continue;
     }
 
-    auto key = static_cast<uint64_t>(mp.device_major) << 32 | mp.device_minor;
+    auto key = static_cast<uint64_t>(mp.device_major) << 32u | mp.device_minor;
     auto candidate = candidates[key];
     if (candidate != nullptr) {
       // keep the shortest path if more than one mount point refers to the same device
