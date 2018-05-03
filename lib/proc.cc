@@ -426,7 +426,7 @@ struct stat_vals {
     auto delta_stolen = steal - prev.steal;
     auto delta_nice = nice - prev.nice;
     auto delta_interrupt = (irq + softirq) - (prev.irq + prev.softirq);
-    auto delta_wait = iowait - prev.iowait;
+    auto delta_wait = iowait > prev.iowait ? iowait - prev.iowait : 0;
 
     if (delta_total > 0) {
       vals.user = 100.0 * delta_user / delta_total;
