@@ -342,7 +342,7 @@ struct cpu_gauges {
   using gauge_ptr = std::shared_ptr<atlas::meter::Gauge<double>>;
   using gauge_maker_t =
       std::function<gauge_ptr(Registry* registry, const char* name, const char* id)>;
-  cpu_gauges(Registry* registry, const char* name, gauge_maker_t gauge_maker)
+  cpu_gauges(Registry* registry, const char* name, const gauge_maker_t& gauge_maker)
       : user_gauge(gauge_maker(registry, name, "user")),
         system_gauge(gauge_maker(registry, name, "system")),
         stolen_gauge(gauge_maker(registry, name, "stolen")),
@@ -389,6 +389,10 @@ struct stat_vals {
     auto ret = sscanf(line, CPU_STATS_LINE, &result.user, &result.nice, &result.system,
                       &result.idle, &result.iowait, &result.irq, &result.softirq, &result.steal,
                       &result.guest, &result.guest_nice);
+    if (ret < 7) {
+      Logger()->info("Unable to parse cpu stats from '{}' - only {} fields were read", line, ret);
+      return result;
+    }
     result.total = static_cast<double>(result.user) + result.nice + result.system + result.idle +
                    result.iowait + result.irq + result.softirq;
     if (ret > 7) {
@@ -401,10 +405,21 @@ struct stat_vals {
 
   bool is_init() const noexcept { return !std::isnan(total); }
 
-  stat_vals() : total(NAN) {}
+  stat_vals()
+      : user(0),
+        nice(0),
+        system(0),
+        idle(0),
+        iowait(0),
+        irq(0),
+        softirq(0),
+        steal(0),
+        guest(0),
+        guest_nice(0),
+        total(NAN) {}
 
   cpu_gauge_vals compute_vals(const stat_vals& prev) const noexcept {
-    cpu_gauge_vals vals;
+    cpu_gauge_vals vals{};
     auto delta_total = total - prev.total;
     auto delta_user = user - prev.user;
     auto delta_system = system - prev.system;
@@ -541,8 +556,8 @@ void Proc::cpu_stats() noexcept {
     auto it = prev_cpu_vals.find(cpu_num);
     if (it != prev_cpu_vals.end()) {
       auto& prev = it->second;
-      auto vals = per_cpu_vals.compute_vals(prev);
-      coresDistSummary.update(vals);
+      auto computed_vals = per_cpu_vals.compute_vals(prev);
+      coresDistSummary.update(computed_vals);
     }
     prev_cpu_vals[cpu_num] = per_cpu_vals;
   }
