@@ -36,7 +36,9 @@ class TestDisk : public Disk {
 
 TEST(Disk, NodevFS) {
   auto fs = atlasagent::get_nodev_filesystems("./resources");
-  EXPECT_EQ(fs.size(), 25);
+  auto has_overlay = fs.find("overlay") != fs.end();
+  EXPECT_TRUE(has_overlay);
+  EXPECT_EQ(fs.size(), 26);
 }
 
 TEST(Disk, MountPoints) {
