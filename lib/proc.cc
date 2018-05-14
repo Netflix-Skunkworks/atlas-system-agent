@@ -92,7 +92,6 @@ void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcep
   if (fgets(line, sizeof line, fp) == nullptr) {
     return;
   }
-  int n = 1;
   while (fgets(line, sizeof line, fp) != nullptr) {
     std::vector<std::string> fields;
     split(line, &fields);
@@ -105,9 +104,7 @@ void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcep
     } else {
       Logger()->info("Ignoring connection state {} for line: {}", state, line);
     }
-    n++;
   }
-  Logger()->debug("Read {} lines from file", n);
 }
 
 using gauge_ptr = std::shared_ptr<atlas::meter::Gauge<double>>;
