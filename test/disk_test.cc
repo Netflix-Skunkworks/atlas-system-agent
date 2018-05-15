@@ -2,11 +2,12 @@
 #include "../lib/logger.h"
 #include "test_registry.h"
 #include <gtest/gtest.h>
+#include <unordered_set>
 
 namespace atlasagent {
 std::string get_id_from_mountpoint(const std::string& mp);
 std::string get_dev_from_device(const std::string& device);
-std::set<std::string> get_nodev_filesystems(const std::string& prefix);
+std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix);
 }  // namespace atlasagent
 
 using namespace atlasagent;
