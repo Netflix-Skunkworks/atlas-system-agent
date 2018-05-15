@@ -8,11 +8,6 @@
 #include <sys/statvfs.h>
 #include <unordered_set>
 
-#if __linux__
-#include <btrfs/btrfs.h>
-#include "xfsquota.h"
-#endif
-
 namespace atlasagent {
 
 using atlas::meter::IdPtr;
@@ -23,8 +18,7 @@ Disk::Disk(Registry* registry, std::string path_prefix, container_handle* contai
     : registry_(registry),
       path_prefix_(std::move(path_prefix)),
       counters_(registry),
-      container_handle_(container_handle),
-      quota_helper_(nullptr) {
+      container_handle_(container_handle) {
   if (container_handle_ != nullptr) {
     // to get rid of the error about container_handle_ not used on OSX
     Logger()->debug("Under containment");
@@ -241,11 +235,6 @@ void Disk::titus_disk_stats() noexcept {
 
 void Disk::update_titus_stats_for(const MountPoint& mp) noexcept {
   update_stats_for(mp, "cgroup.");
-  if (mp.fs_type == "btrfs") {
-    btrfs_stats(mp);
-  } else if (mp.fs_type == "overlay") {
-    overlay_stats(mp);
-  }
 }
 
 void Disk::update_gauge(const char* prefix, const char* name, const Tags& tags,
@@ -291,74 +280,5 @@ std::ostream& operator<<(std::ostream& os, const MountPoint& mp) {
 }
 
 void Disk::set_prefix(const std::string& new_prefix) noexcept { path_prefix_ = new_prefix; }
-#if __linux__
-static constexpr size_t MAX_ENTRIES = 1024;
-void Disk::btrfs_stats(const MountPoint& mp) noexcept {
-  UnixFile fd(mp.mount_point.c_str());
-  if (fd < 0) {
-    return;
-  }
-
-  struct btrfs_qgroup_info entries[MAX_ENTRIES];
-  size_t num_entries = MAX_ENTRIES;
-  auto ret = get_qgroups(fd, entries, &num_entries);
-  auto id = get_id_from_mountpoint(mp.mount_point);
-  Tags id_tags{{"id", id.c_str()}};
-  if (ret >= 0) {
-    if (num_entries != 1) {
-      Logger()->info("Got {} entries for {}", num_entries, mp.mount_point);
-    }
-
-    int64_t bytes_used = 0;
-    int64_t bytes_max = 0;
-    for (size_t i = 0; i < num_entries; i++) {
-      bytes_used += entries[i].rfer;
-      bytes_max += entries[i].max_rfer;
-    }
-
-    gauge(registry_, "cgroup.disk.bytesUsed", id_tags)->Update(bytes_used);
-    gauge(registry_, "cgroup.disk.bytesMax", id_tags)->Update(bytes_max);
-
-    if (bytes_max > 0) {
-      auto bytes_free = bytes_max - bytes_used;
-      auto bytes_percent = 100.0 * bytes_used / bytes_max;
-      gauge(registry_, "cgroup.disk.bytesFree", id_tags)->Update(bytes_free);
-      gauge(registry_, "cgroup.disk.bytesPercentUsed", id_tags)->Update(bytes_percent);
-    }
-  } else {
-    Logger()->debug("Unable to get quota for {}", mp.mount_point);
-  }
-}
-
-void Disk::overlay_stats(const MountPoint& mp) noexcept {
-  if (!quota_helper_) {
-    quota_helper_.reset(new QuotaHelper(mp.mount_point.c_str()));
-  }
-
-  fs_disk_quota_t quota;
-  auto err = quota_helper_->get(container_handle_, &quota);
-  if (err) {
-    Logger()->warn("Unable to populate quota");
-    return;
-  }
-
-  int64_t bytes_max = quota.d_blk_hardlimit * 512;
-  int64_t bytes_used = quota.d_bcount * 512;
-
-  auto id = get_id_from_mountpoint(mp.mount_point);
-  Tags id_tags{{"id", id.c_str()}};
-  gauge(registry_, "cgroup.disk.bytesUsed", id_tags)->Update(bytes_used);
-  gauge(registry_, "cgroup.disk.bytesMax", id_tags)->Update(bytes_max);
-  if (bytes_max > 0) {
-    auto bytes_free = bytes_max - bytes_used;
-    auto bytes_percent = 100.0 * bytes_used / bytes_max;
-    gauge(registry_, "cgroup.disk.bytesFree", id_tags)->Update(bytes_free);
-    gauge(registry_, "cgroup.disk.bytesPercentUsed", id_tags)->Update(bytes_percent);
-  }
-}
-#else
-void Disk::btrfs_stats(const MountPoint& /* mp */) noexcept {}
-void Disk::overlay_stats(const MountPoint& /* mp */) noexcept {}
-#endif
 
 }  // namespace atlasagent

@@ -6,7 +6,6 @@
 #include <contain.h>
 #include "../config.h"
 #include "counters.h"
-#include "quotahelper.h"
 
 namespace atlasagent {
 struct MountPoint {
@@ -47,7 +46,6 @@ class Disk {
   std::string path_prefix_;
   Counters counters_;
   container_handle* container_handle_;
-  std::unique_ptr<QuotaHelper> quota_helper_;
 
  protected:
   // protected for testing
