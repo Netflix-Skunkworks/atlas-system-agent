@@ -31,3 +31,4 @@ nodev	autofs
 nodev	zfs
 nodev	binfmt_misc
 	xfs
+nodev	overlay

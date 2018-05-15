@@ -4,6 +4,7 @@
 #include <vector>
 #include <atlas/meter/id.h>
 #include <contain.h>
+#include "../config.h"
 #include "counters.h"
 #include "quotahelper.h"
 

@@ -2,11 +2,12 @@
 #include "../lib/logger.h"
 #include "test_registry.h"
 #include <gtest/gtest.h>
+#include <unordered_set>
 
 namespace atlasagent {
 std::string get_id_from_mountpoint(const std::string& mp);
 std::string get_dev_from_device(const std::string& device);
-std::set<std::string> get_nodev_filesystems(const std::string& prefix);
+std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix);
 }  // namespace atlasagent
 
 using namespace atlasagent;
@@ -45,7 +46,19 @@ TEST(Disk, MountPoints) {
   TestRegistry registry;
   TestDisk disk(&registry);
   auto mount_points = disk.get_mount_points();
-  EXPECT_EQ(mount_points.size(), 11);
+  EXPECT_EQ(mount_points.size(), 7);
+
+  disk.set_prefix("./resources2");
+  mount_points = disk.get_mount_points();
+  for (const auto& mp : mount_points) {
+    Logger()->info("{}", mp);
+  }
+#ifdef TITUS_AGENT
+  // titus does not ignore overlay
+  EXPECT_EQ(mount_points.size(), 5);
+#else
+  EXPECT_EQ(mount_points.size(), 4);
+#endif
 }
 
 TEST(Disk, id) {
@@ -79,11 +92,12 @@ TEST(Disk, InterestingMountPoints) {
     std::cerr << mp << "\n";
   }
 
-  ASSERT_EQ(interesting2.size(), 3);
+#ifdef TITUS_AGENT
+  ASSERT_EQ(interesting2.size(), 1);
   EXPECT_EQ(interesting2[0].mount_point, "/");
-  // xvda/xvdb are not particularly useful for titus - should we special case titus?
-  EXPECT_EQ(interesting2[1].device, "/dev/xvdb");
-  EXPECT_EQ(interesting2[2].device, "/dev/xvda");
+#else
+  ASSERT_EQ(interesting2.size(), 0);
+#endif
 }
 
 TEST(Disk, UpdateTitusStats) {
