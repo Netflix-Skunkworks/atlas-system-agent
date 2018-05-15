@@ -6,7 +6,7 @@
 #include <fstream>
 #include <sstream>
 #include <sys/statvfs.h>
-#include <set>
+#include <unordered_set>
 
 #if __linux__
 #include <btrfs/btrfs.h>
@@ -31,21 +31,24 @@ Disk::Disk(Registry* registry, std::string path_prefix, container_handle* contai
   }
 }
 
-std::set<std::string> get_nodev_filesystems(const std::string& prefix) {
-  std::set<std::string> res;
+std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix) {
+  std::unordered_set<std::string> res;
   auto fp = open_file(prefix, "/proc/filesystems");
   if (!fp) {
     return res;
   }
   char line[2048];
   while (fgets(line, sizeof line, fp) != nullptr) {
-    std::vector<std::string> fields;
-    split(line, &fields);
-    // if the fs line has 2 entries and the first entry is 'nodev'
-    // then the filesystem is special, and should be ignored for
-    // our reporting (with the exception of tmpfs)
-    if (fields.size() == 2 && fields[0] == "nodev") {
-      res.emplace(std::move(fields[1]));
+    static constexpr size_t PREFIX_LEN = 6;
+    auto len = strlen(line);
+    if (len < PREFIX_LEN + 1) {
+      continue;
+    }
+
+    if (starts_with(line, "nodev\t")) {
+      // remove the new line
+      std::string fs{&line[PREFIX_LEN], len - PREFIX_LEN - 1};
+      res.emplace(std::move(fs));
     }
   }
   return res;
@@ -70,10 +73,11 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept {
     return res;
   }
 
+  std::string slash{"/"};
   while (in) {
     MountPoint mp;
     unsigned ignored;
-    std::string ignored_str;
+    std::string root;
     char ch;
     in >> ignored;
     if (in.eof()) {
@@ -83,16 +87,19 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept {
     in >> mp.device_major;
     in >> ch;  // ':';
     in >> mp.device_minor;
-    in >> ignored_str;     // root
-    in >> mp.mount_point;  // relative to root, but we only concern ourselves with root = /
-    in.ignore(std::numeric_limits<std::streamsize>::max(), '-');
-    in >> mp.fs_type;
-    in >> mp.device;
+    in >> root;
+    auto keep = root == slash;
+    if (keep) {
+      in >> mp.mount_point;  // relative to root, but we only concern ourselves with root = /
+      in.ignore(std::numeric_limits<std::streamsize>::max(), '-');
+      in >> mp.fs_type;
+      in >> mp.device;
+    }
     in.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
     // add only if the filesystem is not in our unwanted blacklist
-    if (unwanted_filesystems.find(mp.fs_type) == unwanted_filesystems.end()) {
-      res.push_back(mp);
+    if (keep && unwanted_filesystems.find(mp.fs_type) == unwanted_filesystems.end()) {
+      res.push_back(std::move(mp));
     }
   }
   return res;
