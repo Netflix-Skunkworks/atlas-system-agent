@@ -126,6 +126,7 @@ std::vector<MountPoint> Disk::filter_interesting_mount_points(
       candidates[key] = &mp;
     }
   }
+  interesting.reserve(candidates.size());
   for (const auto& kv : candidates) {
     interesting.emplace_back(*kv.second);
   }

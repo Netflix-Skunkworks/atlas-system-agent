@@ -38,7 +38,7 @@ void parse_kv_from_file(const std::string& prefix, const char* fn,
   }
 }
 
-void split(const char* line, std::vector<std::string>* res) noexcept {
+void split(const char* line, std::vector<std::string>* fields) noexcept {
   const char* p = line;
   const char* end = line + strlen(line);
   char field[256];
@@ -59,7 +59,7 @@ void split(const char* line, std::vector<std::string>* res) noexcept {
       ++p;
     }
     field[i] = '\0';
-    res->emplace_back(field);
+    fields->emplace_back(field);
     i = 0;
   }
 }

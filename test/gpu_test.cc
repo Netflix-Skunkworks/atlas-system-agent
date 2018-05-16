@@ -6,6 +6,7 @@
 
 using namespace atlasagent;
 
+using atlas::meter::ManualClock;
 using atlas::meter::Measurements;
 
 class TestNvml {
@@ -100,7 +101,8 @@ static void expect_dist_summary(const Measurements& ms, const char* name, double
 }
 
 TEST(Gpu, Metrics) {
-  TestRegistry registry;
+  ManualClock clock;
+  TestRegistry registry(&clock);
   registry.SetWall(1000);
   TestNvml nvml;
   auto metrics = GpuMetrics<TestNvml>(&registry, &nvml);

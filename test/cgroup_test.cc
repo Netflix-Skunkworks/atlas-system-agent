@@ -5,10 +5,12 @@
 #include <gtest/gtest.h>
 
 using namespace atlasagent;
+using atlas::meter::ManualClock;
 
 // TODO: verify values
 TEST(CGroup, ParseCpu) {
-  TestRegistry registry;
+  ManualClock clock;
+  TestRegistry registry(&clock);
   registry.SetWall(1000);
   CGroup cGroup{&registry, "./resources"};
 
@@ -30,7 +32,8 @@ TEST(CGroup, ParseCpu) {
 }
 
 TEST(CGroup, ParseMemory) {
-  TestRegistry registry;
+  ManualClock clock;
+  TestRegistry registry(&clock);
   registry.SetWall(1000);
   CGroup cGroup{&registry, "./resources"};
 

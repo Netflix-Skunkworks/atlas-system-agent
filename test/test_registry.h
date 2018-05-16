@@ -7,13 +7,15 @@
 
 class TestRegistry : public atlas::meter::AtlasRegistry {
  public:
-  TestRegistry() : atlas::meter::AtlasRegistry(atlas::util::kMainFrequencyMillis, &manual_clock) {
+  TestRegistry(const atlas::meter::ManualClock* manual_clock)
+      : atlas::meter::AtlasRegistry(atlas::util::kMainFrequencyMillis, manual_clock),
+        manual_clock_(manual_clock) {
     // some monitors check for a previous update with if (last_updated > 0) ...
     // so we need to have a value greater than 0 by default
     SetWall(1);
   }
 
-  void SetWall(int64_t millis) { manual_clock.SetWall(millis); }
+  void SetWall(int64_t millis) { manual_clock_->SetWall(millis); }
 
   // non atlas. measurements only
   atlas::meter::Measurements my_measurements() {
@@ -28,5 +30,5 @@ class TestRegistry : public atlas::meter::AtlasRegistry {
   }
 
  private:
-  atlas::meter::ManualClock manual_clock;
+  const atlas::meter::ManualClock* manual_clock_;
 };
