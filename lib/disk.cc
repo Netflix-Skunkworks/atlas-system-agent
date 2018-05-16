@@ -260,6 +260,7 @@ void Disk::update_stats_for(const MountPoint& mp, const char* prefix) noexcept {
   auto bytes_percent = 100.0 * bytes_used / bytes_total;
   update_gauge(prefix, "disk.bytesFree", tags, bytes_free);
   update_gauge(prefix, "disk.bytesUsed", tags, bytes_used);
+  update_gauge(prefix, "disk.bytesMax", tags, bytes_total);
   update_gauge(prefix, "disk.bytesPercentUsed", tags, bytes_percent);
 
   if (st.f_files > 0) {
