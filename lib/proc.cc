@@ -1,8 +1,8 @@
 #include "proc.h"
-#include "util.h"
 #include "atlas-helpers.h"
-#include <cstring>
+#include "util.h"
 #include <cinttypes>
+#include <cstring>
 
 namespace atlasagent {
 
@@ -96,7 +96,9 @@ void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcep
     std::vector<std::string> fields;
     split(line, &fields);
     // all lines have at least 12 fields. Just being extra paranoid here:
-    if (fields.size() < 4) continue;
+    if (fields.size() < 4) {
+      continue;
+    }
     const char* st = fields[3].c_str();
     auto state = static_cast<int>(strtol(st, nullptr, 16));
     if (state < kConnStates) {
@@ -318,7 +320,9 @@ bool Proc::is_container() const noexcept {
   }
   char line[1024];
   bool error = std::fgets(line, sizeof line, fp) == nullptr;
-  if (error) return false;
+  if (error) {
+    return false;
+  }
 
   return proc::get_pid_from_sched(line) != 1;
 }
@@ -378,8 +382,9 @@ struct cores_dist_summary {
 
 struct stat_vals {
   static constexpr const char* CPU_STATS_LINE = " %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu";
-  u_long user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice;
-  double total;
+  u_long user{0}, nice{0}, system{0}, idle{0}, iowait{0}, irq{0}, softirq{0}, steal{0}, guest{0},
+      guest_nice{0};
+  double total{NAN};
 
   static stat_vals parse(const char* line) {
     stat_vals result;
@@ -402,18 +407,7 @@ struct stat_vals {
 
   bool is_init() const noexcept { return !std::isnan(total); }
 
-  stat_vals()
-      : user(0),
-        nice(0),
-        system(0),
-        idle(0),
-        iowait(0),
-        irq(0),
-        softirq(0),
-        steal(0),
-        guest(0),
-        guest_nice(0),
-        total(NAN) {}
+  stat_vals() = default;
 
   cpu_gauge_vals compute_vals(const stat_vals& prev) const noexcept {
     cpu_gauge_vals vals{};
