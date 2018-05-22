@@ -30,14 +30,20 @@ void CGroup::cpu_shares() noexcept {
   }
 }
 
-constexpr int64_t NANOS = 1000 * 1000 * 1000ll;
+constexpr auto NANOS = 1000 * 1000 * 1000.0;
 void CGroup::cpu_processing_time() noexcept {
-  static auto counter = monotonic_counter(registry_, "cgroup.cpu.processingTime");
+  using atlas::meter::Tags;
+  static int64_t prev = 0;
+  static std::shared_ptr<atlas::meter::DCounter> counter = nullptr;
 
   auto time_nanos = read_num_from_file(path_prefix_, "cpuacct/cpuacct.usage");
-  if (time_nanos >= 0) {
-    counter->Set(time_nanos / NANOS);
+  if (prev == 0) {
+    counter = registry_->dcounter(
+        registry_->CreateId("cgroup.cpu.processingTime", Tags{{"statistic", "count"}}));
+  } else {
+    counter->Add((time_nanos - prev) / NANOS);
   }
+  prev = time_nanos;
 }
 
 void CGroup::cpu_usage_time() noexcept {
