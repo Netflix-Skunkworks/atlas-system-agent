@@ -19,6 +19,7 @@ class CGroup {
   void cpu_processing_time() noexcept;
   void cpu_usage_time() noexcept;
   void cpu_shares() noexcept;
+  void cpu_throttle() noexcept;
   void kmem_stats() noexcept;
 };
 
