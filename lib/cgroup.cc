@@ -3,6 +3,7 @@
 #include "logger.h"
 #include "util.h"
 #include <map>
+#include <atlas/meter/id.h>
 
 namespace atlasagent {
 
@@ -48,19 +49,29 @@ void CGroup::cpu_processing_time() noexcept {
 
 void CGroup::cpu_usage_time() noexcept {
   using atlas::meter::Tags;
+  static auto prev_user_usage = static_cast<int64_t>(-1);
+  static auto prev_sys_usage = static_cast<int64_t>(-1);
   static auto user_usage =
-      monotonic_counter(registry_, "cgroup.cpu.usageTime", Tags{{"id", "user"}});
+      registry_->dcounter(registry_->CreateId("cgroup.cpu.usageTime", Tags{{"id", "user"}}));
   static auto system_usage =
-      monotonic_counter(registry_, "cgroup.cpu.usageTime", Tags{{"id", "system"}});
+      registry_->dcounter(registry_->CreateId("cgroup.cpu.usageTime", Tags{{"id", "system"}}));
+
   std::unordered_map<std::string, int64_t> stats;
   parse_kv_from_file(path_prefix_, "cpuacct/cpuacct.stat", &stats);
+  // the values are reported in hertz (100 per second)
   for (const auto& kv : stats) {
-    // round up since monotonic counter takes an int64_t not a double
-    auto time_in_seconds = (kv.second + 50) / 100;
     if (kv.first == "user") {
-      user_usage->Set(time_in_seconds);
+      if (prev_user_usage >= 0) {
+        auto secs = (kv.second - prev_user_usage) / 100.0;
+        user_usage->Add(secs);
+      }
+      prev_user_usage = kv.second;
     } else if (kv.first == "system") {
-      system_usage->Set(time_in_seconds);
+      if (prev_sys_usage >= 0) {
+        auto secs = (kv.second - prev_sys_usage) / 100.0;
+        system_usage->Add(secs);
+      }
+      prev_sys_usage = kv.second;
     }
   }
 }
@@ -148,10 +159,29 @@ void CGroup::memory_stats() noexcept {
   major_page_faults->Set(stats["total_pgmajfault"]);
 }
 
+void CGroup::cpu_throttle() noexcept {
+  static auto nr_throttled = monotonic_counter(registry_, "cgroup.cpu.numThrottled");
+  static auto throttled_time_ctr = registry_->dcounter(
+      registry_->CreateId("cgroup.cpu.throttledTime", atlas::meter::kEmptyTags));
+  static auto prev_throttled_time = static_cast<int64_t>(-1);
+
+  std::unordered_map<std::string, int64_t> stats;
+  parse_kv_from_file(path_prefix_, "cpuacct/cpu.stat", &stats);
+
+  nr_throttled->Set(stats["nr_throttled"]);
+  auto throttled_time = stats["throttled_time"];
+  if (prev_throttled_time >= 0) {
+    auto seconds = (throttled_time - prev_throttled_time) / 1e9;
+    throttled_time_ctr->Add(seconds);
+  }
+  prev_throttled_time = throttled_time;
+}
+
 void CGroup::cpu_stats() noexcept {
   cpu_processing_time();
   cpu_usage_time();
   cpu_shares();
+  cpu_throttle();
 }
 
 CGroup::CGroup(atlas::meter::Registry* registry, std::string path_prefix) noexcept
