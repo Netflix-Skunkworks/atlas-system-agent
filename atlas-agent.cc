@@ -122,8 +122,7 @@ void collect_system_metrics(atlas::meter::Registry* registry) {
 
   auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
   try {
-    Nvml nvml;
-    gpu.reset(new GpuMetrics<Nvml>(registry, &nvml));
+    gpu.reset(new GpuMetrics<Nvml>(registry, std::make_unique<Nvml>()));
   } catch (...) {
     Logger()->debug("Unable to start collection of GPU metrics");
   }
