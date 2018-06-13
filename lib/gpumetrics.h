@@ -34,7 +34,7 @@ class GpuMetrics {
 
     unsigned count;
     if (!nvml_->get_count(&count)) {
-      exit(1);
+      return;
     }
 
     gpuCountGauge->Update(count);

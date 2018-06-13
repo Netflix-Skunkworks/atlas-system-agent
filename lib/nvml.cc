@@ -192,7 +192,7 @@ bool Nvml::get_utilization_rates(NvmlDeviceHandle device, NvmlUtilization* utili
   if ((func = nvml_symtab[NvmlIndex::DeviceGetUtilizationRates].handle) != nullptr) {
     auto nvml_get_rates = reinterpret_cast<NvmlRet (*)(NvmlDeviceHandle, NvmlUtilization*)>(func);
     return to_bool(kFuncName, nvml_get_rates(device, utilization));
-}
+  }
   return to_bool(kFuncName, NvmlRet::ErrorFunctionNotFound);
 }
 
