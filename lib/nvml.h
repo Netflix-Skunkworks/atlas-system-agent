@@ -29,7 +29,7 @@ class Nvml {
  public:
   Nvml();
   ~Nvml() noexcept;
-  Nvml(const Nvml& other) = default;
+  Nvml(const Nvml& other) = delete;
 
   bool get_count(unsigned int* count) noexcept;
   bool get_by_index(unsigned int index, NvmlDeviceHandle* device) noexcept;

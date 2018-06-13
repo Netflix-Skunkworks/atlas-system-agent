@@ -104,8 +104,7 @@ TEST(Gpu, Metrics) {
   ManualClock clock;
   TestRegistry registry(&clock);
   registry.SetWall(1000);
-  TestNvml nvml;
-  auto metrics = GpuMetrics<TestNvml>(&registry, &nvml);
+  auto metrics = GpuMetrics<TestNvml>(&registry, std::make_unique<TestNvml>());
   metrics.gpu_metrics();
   registry.SetWall(61000);
   const auto& ms = registry.my_measurements();

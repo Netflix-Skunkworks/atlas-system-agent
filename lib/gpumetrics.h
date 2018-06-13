@@ -23,8 +23,8 @@ inline std::shared_ptr<atlas::meter::Gauge<double>> gauge(atlas::meter::Registry
 template <typename Lib>
 class GpuMetrics {
  public:
-  GpuMetrics(atlas::meter::Registry* registry, Lib* nvml) noexcept
-      : registry_(registry), nvml_(nvml) {}
+  GpuMetrics(atlas::meter::Registry* registry, std::unique_ptr<Lib> nvml) noexcept
+      : registry_(registry), nvml_(std::move(nvml)) {}
 
   void gpu_metrics() noexcept {
     static auto gpuCountGauge =
@@ -33,7 +33,9 @@ class GpuMetrics {
         registry_->CreateId("gpu.temperature", atlas::meter::Tags{}));
 
     unsigned count;
-    if (!nvml_->get_count(&count)) return;
+    if (!nvml_->get_count(&count)) {
+      exit(1);
+    }
 
     gpuCountGauge->Update(count);
     for (auto i = 0u; i < count; ++i) {
@@ -61,7 +63,7 @@ class GpuMetrics {
 
  private:
   atlas::meter::Registry* registry_;
-  Lib* nvml_;
+  std::unique_ptr<Lib> nvml_;
 };
 
 }  // namespace atlasagent

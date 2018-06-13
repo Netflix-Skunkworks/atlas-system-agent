@@ -118,7 +118,7 @@ static NvmlRet resolve_symbols() {
 }
 
 Nvml::Nvml() {
-  NvmlRet load = resolve_symbols();
+  auto load = resolve_symbols();
   if (load != NvmlRet::Success) {
     throw NvmlException(load);
   }
@@ -133,6 +133,7 @@ Nvml::Nvml() {
   if (res != NvmlRet::Success) {
     throw NvmlException(res);
   }
+  Logger()->info("Successfully initialized NVIDIA library");
 }
 
 Nvml::~Nvml() noexcept {
@@ -191,7 +192,7 @@ bool Nvml::get_utilization_rates(NvmlDeviceHandle device, NvmlUtilization* utili
   if ((func = nvml_symtab[NvmlIndex::DeviceGetUtilizationRates].handle) != nullptr) {
     auto nvml_get_rates = reinterpret_cast<NvmlRet (*)(NvmlDeviceHandle, NvmlUtilization*)>(func);
     return to_bool(kFuncName, nvml_get_rates(device, utilization));
-  }
+}
   return to_bool(kFuncName, NvmlRet::ErrorFunctionNotFound);
 }
 
