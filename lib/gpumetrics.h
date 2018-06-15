@@ -54,7 +54,7 @@ class GpuMetrics {
           detail::gauge(registry_, "gpu.memoryActivity", i)->Update(utilization.memory);
         }
 
-        NvmlPerfState perf_state;
+        NvmlPerfState perf_state = -1;
         if (nvml_->get_performance_state(device, &perf_state)) {
           detail::gauge(registry_, "gpu.perfState", i)->Update(static_cast<double>(perf_state));
         }
