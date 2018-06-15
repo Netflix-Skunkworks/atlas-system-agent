@@ -43,14 +43,20 @@ class GpuMetrics {
       if (nvml_->get_by_index(i, &device)) {
         NvmlMemory memory;
         if (nvml_->get_memory_info(device, &memory)) {
-          detail::gauge(registry_, "gpu.memoryUsage", i, "free")->Update(memory.free);
-          detail::gauge(registry_, "gpu.memoryUsage", i, "used")->Update(memory.used);
+          detail::gauge(registry_, "gpu.usedMemory", i)->Update(memory.used);
+          detail::gauge(registry_, "gpu.freeMemory", i)->Update(memory.free);
+          detail::gauge(registry_, "gpu.totalMemory", i)->Update(memory.total);
         }
 
         NvmlUtilization utilization;
         if (nvml_->get_utilization_rates(device, &utilization)) {
           detail::gauge(registry_, "gpu.utilization", i)->Update(utilization.gpu);
           detail::gauge(registry_, "gpu.memoryActivity", i)->Update(utilization.memory);
+        }
+
+        NvmlPerfState perf_state;
+        if (nvml_->get_performance_state(device, &perf_state)) {
+          detail::gauge(registry_, "gpu.perfState", i)->Update(static_cast<double>(perf_state));
         }
 
         unsigned temp;
