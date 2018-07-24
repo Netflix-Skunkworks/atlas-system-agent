@@ -502,15 +502,36 @@ void Proc::vmstats() noexcept {
   }
 }
 
+void Proc::peak_cpu_stats() noexcept {
+  static detail::cpu_gauges peakUtilizationGauges{
+      registry_, "sys.cpu.peakUtilization", [](Registry* r, const char* name, const char* id) {
+        return r->max_gauge(r->CreateId(name, Tags{{"id", id}}));
+      }};
+  static detail::stat_vals prev;
+
+  auto fp = open_file(path_prefix_, "stat");
+  if (fp == nullptr) {
+    return;
+  }
+  char line[1024];
+  auto ret = fgets(line, sizeof line, fp);
+  if (ret == nullptr) {
+    return;
+  }
+  detail::stat_vals vals = detail::stat_vals::parse(line + 3);  // 'cpu'
+  if (prev.has_been_updated()) {
+    auto gauge_vals = vals.compute_vals(prev);
+    peakUtilizationGauges.update(gauge_vals);
+  }
+  prev = vals;
+}
+
 void Proc::cpu_stats() noexcept {
   static detail::cpu_gauges utilizationGauges{
       registry_, "sys.cpu.utilization", [](Registry* r, const char* name, const char* id) {
         return r->gauge(r->CreateId(name, Tags{{"id", id}}));
       }};
-  static detail::cpu_gauges peakUtilizationGauges{
-      registry_, "sys.cpu.peakUtilization", [](Registry* r, const char* name, const char* id) {
-        return r->max_gauge(r->CreateId(name, Tags{{"id", id}}));
-      }};
+
   static detail::cores_dist_summary coresDistSummary{registry_, "sys.cpu.coreUtilization"};
   static detail::stat_vals prev_vals;
   static std::unordered_map<int, detail::stat_vals> prev_cpu_vals;
@@ -528,7 +549,6 @@ void Proc::cpu_stats() noexcept {
   if (prev_vals.has_been_updated()) {
     auto gauge_vals = vals.compute_vals(prev_vals);
     utilizationGauges.update(gauge_vals);
-    peakUtilizationGauges.update(gauge_vals);
   }
   prev_vals = vals;
 

@@ -104,6 +104,7 @@ TEST(Proc, CpuStats) {
   TestRegistry registry(&clock);
   Proc proc{&registry, "./resources/proc"};
   proc.cpu_stats();
+  proc.peak_cpu_stats();
   registry.SetWall(60000);
   const auto& ms = registry.my_measurements();
   EXPECT_EQ(16, ms.size());
@@ -118,6 +119,7 @@ TEST(Proc, CpuStats) {
 
   proc.set_prefix("./resources/proc2");
   proc.cpu_stats();
+  proc.peak_cpu_stats();
   registry.SetWall(120000);
   const auto& ms2 = registry.my_measurements();
   EXPECT_EQ(16, ms2.size());

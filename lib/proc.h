@@ -12,6 +12,7 @@ class Proc {
   void snmp_stats() noexcept;
   void loadavg_stats() noexcept;
   void cpu_stats() noexcept;
+  void peak_cpu_stats() noexcept;
   void memory_stats() noexcept;
   void vmstats() noexcept;
   bool is_container() const noexcept;

@@ -20,28 +20,30 @@ using atlasagent::Proc;
 
 #ifdef TITUS_AGENT
 static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
-  Logger()->info("Gathering fast titus metrics");
-
+  Logger()->info("Gathering titus metrics");
   cGroup->cpu_stats();
   cGroup->memory_stats();
   disk->titus_disk_stats();
+  proc->network_stats();
+  proc->snmp_stats();
 }
 #else
-static void gather_fast_system_metrics(Proc* proc, Disk* disk) {
-  Logger()->info("Gathering fast system metrics");
+static void gather_peak_system_metrics(Proc* proc) {
+  Logger()->info("Gathering peak system metrics");
+  proc->peak_cpu_stats();
+}
 
-  proc->loadavg_stats();
+static void gather_minute_system_metrics(Proc* proc, Disk* disk) {
+  Logger()->info("Gathering 1-min system metrics");
   proc->cpu_stats();
+  proc->network_stats();
+  proc->snmp_stats();
+  proc->loadavg_stats();
   proc->memory_stats();
   proc->vmstats();
   disk->disk_stats();
 }
 #endif
-static void gather_slow_system_metrics(Proc* proc) {
-  Logger()->info("Gathering slow system metrics");
-  proc->network_stats();
-  proc->snmp_stats();
-}
 
 struct terminator {
   terminator() noexcept {}
@@ -107,7 +109,6 @@ void collect_titus_metrics(atlas::meter::Registry* registry, container_handle* c
     auto now = clock.WallTime();
     auto next_run = now + 60 * 1000L;
     gather_titus_metrics(&cGroup, &proc, &disk);
-    gather_slow_system_metrics(&proc);
     time_to_sleep = next_run - clock.WallTime();
     if (time_to_sleep > 0) {
       Logger()->info("Sleeping {} milliseconds", time_to_sleep);
@@ -130,14 +131,14 @@ void collect_system_metrics(atlas::meter::Registry* registry) {
   int64_t next_slow_run = clock.WallTime();
   do {
     auto now = clock.WallTime();
-    auto next_run = now + 10 * 1000L;
-    gather_fast_system_metrics(&proc, &disk);
+    auto next_run = now + 1 * 1000L;
+    gather_peak_system_metrics(&proc);
     if (now >= next_slow_run) {
-      gather_slow_system_metrics(&proc);
+      gather_minute_system_metrics(&proc, &disk);
       next_slow_run += 60 * 1000L;
-    }
-    if (gpu) {
-      gpu->gpu_metrics();
+      if (gpu) {
+        gpu->gpu_metrics();
+      }
     }
     time_to_sleep = next_run - clock.WallTime();
     if (time_to_sleep > 0) {
