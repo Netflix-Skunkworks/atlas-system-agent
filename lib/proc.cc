@@ -405,7 +405,7 @@ struct stat_vals {
     return result;
   }
 
-  bool is_init() const noexcept { return !std::isnan(total); }
+  bool has_been_updated() const noexcept { return !std::isnan(total); }
 
   stat_vals() = default;
 
@@ -525,7 +525,7 @@ void Proc::cpu_stats() noexcept {
     return;
   }
   detail::stat_vals vals = detail::stat_vals::parse(line + 3);  // 'cpu'
-  if (prev_vals.is_init()) {
+  if (prev_vals.has_been_updated()) {
     auto gauge_vals = vals.compute_vals(prev_vals);
     utilizationGauges.update(gauge_vals);
     peakUtilizationGauges.update(gauge_vals);
