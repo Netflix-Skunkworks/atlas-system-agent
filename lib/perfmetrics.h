@@ -41,7 +41,6 @@ inline void parse_range(FILE* fp, std::vector<bool>* result) {
 #ifdef __linux__
 #include <linux/perf_event.h>
 #include <linux/hw_breakpoint.h>
-
 inline int perf_event_open(struct perf_event_attr* hw_event, pid_t pid, int cpu, int group_fd,
                            unsigned long flags) {
   return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
@@ -68,7 +67,7 @@ class PerfCounter {
     for (auto i = 0u; i < online_cpus.size(); ++i) {
       if (online_cpus[i]) {
 #ifdef __linux__
-        fds_[i] = perf_event_open(&pea, -1, i, -1, PERF_FLAG_FD_CLOEXEC);
+        fds_[i] = perf_event_open(&pea, -1, i, -1, 0);
         if (fds_[i] < 0) {
           if (errno == EACCES) {
             Logger()->warn(
