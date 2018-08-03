@@ -5,6 +5,7 @@
 #include "lib/gpumetrics.h"
 #include "lib/logger.h"
 #include "lib/nvml.h"
+#include "lib/perfmetrics.h"
 #include "lib/proc.h"
 #include <atlas/atlas_client.h>
 #include <cinttypes>
@@ -16,6 +17,7 @@ using atlasagent::Disk;
 using atlasagent::GpuMetrics;
 using atlasagent::Logger;
 using atlasagent::Nvml;
+using atlasagent::PerfMetrics;
 using atlasagent::Proc;
 
 #ifdef TITUS_AGENT
@@ -127,6 +129,8 @@ void collect_system_metrics(atlas::meter::Registry* registry) {
   } catch (...) {
     Logger()->debug("Unable to start collection of GPU metrics");
   }
+
+  PerfMetrics perf_metrics{registry, ""};
   int64_t time_to_sleep;
   int64_t next_slow_run = clock.WallTime();
   do {
@@ -135,6 +139,7 @@ void collect_system_metrics(atlas::meter::Registry* registry) {
     gather_peak_system_metrics(&proc);
     if (now >= next_slow_run) {
       gather_minute_system_metrics(&proc, &disk);
+      perf_metrics.collect();
       next_slow_run += 60 * 1000L;
       if (gpu) {
         gpu->gpu_metrics();
