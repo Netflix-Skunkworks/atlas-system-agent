@@ -55,8 +55,6 @@ class PerfCounter {
     pea.config = config;
     pea.type = PERF_TYPE_HARDWARE;
     pea.size = sizeof(perf_event_attr);
-    pea.exclude_kernel = 1;
-    pea.exclude_hv = 1;
 #endif
   }
 
@@ -161,6 +159,7 @@ class PerfMetrics {
     branch_ds = registry_->ddistribution_summary("sys.cpu.branchMispredictionRate");
   }
 
+  // https://www.kernel.org/doc/Documentation/cputopology.txt
   void update_online_cpus() {
     auto fp = open_file(path_prefix_, "sys/devices/system/cpu/online");
     auto num_cpus = static_cast<size_t>(sysconf(_SC_NPROCESSORS_ONLN));
