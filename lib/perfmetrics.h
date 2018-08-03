@@ -11,30 +11,28 @@
 inline void parse_range(FILE* fp, std::vector<bool>* result) {
   if (fp == nullptr) return;
 
-  int cpu, prev;
-  char sep;
-
-  prev = -1;
+  auto start_of_range = -1;
   for (;;) {
+    int cpu;
+    char sep;
     auto n = fscanf(fp, "%d%c", &cpu, &sep);
     if (n <= 0) {
       break;
     }
 
-    if (prev >= 0) {
-      result->resize(static_cast<size_t>(cpu + 1));
-      while (prev <= cpu) {
-        result->at(prev) = true;
-        ++prev;
+    result->resize(static_cast<size_t>(cpu + 1));
+    if (start_of_range >= 0) {
+      for (auto i = start_of_range; i <= cpu; ++i) {
+        result->at(i) = true;
       }
-      prev = -1;
-    } else {
-      prev = cpu;
     }
-  }
-  if (prev >= 0) {
-    result->resize(static_cast<size_t>(prev + 1));
-    result->at(prev) = true;
+
+    if (sep == '-') {
+      start_of_range = cpu;
+    } else {
+      result->at(cpu) = true;
+      start_of_range = -1;
+    }
   }
 }
 
@@ -100,7 +98,6 @@ class PerfCounter {
           Logger()->warn("Unable to read value from CPU {}", i);
         }
       }
-      i++;
     }
     return res;
   }

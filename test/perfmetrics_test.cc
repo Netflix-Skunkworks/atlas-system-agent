@@ -32,3 +32,13 @@ TEST(PerfMetrics, ParseRange) {
   expected.assign(64, true);
   EXPECT_EQ(expected, range);
 }
+
+TEST(PerfMetrics, ParseRangeCommas) {
+  auto fp = atlasagent::open_file(".", "resources/range-commas.txt");
+  std::vector<bool> range;
+  parse_range(fp, &range);
+
+  // 1,3,5
+  std::vector<bool> expected{false, true, false, true, false, true};
+  EXPECT_EQ(expected, range);
+}
