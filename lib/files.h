@@ -32,13 +32,25 @@ class StdIoFile {
 
 class UnixFile {
  public:
-  explicit UnixFile(const char* name) noexcept : fd_(open(name, O_RDONLY)) {
+  explicit UnixFile(int fd) : fd_(fd) {}
+
+  explicit UnixFile(const char* name) noexcept : fd_(-1) {
+    open(name);
+  }
+
+  UnixFile(const UnixFile&) = delete;
+  UnixFile(UnixFile&& other) noexcept : fd_(other.fd_) { other.fd_ = -1; }
+
+  void open(const char* name) {
+    if (fd_ >= 0) {
+      close(fd_);
+    }
+
+    fd_ = ::open(name, O_RDONLY);
     if (fd_ < 0) {
       Logger()->warn("Unable to open {}", name);
     }
   }
-  UnixFile(const UnixFile&) = delete;
-  UnixFile(UnixFile&& other) noexcept : fd_(other.fd_) { other.fd_ = -1; }
 
   ~UnixFile() {
     if (fd_ >= 0) {

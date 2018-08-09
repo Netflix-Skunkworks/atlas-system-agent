@@ -100,17 +100,19 @@ static void init_signals() {
 }
 
 #ifdef TITUS_AGENT
-void collect_titus_metrics(atlas::meter::Registry* registry, container_handle* c) {
+void collect_titus_metrics(atlas::meter::Registry* registry) {
   const auto& clock = registry->clock();
   CGroup cGroup{registry};
   Proc proc{registry};
-  Disk disk{registry, "", c};
+  Disk disk{registry, ""};
+  PerfMetrics perf_metrics{registry, ""};
 
   int64_t time_to_sleep;
   do {
     auto now = clock.WallTime();
     auto next_run = now + 60 * 1000L;
     gather_titus_metrics(&cGroup, &proc, &disk);
+    perf_metrics.collect();
     time_to_sleep = next_run - clock.WallTime();
     if (time_to_sleep > 0) {
       Logger()->info("Sleeping {} milliseconds", time_to_sleep);
@@ -180,7 +182,7 @@ int main(int argc, const char* argv[]) {
   if (titus_host != nullptr) {
     atlas_client.AddCommonTag("titus.host", titus_host);
   }
-  collect_titus_metrics(registry.get(), &c);
+  collect_titus_metrics(registry.get());
 #else
   collect_system_metrics(registry.get());
 #endif
