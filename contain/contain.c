@@ -240,7 +240,7 @@ static int do_fork() {
 		return 1;
 	}
 	if (child_pid == 0) {
-	  const char *id_env = getenv("USER_GID");
+		const char *id_env = getenv("USER_GID");
 		prctl(PR_SET_PDEATHSIG, SIGKILL);
 		if (id_env) {
 			if (setegid(atoi(id_env))) {

@@ -273,11 +273,10 @@ class PerfMetrics {
   // branch miss rate
   std::shared_ptr<atlas::meter::DDistributionSummary> branch_ds;
 
-  static void update_ds(PerfCounter& a, atlas::meter::DistributionSummary* ds,
-                          const char* name) {
+  static void update_ds(PerfCounter& a, atlas::meter::DistributionSummary* ds, const char* name) {
     auto a_values = a.read();
-    // compute ipc for each core
-    for (auto v: a_values) {
+    // update our distribution summary with values from each CPU
+    for (auto v : a_values) {
       Logger()->trace("Updating {} with {}", name, v);
       ds->Record(v);
     }

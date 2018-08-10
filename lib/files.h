@@ -34,9 +34,7 @@ class UnixFile {
  public:
   explicit UnixFile(int fd) : fd_(fd) {}
 
-  explicit UnixFile(const char* name) noexcept : fd_(-1) {
-    open(name);
-  }
+  explicit UnixFile(const char* name) noexcept : fd_(-1) { open(name); }
 
   UnixFile(const UnixFile&) = delete;
   UnixFile(UnixFile&& other) noexcept : fd_(other.fd_) { other.fd_ = -1; }
