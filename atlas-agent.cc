@@ -147,9 +147,6 @@ void collect_system_metrics(atlas::meter::Registry* registry) {
       }
     }
     time_to_sleep = next_run - clock.WallTime();
-    if (time_to_sleep > 0) {
-      Logger()->info("Sleeping {} milliseconds", time_to_sleep);
-    }
   } while (runner.wait_for(std::chrono::milliseconds(time_to_sleep)));
 }
 #endif
