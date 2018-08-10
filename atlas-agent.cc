@@ -123,7 +123,7 @@ void collect_titus_metrics(atlas::meter::Registry* registry) {
 void collect_system_metrics(atlas::meter::Registry* registry) {
   const auto& clock = registry->clock();
   Proc proc{registry};
-  Disk disk{registry, "", nullptr};
+  Disk disk{registry, ""};
 
   auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
   try {
