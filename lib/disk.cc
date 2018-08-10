@@ -14,20 +14,12 @@ using atlas::meter::IdPtr;
 using atlas::meter::Registry;
 using atlas::meter::Tags;
 
-Disk::Disk(Registry* registry, std::string path_prefix, container_handle* container_handle) noexcept
-    : registry_(registry),
-      path_prefix_(std::move(path_prefix)),
-      counters_(registry),
-      container_handle_(container_handle) {
-  if (container_handle_ != nullptr) {
-    // to get rid of the error about container_handle_ not used on OSX
-    Logger()->debug("Under containment");
-  }
-}
+Disk::Disk(Registry* registry, std::string path_prefix) noexcept
+    : registry_(registry), path_prefix_(std::move(path_prefix)), counters_(registry) {}
 
 std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix) {
   std::unordered_set<std::string> res;
-  auto fp = open_file(prefix, "/proc/filesystems");
+  auto fp = open_file(prefix, "proc/filesystems");
   if (!fp) {
     return res;
   }

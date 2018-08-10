@@ -231,7 +231,6 @@ end:
 
 static int do_fork() {
 	pid_t child_pid;
-	char *id_env;
 	int status;
 
 	child_pid = fork();
@@ -241,8 +240,8 @@ static int do_fork() {
 		return 1;
 	}
 	if (child_pid == 0) {
+		const char *id_env = getenv("USER_GID");
 		prctl(PR_SET_PDEATHSIG, SIGKILL);
-		id_env = getenv("USER_GID");
 		if (id_env) {
 			if (setegid(atoi(id_env))) {
 				fprintf(stderr, "Unable to set effective GID: %s", strerror(errno));

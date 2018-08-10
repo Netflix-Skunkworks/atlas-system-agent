@@ -2,8 +2,8 @@
 #include "atlas-helpers.h"
 #include "logger.h"
 #include "util.h"
-#include <map>
 #include <atlas/meter/id.h>
+#include <map>
 
 namespace atlasagent {
 

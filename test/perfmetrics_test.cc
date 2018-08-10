@@ -2,8 +2,8 @@
 #include "test_registry.h"
 #include "../lib/perfmetrics.h"
 
-using atlasagent::PerfMetrics;
 using atlas::meter::ManualClock;
+using atlasagent::PerfMetrics;
 
 TEST(PerfMetrics, OnlineCpus) {
   ManualClock clock;
@@ -18,7 +18,6 @@ TEST(PerfMetrics, OnlineCpus) {
   for (auto i = 10; i <= 15; i++) expected[i] = true;
   expected[23] = true;
 
-  p.update_online_cpus();
   EXPECT_EQ(expected, p.get_online_cpus());
 }
 

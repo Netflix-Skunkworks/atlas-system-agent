@@ -20,7 +20,7 @@ inline void parse_range(FILE* fp, std::vector<bool>* result) {
       break;
     }
 
-    result->resize(static_cast<size_t>(cpu + 1));
+    result->resize(cpu + 1);
     if (start_of_range >= 0) {
       for (auto i = start_of_range; i <= cpu; ++i) {
         result->at(i) = true;
@@ -49,7 +49,7 @@ namespace atlasagent {
 
 class PerfCounter {
  public:
-  explicit PerfCounter(uint64_t config) : config_(config) {
+  explicit PerfCounter(uint64_t config) : config_(config), pid_{-1} {
 #ifdef __linux__
     memset(&pea, 0, sizeof pea);
     pea.config = config;
@@ -58,12 +58,28 @@ class PerfCounter {
 #endif
   }
 
-  bool open(const std::vector<bool>& online_cpus) {
+#ifdef __linux__
+  int perf_open(int cpu, unsigned long flags) {
+    return perf_event_open(&pea, pid_, cpu, -1, flags);
+  }
+#endif
+
+  void set_pid(int pid) { pid_ = pid; }
+
+  bool open_events(const std::vector<bool>& online_cpus) {
+    // ensure we don't leak fds
+    close_events();
+
     fds_.assign(online_cpus.size(), -1);
+#ifdef __linux__
+#ifdef TITUS_AGENT
+    unsigned long flags = PERF_FLAG_PID_CGROUP;
+#else
+    unsigned long flags = 0;
+#endif
     for (auto i = 0u; i < online_cpus.size(); ++i) {
       if (online_cpus[i]) {
-#ifdef __linux__
-        fds_[i] = perf_event_open(&pea, -1, i, -1, 0);
+        fds_[i] = perf_open(i, flags);
         if (fds_[i] < 0) {
           if (errno == EACCES) {
             Logger()->warn(
@@ -77,9 +93,9 @@ class PerfCounter {
             Logger()->warn("Unable to perf_event_open CPU {}: {}({})", i, strerror(errno), errno);
           }
         }
-#endif
       }
     }
+#endif
     return true;
   }
 
@@ -100,19 +116,25 @@ class PerfCounter {
     return res;
   }
 
-  ~PerfCounter() {
-    for (auto fd : fds_) {
+  void close_events() {
+    for (auto& fd : fds_) {
       if (fd >= 0) {
         close(fd);
+        fd = -1;
       }
     }
   }
 
+  ~PerfCounter() { close_events(); }
+
   uint64_t Config() const { return config_; }
+
+  int Pid() const { return pid_; }
 
  private:
   std::vector<int> fds_;
   uint64_t config_;
+  int pid_;
 #ifdef __linux__
   perf_event_attr pea;
 #endif
@@ -143,49 +165,88 @@ class PerfMetrics {
       return;
     }
 
-    update_online_cpus();
-    // if we get EACCES for these then we don't even try the rest
-    if (!cycles.open(online_cpus_) || !instructions.open(online_cpus_)) {
-      disabled_ = true;
+    // start collection
+    if (!open_perf_counters_if_needed()) {
       return;
     }
-    cache_refs.open(online_cpus_);
-    cache_misses.open(online_cpus_);
-    branch_insts.open(online_cpus_);
-    branch_misses.open(online_cpus_);
 
-    ipc_ds = registry_->ddistribution_summary("sys.cpu.instructionsPerCycle");
+    instructions_ds = registry_->distribution_summary("sys.cpu.instructions");
+    cycles_ds = registry_->distribution_summary("sys.cpu.cycles");
     cache_ds = registry_->ddistribution_summary("sys.cpu.cacheMissRate");
     branch_ds = registry_->ddistribution_summary("sys.cpu.branchMispredictionRate");
   }
 
+  bool open_perf_counters_if_needed() {
+#ifdef TITUS_AGENT
+    if (pid_ < 0) {
+      auto name = fmt::format("{}/{}", path_prefix_, "sys/fs/cgroup/perf_event");
+      pid_.open(name.c_str());
+      if (pid_ < 0) {
+        Logger()->warn("Unable to start collection of perf counters for cgroup");
+        return false;
+      }
+      Logger()->info("Opened cgroup file");
+      cycles.set_pid(pid_);
+      instructions.set_pid(pid_);
+      cache_refs.set_pid(pid_);
+      cache_misses.set_pid(pid_);
+      branch_insts.set_pid(pid_);
+      branch_misses.set_pid(pid_);
+    }
+#endif
+    auto new_online_cpus = get_online_cpus();
+    if (new_online_cpus == online_cpus_) {
+      Logger()->trace("Online CPUs have not changed. No need to reopen perf events.");
+      return true;
+    }
+    online_cpus_ = std::move(new_online_cpus);
+
+    Logger()->info("Online CPUs have changed. Reopening perf events.");
+    // if we get EACCES for these then we don't even try the rest
+    if (!cycles.open_events(online_cpus_) || !instructions.open_events(online_cpus_)) {
+      disabled_ = true;
+      return false;
+    }
+    cache_refs.open_events(online_cpus_);
+    cache_misses.open_events(online_cpus_);
+    branch_insts.open_events(online_cpus_);
+    branch_misses.open_events(online_cpus_);
+
+    return true;
+  }
+
   // https://www.kernel.org/doc/Documentation/cputopology.txt
-  void update_online_cpus() {
+  std::vector<bool> get_online_cpus() {
     auto fp = open_file(path_prefix_, "sys/devices/system/cpu/online");
     auto num_cpus = static_cast<size_t>(sysconf(_SC_NPROCESSORS_ONLN));
+    std::vector<bool> res;
     if (num_cpus > 0) {
-      online_cpus_.reserve(num_cpus);
+      res.reserve(num_cpus);
     }
 
-    parse_range(fp, &online_cpus_);
+    parse_range(fp, &res);
 
     auto logger = Logger();
     if (logger->should_log(spdlog::level::debug)) {
-      auto enabled = std::count(online_cpus_.begin(), online_cpus_.end(), true);
-      logger->debug("Online CPUs: {}/{}", enabled, online_cpus_.size());
+      auto enabled = std::count(res.begin(), res.end(), true);
+      logger->debug("Got online CPUs: {}/{}", enabled, res.size());
     }
+    return res;
   }
-
-  const std::vector<bool>& get_online_cpus() const { return online_cpus_; }
 
   void collect() {
     if (disabled_) {
       return;
     }
 
-    update_rate(instructions, cycles, ipc_ds.get(), "instructions per cycle");
+    update_ds(instructions, instructions_ds.get(), "instructions");
+    update_ds(cycles, cycles_ds.get(), "cycles");
     update_rate(cache_misses, cache_refs, cache_ds.get(), "cache miss rate");
     update_rate(branch_misses, branch_insts, branch_ds.get(), "branch misprediction rate");
+
+    // refresh online CPUs and reopen perf counters so we can capture when CPUs are disabled
+    // after we started running
+    open_perf_counters_if_needed();
   }
 
  private:
@@ -193,6 +254,7 @@ class PerfMetrics {
   atlas::meter::Registry* registry_;
   std::string path_prefix_;
   std::vector<bool> online_cpus_;
+  UnixFile pid_{-1};
   PerfCounter cycles{PERF_COUNT_HW_CPU_CYCLES};
   PerfCounter instructions{PERF_COUNT_HW_INSTRUCTIONS};
   PerfCounter cache_refs{PERF_COUNT_HW_CACHE_REFERENCES};
@@ -200,12 +262,25 @@ class PerfMetrics {
   PerfCounter branch_insts{PERF_COUNT_HW_BRANCH_INSTRUCTIONS};
   PerfCounter branch_misses{PERF_COUNT_HW_BRANCH_MISSES};
 
-  // instructions per cycle
-  std::shared_ptr<atlas::meter::DDistributionSummary> ipc_ds;
+  // instructions
+  std::shared_ptr<atlas::meter::DistributionSummary> instructions_ds;
+
+  // cycles
+  std::shared_ptr<atlas::meter::DistributionSummary> cycles_ds;
+
   // cache miss rate
   std::shared_ptr<atlas::meter::DDistributionSummary> cache_ds;
   // branch miss rate
   std::shared_ptr<atlas::meter::DDistributionSummary> branch_ds;
+
+  static void update_ds(PerfCounter& a, atlas::meter::DistributionSummary* ds, const char* name) {
+    auto a_values = a.read();
+    // update our distribution summary with values from each CPU
+    for (auto v : a_values) {
+      Logger()->trace("Updating {} with {}", name, v);
+      ds->Record(v);
+    }
+  }
 
   static void update_rate(PerfCounter& a, PerfCounter& b, atlas::meter::DDistributionSummary* ds,
                           const char* name) {
@@ -213,7 +288,7 @@ class PerfMetrics {
     auto b_values = b.read();
     assert(a_values.size() == b_values.size());
 
-    // compute ipc for each core
+    // compute rate for each core
     for (auto i = 0u; i < a_values.size(); ++i) {
       auto denominator = b_values[i];
       if (denominator == 0) continue;

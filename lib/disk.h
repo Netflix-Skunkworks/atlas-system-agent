@@ -36,8 +36,7 @@ struct DiskIo {
 
 class Disk {
  public:
-  explicit Disk(atlas::meter::Registry* registry, std::string path_prefix = "",
-                container_handle* container_handle = nullptr) noexcept;
+  explicit Disk(atlas::meter::Registry* registry, std::string path_prefix = "") noexcept;
   void titus_disk_stats() noexcept;
   void disk_stats() noexcept;
   void set_prefix(const std::string& new_prefix) noexcept;  // for testing
@@ -45,7 +44,6 @@ class Disk {
   atlas::meter::Registry* registry_;
   std::string path_prefix_;
   Counters counters_;
-  container_handle* container_handle_;
 
  protected:
   // protected for testing
