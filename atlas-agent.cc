@@ -31,7 +31,6 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
 }
 #else
 static void gather_peak_system_metrics(Proc* proc) {
-  Logger()->info("Gathering peak system metrics");
   proc->peak_cpu_stats();
 }
 
