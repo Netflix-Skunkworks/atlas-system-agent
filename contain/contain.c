@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 /* capabilities */
 #include <linux/capability.h>
+#include <sys/capability.h>
 
 #include "contain.h"
 
@@ -98,6 +99,36 @@ static struct ns namespaces[] = {
 		.nstype = CLONE_NEWNS,
 	},
 };
+
+static cap_value_t cap_list[] = {CAP_SYS_ADMIN};
+
+static int setup_capabilities() {
+	int err = 0;
+	cap_t caps;
+
+	caps = cap_get_proc();
+	if (!caps) {
+		err = errno;
+		goto out;
+	}
+
+	if (cap_set_flag(caps, CAP_INHERITABLE, ARRAY_SIZE(cap_list), cap_list, CAP_SET)) {
+		err = errno;
+		goto out;
+	}
+
+	if (cap_set_proc(caps)) {
+		err = errno;
+		goto out;
+	}
+
+	if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, CAP_SYS_ADMIN, 0, 0)) {
+		err = errno;
+		goto out;
+	}
+out:
+	return err;
+}
 
 static int open_fds(char *pid1dir) {
 	int namespace_fds[ARRAY_SIZE(namespaces)];
@@ -231,8 +262,8 @@ bool maybe_reexec(const char* argv[]) {
 	if (err)
 		goto end;
 
-	/* Make sure that CAP_SYS_ADMIN is part of ambient capabilities set */
-	err = prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, CAP_SYS_ADMIN);
+	/* setup capabilities */
+	err = setup_capabilities();
 	if (err)
 		goto end;
 

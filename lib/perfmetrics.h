@@ -59,9 +59,28 @@ class PerfCounter {
   }
 
 #ifdef __linux__
+#ifdef TITUS_AGENT
+  int perf_open(int cpu, unsigned long flags) {
+    int tmperrno, ret;
+    uid_t uid;
+
+    uid = geteuid();
+    if (seteuid(0))
+      return -1;
+    ret = perf_event_open(&pea, pid_, cpu, -1, flags);
+    tmperrno = errno;
+    /* If this call fails, the system is a potentially unsecure state, and we should bail */
+    if (seteuid(uid))
+	abort();
+
+    errno = tmperrno;
+    return ret;
+  }
+#else
   int perf_open(int cpu, unsigned long flags) {
     return perf_event_open(&pea, pid_, cpu, -1, flags);
   }
+#endif
 #endif
 
   void set_pid(int pid) { pid_ = pid; }

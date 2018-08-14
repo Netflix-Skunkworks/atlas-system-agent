@@ -72,6 +72,7 @@ add_custom_command(TARGET runtests POST_BUILD
         ${CMAKE_SOURCE_DIR}/test/resources $<TARGET_FILE_DIR:runtests>/resources)
 
 if (TITUS_AGENT)
+  target_link_libraries(atlas-system-agent libcap.a)
   set_target_properties(atlas-system-agent PROPERTIES OUTPUT_NAME "atlas-titus-agent")
 else()
   install(PROGRAMS scripts/start-atlas-agent DESTINATION bin)
