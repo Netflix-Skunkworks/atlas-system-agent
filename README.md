@@ -15,7 +15,7 @@ An agent that reports metrics for ec2 instances or titus containers.
 ```sh
 
 sudo apt-get update
-sudo apt-get install -y zlib1g-dev uuid-dev libblkid-dev libpcre3-dev
+sudo apt-get install -y zlib1g-dev uuid-dev libblkid-dev libpcre3-dev libcap-dev
 
 rm -rf build && mkdir build
 cd build
