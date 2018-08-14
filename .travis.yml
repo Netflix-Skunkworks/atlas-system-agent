@@ -20,4 +20,4 @@ addons:
       - uuid-dev 
       - libblkid-dev 
       - libpcre3-dev
-
+      - libcap-dev
