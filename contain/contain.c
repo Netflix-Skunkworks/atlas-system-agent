@@ -31,6 +31,8 @@
 #include <netdb.h>
 /* Stat */
 #include <sys/stat.h>
+/* capabilities */
+#include <linux/capability.h>
 
 #include "contain.h"
 
@@ -220,6 +222,11 @@ bool maybe_reexec(const char* argv[]) {
 
 	/* 3. Open up ns FDs */
 	err = open_fds(pid1dir);
+	if (err)
+		goto end;
+
+	/* Make sure that CAP_SYS_ADMIN is part of ambient capabilities set */
+	err = prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, CAP_SYS_ADMIN);
 	if (err)
 		goto end;
 
