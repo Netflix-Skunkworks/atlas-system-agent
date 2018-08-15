@@ -6,6 +6,24 @@
 #include <sys/ioctl.h>
 #include "util.h"
 
+#ifndef __linux__
+enum perf_hw_id {
+  PERF_COUNT_HW_CPU_CYCLES,
+  PERF_COUNT_HW_INSTRUCTIONS,
+  PERF_COUNT_HW_CACHE_REFERENCES,
+  PERF_COUNT_HW_CACHE_MISSES,
+  PERF_COUNT_HW_BRANCH_INSTRUCTIONS,
+  PERF_COUNT_HW_BRANCH_MISSES,
+};
+#else
+#include <linux/perf_event.h>
+#include <linux/hw_breakpoint.h>
+inline int perf_event_open(struct perf_event_attr* hw_event, pid_t pid, int cpu, int group_fd,
+                           unsigned long flags) {
+  return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+}
+#endif
+
 // parse a file with contents like 0-3,5-7,9-23,38 into a vector
 // of booleans indicating whether the given index is included
 inline void parse_range(FILE* fp, std::vector<bool>* result) {
@@ -36,52 +54,70 @@ inline void parse_range(FILE* fp, std::vector<bool>* result) {
   }
 }
 
-#ifdef __linux__
-#include <linux/perf_event.h>
-#include <linux/hw_breakpoint.h>
-inline int perf_event_open(struct perf_event_attr* hw_event, pid_t pid, int cpu, int group_fd,
-                           unsigned long flags) {
-  return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
-}
-
-#endif
 namespace atlasagent {
+
+struct perf_count {
+  uint64_t raw_value;
+  uint64_t time_enabled;
+  uint64_t time_running;
+
+  uint64_t delta_from(const perf_count& prev) {
+    if (time_running == 0) {
+      return 0;
+    }
+    perf_count delta;
+    delta.time_running = time_running - prev.time_running;
+    delta.time_enabled = time_enabled - prev.time_enabled;
+    delta.raw_value = raw_value - prev.raw_value;
+
+    auto value = static_cast<uint64_t>(static_cast<double>(delta.raw_value) * delta.time_enabled /
+                                       (delta.time_running + 0.5));
+    return value;
+  }
+};
 
 class PerfCounter {
  public:
-  explicit PerfCounter(uint64_t config) : config_(config), pid_{-1} {
+  explicit PerfCounter(uint64_t config) : config_(config), pid_{-1} {}
+
 #ifdef __linux__
-    memset(&pea, 0, sizeof pea);
-    pea.config = config;
-    pea.type = PERF_TYPE_HARDWARE;
-    pea.size = sizeof(perf_event_attr);
-#endif
+  void setup_perf_event(perf_event_attr* pea) {
+    memset(pea, 0, sizeof(perf_event_attr));
+    pea->config = config_;
+    pea->exclude_guest = 1;
+    pea->read_format = PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING;
+    pea->type = PERF_TYPE_HARDWARE;
+    pea->size = sizeof(perf_event_attr);
+    pea->inherit = 1;
   }
 
-#ifdef __linux__
 #ifdef TITUS_AGENT
   int perf_open(int cpu, unsigned long flags) {
-    int tmperrno, ret;
-    uid_t uid;
-
-    uid = geteuid();
-    if (seteuid(0))
+    auto uid = geteuid();
+    if (seteuid(0)) {
       return -1;
-    ret = perf_event_open(&pea, pid_, cpu, -1, flags);
-    tmperrno = errno;
+    }
+
+    perf_event_attr pea;
+    setup_perf_event(&pea);
+    auto ret = perf_event_open(&pea, pid_, cpu, -1, flags);
+    auto tmperrno = errno;
     /* If this call fails, the system is a potentially unsecure state, and we should bail */
-    if (seteuid(uid))
-	abort();
+    if (seteuid(uid)) {
+      abort();
+    }
 
     errno = tmperrno;
     return ret;
   }
 #else
   int perf_open(int cpu, unsigned long flags) {
+    perf_event_attr pea;
+    setup_perf_event(&pea);
     return perf_event_open(&pea, pid_, cpu, -1, flags);
   }
-#endif
-#endif
+#endif  // TITUS_AGENT
+#endif  // __linux__
 
   void set_pid(int pid) { pid_ = pid; }
 
@@ -114,24 +150,37 @@ class PerfCounter {
         }
       }
     }
+    prev_vals.resize(fds_.size());
 #endif
     return true;
   }
 
-  std::vector<uint64_t> read() {
+  std::vector<uint64_t> read_delta() {
     std::vector<uint64_t> res;
-    res.assign(fds_.size(), 0);
+    res.resize(fds_.size());
+
+    // read new values
+    std::vector<perf_count> new_vals;
+    new_vals.resize(fds_.size());
     for (auto i = 0u; i < fds_.size(); ++i) {
       auto fd = fds_[i];
-      uint64_t value;
       if (fd >= 0) {
-        if (::read(fd, &value, sizeof(uint64_t)) == sizeof(uint64_t)) {
-          res[i] = value;
-        } else {
+        memset(&new_vals[i], 0, sizeof(perf_count));
+        if (::read(fd, &new_vals[i], sizeof(perf_count)) != sizeof(perf_count)) {
           Logger()->warn("Unable to read value from CPU {}", i);
+          return std::vector<uint64_t>();
         }
       }
     }
+
+    // compute values
+    for (auto i = 0u; i < fds_.size(); ++i) {
+      auto value = new_vals[i].delta_from(prev_vals[i]);
+      res[i] = value;
+    }
+
+    // remember the values just read
+    prev_vals = std::move(new_vals);
     return res;
   }
 
@@ -154,22 +203,8 @@ class PerfCounter {
   std::vector<int> fds_;
   uint64_t config_;
   int pid_;
-#ifdef __linux__
-  perf_event_attr pea;
-#endif
+  std::vector<perf_count> prev_vals;
 };
-
-#ifndef __linux__
-enum perf_hw_id {
-  PERF_COUNT_HW_CPU_CYCLES,
-  PERF_COUNT_HW_INSTRUCTIONS,
-  PERF_COUNT_HW_CACHE_REFERENCES,
-  PERF_COUNT_HW_CACHE_MISSES,
-  PERF_COUNT_HW_BRANCH_INSTRUCTIONS,
-  PERF_COUNT_HW_BRANCH_MISSES,
-};
-
-#endif
 
 class PerfMetrics {
  public:
@@ -222,10 +257,11 @@ class PerfMetrics {
 
     Logger()->info("Online CPUs have changed. Reopening perf events.");
     // if we get EACCES for these then we don't even try the rest
-    if (!cycles.open_events(online_cpus_) || !instructions.open_events(online_cpus_)) {
+    if (!instructions.open_events(online_cpus_)) {
       disabled_ = true;
       return false;
     }
+    cycles.open_events(online_cpus_);
     cache_refs.open_events(online_cpus_);
     cache_misses.open_events(online_cpus_);
     branch_insts.open_events(online_cpus_);
@@ -292,8 +328,8 @@ class PerfMetrics {
   // branch miss rate
   std::shared_ptr<atlas::meter::DDistributionSummary> branch_ds;
 
-  static void update_ds(PerfCounter& a, atlas::meter::DistributionSummary* ds, const char* name) {
-    auto a_values = a.read();
+  void update_ds(PerfCounter& a, atlas::meter::DistributionSummary* ds, const char* name) {
+    auto a_values = a.read_delta();
     // update our distribution summary with values from each CPU
     for (auto v : a_values) {
       Logger()->trace("Updating {} with {}", name, v);
@@ -303,8 +339,8 @@ class PerfMetrics {
 
   static void update_rate(PerfCounter& a, PerfCounter& b, atlas::meter::DDistributionSummary* ds,
                           const char* name) {
-    auto a_values = a.read();
-    auto b_values = b.read();
+    auto a_values = a.read_delta();
+    auto b_values = b.read_delta();
     assert(a_values.size() == b_values.size());
 
     // compute rate for each core

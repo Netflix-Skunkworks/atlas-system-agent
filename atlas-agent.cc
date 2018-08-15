@@ -106,8 +106,10 @@ void collect_titus_metrics(atlas::meter::Registry* registry) {
   Disk disk{registry, ""};
   PerfMetrics perf_metrics{registry, ""};
 
-  int64_t time_to_sleep;
-  do {
+  // collect all metrics except perf at startup
+  gather_titus_metrics(&cGroup, &proc, &disk);
+  int64_t time_to_sleep = 60 * 1000L;
+  while (runner.wait_for(std::chrono::milliseconds(time_to_sleep))) {
     auto now = clock.WallTime();
     auto next_run = now + 60 * 1000L;
     gather_titus_metrics(&cGroup, &proc, &disk);
@@ -116,7 +118,7 @@ void collect_titus_metrics(atlas::meter::Registry* registry) {
     if (time_to_sleep > 0) {
       Logger()->info("Sleeping {} milliseconds", time_to_sleep);
     }
-  } while (runner.wait_for(std::chrono::milliseconds(time_to_sleep)));
+  }
 }
 #else
 void collect_system_metrics(atlas::meter::Registry* registry) {
@@ -133,7 +135,8 @@ void collect_system_metrics(atlas::meter::Registry* registry) {
 
   PerfMetrics perf_metrics{registry, ""};
   int64_t time_to_sleep;
-  int64_t next_slow_run = clock.WallTime();
+  int64_t next_slow_run = clock.WallTime() + 60000L;
+  gather_minute_system_metrics(&proc, &disk);
   do {
     auto now = clock.WallTime();
     auto next_run = now + 1 * 1000L;
