@@ -10,6 +10,7 @@ class Proc {
   explicit Proc(atlas::meter::Registry* registry, std::string path_prefix = "/proc") noexcept;
   void network_stats() noexcept;
   void snmp_stats() noexcept;
+  void netstat_stats() noexcept;
   void loadavg_stats() noexcept;
   void cpu_stats() noexcept;
   void peak_cpu_stats() noexcept;

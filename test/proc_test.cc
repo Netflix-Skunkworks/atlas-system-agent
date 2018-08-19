@@ -178,3 +178,25 @@ TEST(Proc, MemoryStats) {
   expect_value(ms_map, "mem.shared", 34968 * 1024.0);
   expect_value(ms_map, "mem.totalFree", 1024.0 * 9631225);
 }
+
+TEST(Proc, ParseNetstat) {
+  ManualClock clock;
+  TestRegistry registry(&clock);
+  registry.SetWall(1000);
+  Proc proc{&registry, "./resources/proc"};
+  proc.netstat_stats();
+
+  registry.SetWall(61000);
+  proc.set_prefix("./resources/proc2");
+  proc.netstat_stats();
+
+  registry.SetWall(121000);
+
+  const auto& ms = registry.my_measurements();
+  EXPECT_EQ(3, ms.size()) << "3 metrics for ipext";
+
+  measurement_map values = measurements_to_map(ms, proto_ref());
+  expect_value(values, "net.ipext.ectPackets|capable", 3.0);
+  expect_value(values, "net.ipext.ectPackets|notCapable", 1.0);
+  expect_value(values, "net.ipext.congestedPackets", 0.5);
+}
