@@ -632,4 +632,62 @@ void Proc::memory_stats() noexcept {
   total_free->Update(total_free_bytes * 1024.0);
 }
 
+int64_t to_int64(const std::string& s) {
+  int64_t res;
+  sscanf(s.c_str(), "%" PRId64, &res);
+  return res;
+}
+
+void Proc::netstat_stats() noexcept {
+  static MonotonicCounter ect_ctr{
+      registry_, registry_->CreateId("net.ip.ectPackets", Tags{{"id", "capable"}})};
+  static MonotonicCounter noEct_ctr{
+      registry_, registry_->CreateId("net.ip.ectPackets", Tags{{"id", "notCapable"}})};
+  static MonotonicCounter congested_ctr{registry_,
+                                        registry_->CreateId("net.ip.congestedPackets", Tags{})};
+
+  auto fp = open_file(path_prefix_, "net/netstat");
+  if (fp == nullptr) {
+    return;
+  }
+
+  int64_t noEct = 0, ect = 0, congested = 0;
+  char line[1024];
+  while (fgets(line, sizeof line, fp) != nullptr) {
+    if (starts_with(line, "IpExt:")) {
+      // get header indexes
+      std::vector<std::string> headers;
+      split(line, &headers);
+      if (fgets(line, sizeof line, fp) == nullptr) {
+        Logger()->warn("Unable to parse {}/net/netstat", path_prefix_);
+        return;
+      }
+      std::vector<std::string> values;
+      values.reserve(headers.size());
+      split(line, &values);
+      assert(values.size() == headers.size());
+      auto idx = 0u;
+      for (const auto& header : headers) {
+        if (header == "InNoECTPkts") {
+          noEct = to_int64(values[idx]);
+        } else if (header == "InECT1Pkts" || header == "InECT0Pkts") {
+          ect += to_int64(values[idx]);
+        } else if (header == "InCEPkts") {
+          congested = to_int64(values[idx]);
+        }
+        ++idx;
+      }
+      break;
+    }
+  }
+
+  // Set all the counters if we have data. We want to explicitly send a 0 value for congested to
+  // distinguish known no congestion from no data
+  if (ect > 0 || noEct > 0) {
+    congested_ctr.Set(congested);
+    ect_ctr.Set(ect);
+    noEct_ctr.Set(noEct);
+  }
+}
+
 }  // namespace atlasagent

@@ -28,6 +28,7 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
   disk->titus_disk_stats();
   proc->network_stats();
   proc->snmp_stats();
+  proc->netstat_stats();
 }
 #else
 static void gather_peak_system_metrics(Proc* proc) {
@@ -39,6 +40,7 @@ static void gather_minute_system_metrics(Proc* proc, Disk* disk) {
   proc->cpu_stats();
   proc->network_stats();
   proc->snmp_stats();
+  proc->netstat_stats();
   proc->loadavg_stats();
   proc->memory_stats();
   proc->vmstats();
