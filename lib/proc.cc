@@ -640,11 +640,11 @@ int64_t to_int64(const std::string& s) {
 
 void Proc::netstat_stats() noexcept {
   static MonotonicCounter ect_ctr{
-      registry_, registry_->CreateId("net.ipext.ectPackets", Tags{{"id", "capable"}})};
+      registry_, registry_->CreateId("net.ip.ectPackets", Tags{{"id", "capable"}})};
   static MonotonicCounter noEct_ctr{
-      registry_, registry_->CreateId("net.ipext.ectPackets", Tags{{"id", "notCapable"}})};
+      registry_, registry_->CreateId("net.ip.ectPackets", Tags{{"id", "notCapable"}})};
   static MonotonicCounter congested_ctr{registry_,
-                                        registry_->CreateId("net.ipext.congestedPackets", Tags{})};
+                                        registry_->CreateId("net.ip.congestedPackets", Tags{})};
 
   auto fp = open_file(path_prefix_, "net/netstat");
   if (fp == nullptr) {
@@ -680,9 +680,14 @@ void Proc::netstat_stats() noexcept {
       break;
     }
   }
-  congested_ctr.Set(congested);
-  ect_ctr.Set(ect);
-  noEct_ctr.Set(noEct);
+
+  // Set all the counters if we have data. We want to explicitly send a 0 value for congested to
+  // distinguish known no congestion from no data
+  if (ect > 0 || noEct > 0) {
+    congested_ctr.Set(congested);
+    ect_ctr.Set(ect);
+    noEct_ctr.Set(noEct);
+  }
 }
 
 }  // namespace atlasagent

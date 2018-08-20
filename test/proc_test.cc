@@ -196,7 +196,7 @@ TEST(Proc, ParseNetstat) {
   EXPECT_EQ(3, ms.size()) << "3 metrics for ipext";
 
   measurement_map values = measurements_to_map(ms, proto_ref());
-  expect_value(values, "net.ipext.ectPackets|capable", 3.0);
-  expect_value(values, "net.ipext.ectPackets|notCapable", 1.0);
-  expect_value(values, "net.ipext.congestedPackets", 0.5);
+  expect_value(values, "net.ip.ectPackets|capable", 3.0);
+  expect_value(values, "net.ip.ectPackets|notCapable", 1.0);
+  expect_value(values, "net.ip.congestedPackets", 0.5);
 }
