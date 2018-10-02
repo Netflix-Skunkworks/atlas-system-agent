@@ -31,9 +31,7 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
   proc->netstat_stats();
 }
 #else
-static void gather_peak_system_metrics(Proc* proc) {
-  proc->peak_cpu_stats();
-}
+static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
 
 static void gather_minute_system_metrics(Proc* proc, Disk* disk) {
   Logger()->info("Gathering 1-min system metrics");
@@ -156,6 +154,37 @@ void collect_system_metrics(atlas::meter::Registry* registry) {
 }
 #endif
 
+static bool is_writable_dir(const char* dir) {
+  struct stat dir_stat;
+  if (stat(dir, &dir_stat) != 0 || !S_ISDIR(dir_stat.st_mode)) {
+    mkdir(dir, 0777);
+  }
+
+  bool error = stat(dir, &dir_stat) != 0;                        // couldn't even stat it
+  error |= !S_ISDIR(dir_stat.st_mode);                           // or not a dir
+  error |= S_ISDIR(dir_stat.st_mode) && access(dir, W_OK) != 0;  // dir, but can't write to it
+  return !error;
+}
+
+static bool empty_file(const char* filename) {
+  struct stat st;
+  bool error = stat(filename, &st) != 0;
+  if (error) {
+    return false;
+  }
+  return st.st_size == 0;
+}
+
+static void remove_empty_log_file() {
+  static constexpr const char* dir = "/logs/atlasd";
+  static constexpr const char* log_file_name = "/logs/atlasd/atlasclient.log";
+
+  if (is_writable_dir(dir) && empty_file(log_file_name)) {
+    Logger()->debug("Removing empty atlasclient.log");
+    unlink(log_file_name);
+  }
+}
+
 int main(int argc, const char* argv[]) {
 #ifdef TITUS_AGENT
   container_handle c;
@@ -174,6 +203,10 @@ int main(int argc, const char* argv[]) {
   atlas_client.UseConsoleLogger(spdlog::level::info);
   init_signals();
   atlasagent::UseConsoleLogger();
+  // the atlas-native-client library uses a default log directory of /logs/atlasd
+  // and since we could have write permissions on that directory, make sure
+  // we don't leave an empty file lying around
+  remove_empty_log_file();
   atlas_client.AddCommonTag("xatlas.process", process);
   atlas_client.Start();
   auto registry = atlas_client.GetRegistry();
