@@ -6,7 +6,7 @@ compiler:
   - gcc
 env:
   global:
-    - NATIVE_CLIENT_VERSION=v0.5.0
+    - NATIVE_CLIENT_VERSION=v0.5.4
   matrix:
     - TITUS_AGENT="-DTITUS_AGENT=ON .."
     - TITUS_AGENT=""
