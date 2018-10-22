@@ -210,6 +210,14 @@ class PerfMetrics {
  public:
   PerfMetrics(atlas::meter::Registry* registry, std::string path_prefix)
       : registry_(registry), path_prefix_(std::move(path_prefix)) {
+    static constexpr const char* kDisableEnvVar = "ATLAS_DISABLE_PMU_METRICS";
+    auto disabled_var = std::getenv(kDisableEnvVar);
+    if (disabled_var != nullptr && std::strcmp(disabled_var, "true") == 0) {
+      Logger()->info("PMU metrics have been disabled using the env variable {}", kDisableEnvVar);
+      disabled_ = true;
+      return;
+    }
+
     auto is_perf_supported_name =
         fmt::format("{}/proc/sys/kernel/perf_event_paranoid", path_prefix_);
     if (access(is_perf_supported_name.c_str(), R_OK) != 0) {
