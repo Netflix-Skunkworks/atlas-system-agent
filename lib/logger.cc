@@ -3,9 +3,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
+#include <spdlog/async.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
-
 
 namespace atlasagent {
 
@@ -70,7 +70,7 @@ static void fallback_init_for_logger() noexcept {
     spdlog::drop(kMainLogger);
   }
 
-  spdlog::stderr_color_mt(kMainLogger);
+  spdlog::create_async_nb<spdlog::sinks::ansicolor_stderr_sink_mt>(kMainLogger);
   current_logging_directory = "";
 }
 
@@ -90,6 +90,9 @@ static void initialize_logger(const std::string& log_dir) {
 
 static void initialize() {
   try {
+    // initialize our async logging with a queue of 8k entries and 1 background thread
+    // to flush it
+    spdlog::init_thread_pool(8192, 1);
     initialize_logger(get_logging_directory());
   } catch (const spdlog::spdlog_ex& ex) {
     std::cerr << "Log initialization failed: " << ex.what() << "\n";
@@ -138,7 +141,7 @@ void UseConsoleLogger() noexcept {
     spdlog::drop(kMainLogger);
   }
 
-  logger = spdlog::stdout_color_mt(kMainLogger);
+  logger = spdlog::create_async_nb<spdlog::sinks::ansicolor_stdout_sink_mt>(kMainLogger);
   logger->set_level(spdlog::level::debug);
   current_logging_directory = "";
 }
