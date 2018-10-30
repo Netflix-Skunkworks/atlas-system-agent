@@ -210,11 +210,14 @@ class PerfMetrics {
  public:
   PerfMetrics(atlas::meter::Registry* registry, std::string path_prefix)
       : registry_(registry), path_prefix_(std::move(path_prefix)) {
-    static constexpr const char* kDisableEnvVar = "ATLAS_DISABLE_PMU_METRICS";
-    auto disabled_var = std::getenv(kDisableEnvVar);
-    if (disabled_var != nullptr && std::strcmp(disabled_var, "true") == 0) {
-      Logger()->info("PMU metrics have been disabled using the env variable {}", kDisableEnvVar);
-      disabled_ = true;
+    static constexpr const char* kEnableEnvVar = "ATLAS_ENABLE_PMU_METRICS";
+    auto enabled_var = std::getenv(kEnableEnvVar);
+    if (enabled_var != nullptr && std::strcmp(enabled_var, "true") == 0) {
+      Logger()->info("PMU metrics have been enabled using the env variable {}", kEnableEnvVar);
+      disabled_ = false;
+    } else {
+      Logger()->debug("PMU metrics have not been enabled. Set {}=true to enable collection",
+                      kEnableEnvVar);
       return;
     }
 
@@ -313,7 +316,7 @@ class PerfMetrics {
   }
 
  private:
-  bool disabled_ = false;
+  bool disabled_ = true;
   atlas::meter::Registry* registry_;
   std::string path_prefix_;
   std::vector<bool> online_cpus_;
