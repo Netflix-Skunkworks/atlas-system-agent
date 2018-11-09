@@ -201,14 +201,15 @@ static IdPtr id_for(Registry* registry, const char* name, const char* id, const 
 }
 
 static constexpr int kLoopDevice = 7;
+static constexpr int kRamDevice = 1;
 static constexpr const char* kRead = "read";
 static constexpr const char* kWrite = "write";
 
 void Disk::diskio_stats() noexcept {
   const auto& stats = get_disk_stats();
   for (const auto& st : stats) {
-    if (st.major == kLoopDevice) {
-      continue;  // ignore loop devices
+    if (st.major == kLoopDevice || st.major == kRamDevice) {
+      continue;  // ignore loop and ram devices
     }
     counters_.get(id_for(registry_, "disk.io.bytes", kRead, st.device))
         ->Set(static_cast<int64_t>(st.rsect) * 512);
