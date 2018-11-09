@@ -135,7 +135,7 @@ TEST(Disk, get_disk_stats) {
   TestDisk disk(&registry);
 
   const auto& s = disk.get_disk_stats();
-  EXPECT_EQ(12, s.size());
+  EXPECT_EQ(14, s.size());
 }
 
 TEST(Disk, diskio_stats) {
