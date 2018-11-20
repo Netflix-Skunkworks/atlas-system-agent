@@ -32,6 +32,8 @@ make -j4
 make install DESTDIR=../root
 cd ../..
 
+cp -p sample-config.cc ./lib
+
 # Building project
 mkdir -p build
 cd build
