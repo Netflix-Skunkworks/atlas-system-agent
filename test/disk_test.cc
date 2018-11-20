@@ -56,10 +56,6 @@ TEST(Disk, MountPoints) {
   for (const auto& mp : mount_points) {
     Logger()->info("{}", mp);
   }
-#ifdef TITUS_AGENT
-  // titus does not ignore overlay
-  EXPECT_EQ(mount_points.size(), 5);
-#endif
 }
 
 TEST(Disk, id) {
@@ -92,11 +88,6 @@ TEST(Disk, InterestingMountPoints) {
   for (const auto& mp : interesting2) {
     std::cerr << mp << "\n";
   }
-
-#ifdef TITUS_AGENT
-  ASSERT_EQ(interesting2.size(), 1);
-  EXPECT_EQ(interesting2[0].mount_point, "/");
-#endif
 }
 
 TEST(Disk, UpdateTitusStats) {
