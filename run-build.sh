@@ -12,7 +12,10 @@ showinfo() { echo -e "${BG}$1${NC}"; }
 workingprocess() { echo -e "${BB}$1${NC}"; }
 alert () { echo -e "${RED}$1${NC}"; }
 
-NATIVE_CLIENT_VERSION=master
+if [ "$CC" = gcc ] ; then
+  export CC=gcc-5
+  export CXX=g++-5
+fi
 
 # Fetch and build libatlasclient
 rm -rf nc
