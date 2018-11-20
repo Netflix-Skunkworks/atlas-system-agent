@@ -7,10 +7,11 @@
 #include "lib/nvml.h"
 #include "lib/perfmetrics.h"
 #include "lib/proc.h"
-#include <atlas/atlas_client.h>
+#include <spectator/registry.h>
 #include <cinttypes>
 #include <condition_variable>
 #include <csignal>
+#include <spectator/memory.h>
 
 using atlasagent::CGroup;
 using atlasagent::Disk;
@@ -19,6 +20,9 @@ using atlasagent::Logger;
 using atlasagent::Nvml;
 using atlasagent::PerfMetrics;
 using atlasagent::Proc;
+
+// This should be provided by the runtime
+spectator::Config GetSpectatorConfig();
 
 #ifdef TITUS_AGENT
 static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
@@ -99,8 +103,11 @@ static void init_signals() {
 }
 
 #ifdef TITUS_AGENT
-void collect_titus_metrics(atlas::meter::Registry* registry) {
-  const auto& clock = registry->clock();
+void collect_titus_metrics(spectator::Registry* registry) {
+  using std::chrono::milliseconds;
+  using std::chrono::seconds;
+  using std::chrono::system_clock;
+
   CGroup cGroup{registry};
   Proc proc{registry};
   Disk disk{registry, ""};
@@ -108,21 +115,22 @@ void collect_titus_metrics(atlas::meter::Registry* registry) {
 
   // collect all metrics except perf at startup
   gather_titus_metrics(&cGroup, &proc, &disk);
-  int64_t time_to_sleep = 60 * 1000L;
-  while (runner.wait_for(std::chrono::milliseconds(time_to_sleep))) {
-    auto now = clock.WallTime();
-    auto next_run = now + 60 * 1000L;
+  std::chrono::nanoseconds time_to_sleep = seconds(60);
+  while (runner.wait_for(time_to_sleep)) {
+    auto next_run = system_clock::now() + seconds(60);
     gather_titus_metrics(&cGroup, &proc, &disk);
     perf_metrics.collect();
-    time_to_sleep = next_run - clock.WallTime();
-    if (time_to_sleep > 0) {
-      Logger()->info("Sleeping {} milliseconds", time_to_sleep);
+    time_to_sleep = next_run - system_clock::now();
+    if (time_to_sleep.count() > 0) {
+      Logger()->info("Sleeping {} milliseconds",
+                     std::chrono::duration_cast<milliseconds>(time_to_sleep).count());
     }
   }
 }
 #else
-void collect_system_metrics(atlas::meter::Registry* registry) {
-  const auto& clock = registry->clock();
+void collect_system_metrics(spectator::Registry* registry) {
+  using std::chrono::seconds;
+  using std::chrono::system_clock;
   Proc proc{registry};
   Disk disk{registry, ""};
 
@@ -134,56 +142,25 @@ void collect_system_metrics(atlas::meter::Registry* registry) {
   }
 
   PerfMetrics perf_metrics{registry, ""};
-  int64_t time_to_sleep;
-  int64_t next_slow_run = clock.WallTime() + 60000L;
+  auto next_slow_run = system_clock::now() + seconds(60);
+  std::chrono::nanoseconds time_to_sleep;
   gather_minute_system_metrics(&proc, &disk);
   do {
-    auto now = clock.WallTime();
-    auto next_run = now + 1 * 1000L;
+    auto now = system_clock::now();
+    auto next_run = now + seconds(1);
     gather_peak_system_metrics(&proc);
     if (now >= next_slow_run) {
       gather_minute_system_metrics(&proc, &disk);
       perf_metrics.collect();
-      next_slow_run += 60 * 1000L;
+      next_slow_run += seconds(60);
       if (gpu) {
         gpu->gpu_metrics();
       }
     }
-    time_to_sleep = next_run - clock.WallTime();
-  } while (runner.wait_for(std::chrono::milliseconds(time_to_sleep)));
+    time_to_sleep = next_run - system_clock::now();
+  } while (runner.wait_for(time_to_sleep));
 }
 #endif
-
-static bool is_writable_dir(const char* dir) {
-  struct stat dir_stat;
-  if (stat(dir, &dir_stat) != 0 || !S_ISDIR(dir_stat.st_mode)) {
-    mkdir(dir, 0777);
-  }
-
-  bool error = stat(dir, &dir_stat) != 0;                        // couldn't even stat it
-  error |= !S_ISDIR(dir_stat.st_mode);                           // or not a dir
-  error |= S_ISDIR(dir_stat.st_mode) && access(dir, W_OK) != 0;  // dir, but can't write to it
-  return !error;
-}
-
-static bool empty_file(const char* filename) {
-  struct stat st;
-  bool error = stat(filename, &st) != 0;
-  if (error) {
-    return false;
-  }
-  return st.st_size == 0;
-}
-
-static void remove_empty_log_file() {
-  static constexpr const char* dir = "/logs/atlasd";
-  static constexpr const char* log_file_name = "/logs/atlasd/atlasclient.log";
-
-  if (is_writable_dir(dir) && empty_file(log_file_name)) {
-    Logger()->debug("Removing empty atlasclient.log");
-    unlink(log_file_name);
-  }
-}
 
 int main(int argc, const char* argv[]) {
 #ifdef TITUS_AGENT
@@ -199,28 +176,26 @@ int main(int argc, const char* argv[]) {
   const char* process = argc > 1 ? argv[1] : "atlas-system-agent";
 #endif
 
-  atlas::Client atlas_client;
-  atlas_client.UseConsoleLogger(spdlog::level::info);
   init_signals();
   atlasagent::UseConsoleLogger();
-  // the atlas-native-client library uses a default log directory of /logs/atlasd
-  // and since we could have write permissions on that directory, make sure
-  // we don't leave an empty file lying around
-  remove_empty_log_file();
-  atlas_client.AddCommonTag("xatlas.process", process);
-  atlas_client.Start();
-  auto registry = atlas_client.GetRegistry();
+  auto cfg = GetSpectatorConfig();
+  cfg.common_tags["xatlas.process"] = process;
 
 #ifdef TITUS_AGENT
   auto titus_host = std::getenv("EC2_INSTANCE_ID");
   if (titus_host != nullptr) {
-    atlas_client.AddCommonTag("titus.host", titus_host);
+    cfg.common_tags["titus.host"] = titus_host;
   }
-  collect_titus_metrics(registry.get());
-#else
-  collect_system_metrics(registry.get());
 #endif
-  Logger()->info("Shutting down atlas");
-  atlas_client.Stop();
+
+  spectator::Registry registry{cfg};
+  registry.Start();
+#ifdef TITUS_AGENT
+  collect_titus_metrics(&registry);
+#else
+  collect_system_metrics(&registry);
+#endif
+  Logger()->info("Shutting down spectator registry");
+  registry.Stop();
   return 0;
 }

@@ -1,13 +1,11 @@
 #pragma once
 
-#include "counters.h"
-#include <atlas/atlas_client.h>
-#include <atlas/meter/monotonic_counter.h>
+#include <spectator/registry.h>
 
 namespace atlasagent {
 class Proc {
  public:
-  explicit Proc(atlas::meter::Registry* registry, std::string path_prefix = "/proc") noexcept;
+  explicit Proc(spectator::Registry* registry, std::string path_prefix = "/proc") noexcept;
   void network_stats() noexcept;
   void snmp_stats() noexcept;
   void netstat_stats() noexcept;
@@ -21,9 +19,8 @@ class Proc {
   void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
  private:
-  atlas::meter::Registry* registry_;
+  spectator::Registry* registry_;
   std::string path_prefix_;
-  Counters counters_;
 
   void handle_line(FILE* fp) noexcept;
   void parse_ip_stats(const char* buf) noexcept;

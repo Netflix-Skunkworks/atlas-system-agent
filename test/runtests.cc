@@ -1,5 +1,5 @@
-#include <gtest/gtest.h>
 #include "../lib/logger.h"
+#include <gtest/gtest.h>
 
 int main(int argc, char** argv) {
   atlasagent::UseConsoleLogger();

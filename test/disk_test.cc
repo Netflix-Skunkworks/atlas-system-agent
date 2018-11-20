@@ -1,6 +1,7 @@
 #include "../lib/disk.h"
 #include "../lib/logger.h"
-#include "test_registry.h"
+#include "measurement_utils.h"
+#include <fmt/ostream.h>
 #include <gtest/gtest.h>
 #include <unordered_set>
 
@@ -11,12 +12,13 @@ std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
 }  // namespace atlasagent
 
 using namespace atlasagent;
-using atlas::meter::ManualClock;
-using atlas::meter::Tags;
+using spectator::Config;
+using spectator::Registry;
+using spectator::Tags;
 
 class TestDisk : public Disk {
  public:
-  explicit TestDisk(atlas::meter::Registry* registry) : Disk(registry, "./resources") {}
+  explicit TestDisk(spectator::Registry* registry) : Disk(registry, "./resources") {}
 
   std::vector<MountPoint> filter_interesting_mount_points(
       const std::vector<MountPoint>& mount_points) const noexcept {
@@ -44,8 +46,7 @@ TEST(Disk, NodevFS) {
 }
 
 TEST(Disk, MountPoints) {
-  ManualClock clock;
-  TestRegistry registry(&clock);
+  Registry registry(Config{});
   TestDisk disk(&registry);
   auto mount_points = disk.get_mount_points();
   EXPECT_EQ(mount_points.size(), 7);
@@ -55,12 +56,6 @@ TEST(Disk, MountPoints) {
   for (const auto& mp : mount_points) {
     Logger()->info("{}", mp);
   }
-#ifdef TITUS_AGENT
-  // titus does not ignore overlay
-  EXPECT_EQ(mount_points.size(), 5);
-#else
-  EXPECT_EQ(mount_points.size(), 4);
-#endif
 }
 
 TEST(Disk, id) {
@@ -76,8 +71,7 @@ TEST(Disk, dev) {
 }
 
 TEST(Disk, InterestingMountPoints) {
-  ManualClock clock;
-  TestRegistry registry(&clock);
+  Registry registry(Config{});
   TestDisk disk(&registry);
 
   auto interesting = disk.filter_interesting_mount_points(disk.get_mount_points());
@@ -94,44 +88,52 @@ TEST(Disk, InterestingMountPoints) {
   for (const auto& mp : interesting2) {
     std::cerr << mp << "\n";
   }
-
-#ifdef TITUS_AGENT
-  ASSERT_EQ(interesting2.size(), 1);
-  EXPECT_EQ(interesting2[0].mount_point, "/");
-#else
-  ASSERT_EQ(interesting2.size(), 0);
-#endif
 }
 
 TEST(Disk, UpdateTitusStats) {
-  ManualClock clock;
-  TestRegistry registry(&clock);
+  Registry registry(Config{});
   TestDisk disk(&registry);
 
   disk.titus_disk_stats();
 
-  const auto& ms = registry.my_measurements();
+  const auto& ms = registry.Measurements();
   for (const auto& m : ms) {
     Logger()->info("Got {}", m);
   }
 }
 
 TEST(Disk, UpdateDiskStats) {
-  ManualClock clock;
-  TestRegistry registry(&clock);
+  Registry registry(Config{});
   TestDisk disk(&registry);
 
   disk.disk_stats();
+  auto initial = registry.Measurements();
 
-  const auto& ms = registry.my_measurements();
-  for (const auto& m : ms) {
-    Logger()->info("Got {}", m);
+  disk.set_prefix("./resources2");
+  disk.disk_stats();
+  auto ms = registry.Measurements();
+  auto values = measurements_to_map(ms, "dev");
+  expect_value(&values, "disk.io.bytes|read|md0", 512 * 1e4);
+  expect_value(&values, "disk.io.bytes|read|xvda", 512 * 1e4);
+  expect_value(&values, "disk.io.bytes|write|md0", 1535488.0 + 1562112.0);
+  expect_value(&values, "disk.io.bytes|write|xvda", 1404928.0);
+  expect_value(&values, "disk.io.bytes|write|xvdb", 1535488.0);
+  expect_value(&values, "disk.io.bytes|write|xvdc", 1562112.0);
+  expect_value(&values, "disk.io.ops|read|md0", 100);
+  expect_value(&values, "disk.io.ops|read|xvda", 100);
+  expect_value(&values, "disk.io.ops|write|md0", 147);
+  expect_value(&values, "disk.io.ops|write|xvda", 130);
+  expect_value(&values, "disk.io.ops|write|xvdb", 69);
+  expect_value(&values, "disk.io.ops|write|xvdc", 60);
+
+  // the following values are coming from statvfs
+  for (const auto& pair : values) {
+    std::cerr << fmt::format("{}={}\n", pair.first, pair.second);
   }
 }
 
 TEST(Disk, get_disk_stats) {
-  ManualClock clock;
-  TestRegistry registry(&clock);
+  Registry registry(Config{});
   TestDisk disk(&registry);
 
   const auto& s = disk.get_disk_stats();
@@ -139,21 +141,29 @@ TEST(Disk, get_disk_stats) {
 }
 
 TEST(Disk, diskio_stats) {
-  ManualClock clock;
-  TestRegistry registry(&clock);
+  Registry registry(Config{});
   TestDisk disk(&registry);
 
   disk.diskio_stats();
-  const auto& first = registry.my_measurements();
-  EXPECT_EQ(first.size(), 0);
+  auto initial = registry.Measurements();
+  EXPECT_TRUE(initial.empty());
 
   disk.set_prefix("./resources2");
-  registry.SetWall(60000);
   disk.diskio_stats();
 
-  registry.SetWall(120000);
-  const auto& ms = registry.my_measurements();
-  for (const auto& m : ms) {
-    Logger()->info("Got {}", m);
-  }
+  auto ms = registry.Measurements();
+  auto values = measurements_to_map(ms, "dev");
+  expect_value(&values, "disk.io.bytes|read|md0", 512 * 1e4);
+  expect_value(&values, "disk.io.bytes|read|xvda", 512 * 1e4);
+  expect_value(&values, "disk.io.bytes|write|md0", 1535488.0 + 1562112.0);
+  expect_value(&values, "disk.io.bytes|write|xvda", 1404928.0);
+  expect_value(&values, "disk.io.bytes|write|xvdb", 1535488.0);
+  expect_value(&values, "disk.io.bytes|write|xvdc", 1562112.0);
+  expect_value(&values, "disk.io.ops|read|md0", 100);
+  expect_value(&values, "disk.io.ops|read|xvda", 100);
+  expect_value(&values, "disk.io.ops|write|md0", 147);
+  expect_value(&values, "disk.io.ops|write|xvda", 130);
+  expect_value(&values, "disk.io.ops|write|xvdb", 69);
+  expect_value(&values, "disk.io.ops|write|xvdc", 60);
+  EXPECT_TRUE(values.empty());
 }
