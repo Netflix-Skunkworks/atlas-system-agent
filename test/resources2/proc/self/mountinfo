@@ -1,39 +1,34 @@
-739 650 0:86 / / rw,relatime - overlay overlay rw,lowerdir=/mnt/docker/10000.10000/overlay2/l/LDEFTYMCTXJIJQJYMAGFLTALJ5:/mnt/docker/10000.10000/overlay2/l/VHRLQOYJ5FWQGAVZDYMW3TUODK:/mnt/docker/10000.10000/overlay2/l/BS2TATXKTFRXEIDL5MESD4IJ64:/mnt/docker/10000.10000/overlay2/l/QVIS5UAW5ETJELIQYKCHSJIKWC:/mnt/docker/10000.10000/overlay2/l/OXNFDSHIQVDDUFQ4RXEQLKATOQ:/mnt/docker/10000.10000/overlay2/l/LCUADVQMTEIBMKBDHFQ3RGNNRZ:/mnt/docker/10000.10000/overlay2/l/DEQ7GWRLDPIJDSZZFXBFNRJLIZ:/mnt/docker/10000.10000/overlay2/l/P7CSVQTRWKTGXI6KSRPQT4IQAW:/mnt/docker/10000.10000/overlay2/l/AI4EIJAZIADWVB3DNBTFFJRZGD:/mnt/docker/10000.10000/overlay2/l/INIUSRERKG2OKLJWXOWBPYGXLF:/mnt/docker/10000.10000/overlay2/l/7PYXSLUUT6PSRGTPPBKQE7WDSI:/mnt/docker/10000.10000/overlay2/l/K43EP6VNC2PYSXNZEDCDOPGPP5:/mnt/docker/10000.10000/overlay2/l/OOLLRL73L5USFCBNRINXSBHWKR:/mnt/docker/10000.10000/overlay2/l/3UWS2EQW7M6UKISG5P3JPHB6AC:/mnt/docker/10000.10000/overlay2/l/G66NAOHURXNPCYVBEGGCFRSPQ2,upperdir=/mnt/docker/10000.10000/overlay2/815da59eefcf62d15ded0fdebec9985495dbca5ddf560baace9161228db540d0/diff,workdir=/mnt/docker/10000.10000/overlay2/815da59eefcf62d15ded0fdebec9985495dbca5ddf560baace9161228db540d0/work
-740 739 0:89 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw
-741 739 0:90 / /dev rw,nosuid - tmpfs tmpfs rw,mode=755,uid=10000,gid=10000
-742 741 0:91 / /dev/pts rw,nosuid,noexec,relatime - devpts devpts rw,gid=10005,mode=620,ptmxmode=666
-743 739 0:83 / /sys ro,nosuid,nodev,noexec,relatime - sysfs sysfs ro
-744 743 0:92 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime - tmpfs tmpfs rw,mode=755,uid=10000,gid=10000
-745 744 0:25 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/systemd rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,xattr,release_agent=/lib/systemd/systemd-cgroups-agent,name=systemd
-746 744 0:27 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/devices rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,devices
-747 744 0:28 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/pids rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,pids
-748 744 0:29 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/perf_event rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,perf_event
-749 744 0:30 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/memory rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,memory
-750 744 0:31 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/cpu,cpuacct rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,cpu,cpuacct
-751 744 0:32 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/blkio rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,blkio
-752 744 0:33 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/net_cls,net_prio rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,net_cls,net_prio
-753 744 0:34 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/freezer rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,freezer
-754 744 0:35 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/hugetlb rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,hugetlb
-755 744 0:36 /containers.slice/751de8ee65b8a26ef4a604e456203b67fab4ac68fa3a203e8b09ea0b5d58f653 /sys/fs/cgroup/cpuset rw,nosuid,nodev,noexec,relatime - cgroup cgroup rw,cpuset
-756 741 0:88 / /dev/mqueue rw,nosuid,nodev,noexec,relatime - mqueue mqueue rw
-757 741 202:0 /apps/titus-executor/bin/tini-static /dev/init ro,noatime - ext4 /dev/xvda rw,nobarrier,stripe=32582,data=ordered
-758 739 202:0 /var/tmp/titus-executor-sockets412675783 /titus-executor-sockets ro,noatime - ext4 /dev/xvda rw,nobarrier,stripe=32582,data=ordered
-759 739 202:16 /docker/10000.10000/containers/be304f428cfb75474393dea1211eca125a59ee611e33461c3aefa35bc1263e3d/resolv.conf /etc/resolv.conf rw,noatime - xfs /dev/xvdb rw,attr2,inode64,usrquota,prjquota,grpquota
-760 739 202:16 /docker/10000.10000/containers/be304f428cfb75474393dea1211eca125a59ee611e33461c3aefa35bc1263e3d/hostname /etc/hostname rw,noatime - xfs /dev/xvdb rw,attr2,inode64,usrquota,prjquota,grpquota
-761 739 202:16 /docker/10000.10000/containers/be304f428cfb75474393dea1211eca125a59ee611e33461c3aefa35bc1263e3d/hosts /etc/hosts rw,noatime - xfs /dev/xvdb rw,attr2,inode64,usrquota,prjquota,grpquota
-762 741 0:87 / /dev/shm rw,nosuid,nodev,noexec,relatime - tmpfs shm rw,size=65536k
-763 741 0:6 /null /dev/null rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-764 741 0:6 /random /dev/random rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-765 741 0:6 /full /dev/full rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-766 741 0:6 /tty /dev/tty rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-767 741 0:6 /zero /dev/zero rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-768 741 0:6 /urandom /dev/urandom rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-651 740 0:89 /bus /proc/bus ro,nosuid,nodev,noexec,relatime - proc proc rw
-657 740 0:89 /fs /proc/fs ro,nosuid,nodev,noexec,relatime - proc proc rw
-658 740 0:89 /irq /proc/irq ro,nosuid,nodev,noexec,relatime - proc proc rw
-659 740 0:89 /sys /proc/sys ro,nosuid,nodev,noexec,relatime - proc proc rw
-660 740 0:89 /sysrq-trigger /proc/sysrq-trigger ro,nosuid,nodev,noexec,relatime - proc proc rw
-699 740 0:6 /null /proc/kcore rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-700 740 0:6 /null /proc/timer_list rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-701 740 0:6 /null /proc/sched_debug rw,nosuid,relatime - devtmpfs udev rw,size=32966988k,nr_inodes=8241747,mode=755
-702 743 0:93 / /sys/firmware ro,relatime - tmpfs tmpfs ro,uid=10000,gid=10000
+19 25 0:18 / /sys rw,nosuid,nodev,noexec,relatime shared:7 - sysfs sysfs rw
+20 25 0:4 / /proc rw,nosuid,nodev,noexec,relatime shared:12 - proc proc rw,gid=60243,hidepid=2
+21 25 0:6 / /dev rw,nosuid,relatime shared:2 - devtmpfs udev rw,size=16457280k,nr_inodes=4114320,mode=755
+22 21 0:14 / /dev/pts rw,nosuid,noexec,relatime shared:3 - devpts devpts rw,gid=5,mode=620,ptmxmode=000
+23 25 0:19 / /run rw,nosuid,noexec,relatime shared:5 - tmpfs tmpfs rw,size=3294612k,mode=755
+25 0 202:0 / / rw,noatime shared:1 - ext4 /dev/xvda rw,nobarrier,stripe=32582,data=ordered
+26 19 0:12 / /sys/kernel/security rw,nosuid,nodev,noexec,relatime shared:8 - securityfs securityfs rw
+27 21 0:21 / /dev/shm rw,nosuid,nodev,noexec shared:4 - tmpfs tmpfs rw
+28 23 0:22 / /run/lock rw,nosuid,nodev,noexec,relatime shared:6 - tmpfs tmpfs rw,size=5120k
+29 19 0:23 / /sys/fs/cgroup ro,nosuid,nodev,noexec shared:9 - tmpfs tmpfs ro,mode=755
+30 29 0:24 / /sys/fs/cgroup/systemd rw,nosuid,nodev,noexec,relatime shared:10 - cgroup cgroup rw,xattr,release_agent=/lib/systemd/systemd-cgroups-agent,name=systemd
+31 19 0:25 / /sys/fs/pstore rw,nosuid,nodev,noexec,relatime shared:11 - pstore pstore rw
+32 29 0:26 / /sys/fs/cgroup/cpuset rw,nosuid,nodev,noexec,relatime shared:13 - cgroup cgroup rw,cpuset
+33 29 0:27 / /sys/fs/cgroup/net_cls,net_prio rw,nosuid,nodev,noexec,relatime shared:14 - cgroup cgroup rw,net_cls,net_prio
+34 29 0:28 / /sys/fs/cgroup/pids rw,nosuid,nodev,noexec,relatime shared:15 - cgroup cgroup rw,pids
+35 29 0:29 / /sys/fs/cgroup/perf_event rw,nosuid,nodev,noexec,relatime shared:16 - cgroup cgroup rw,perf_event
+36 29 0:30 / /sys/fs/cgroup/hugetlb rw,nosuid,nodev,noexec,relatime shared:17 - cgroup cgroup rw,hugetlb
+37 29 0:31 / /sys/fs/cgroup/devices rw,nosuid,nodev,noexec,relatime shared:18 - cgroup cgroup rw,devices
+38 29 0:32 / /sys/fs/cgroup/cpu,cpuacct rw,nosuid,nodev,noexec,relatime shared:19 - cgroup cgroup rw,cpu,cpuacct
+39 29 0:33 / /sys/fs/cgroup/memory rw,nosuid,nodev,noexec,relatime shared:20 - cgroup cgroup rw,memory
+40 29 0:34 / /sys/fs/cgroup/blkio rw,nosuid,nodev,noexec,relatime shared:21 - cgroup cgroup rw,blkio
+41 29 0:35 / /sys/fs/cgroup/freezer rw,nosuid,nodev,noexec,relatime shared:22 - cgroup cgroup rw,freezer
+42 20 0:36 / /proc/sys/fs/binfmt_misc rw,relatime shared:23 - autofs systemd-1 rw,fd=28,pgrp=1,timeout=0,minproto=5,maxproto=5,direct
+43 19 0:7 / /sys/kernel/debug rw,relatime shared:24 - debugfs debugfs rw
+44 21 0:17 / /dev/mqueue rw,relatime shared:25 - mqueue mqueue rw
+45 21 0:37 / /dev/hugepages rw,relatime shared:26 - hugetlbfs hugetlbfs rw
+46 19 0:38 / /sys/fs/fuse/connections rw,relatime shared:27 - fusectl fusectl rw
+47 42 0:39 / /proc/sys/fs/binfmt_misc rw,relatime shared:28 - binfmt_misc binfmt_misc rw
+90 25 9:0 / /mnt rw,relatime shared:69 - xfs /dev/md0 rw,attr2,inode64,logbsize=64k,sunit=128,swidth=256,noquota
+92 25 202:0 /var/log /var/log- rw,nosuid,nodev,noexec,noatime - ext4 /dev/xvda rw,nobarrier,stripe=32582,data=ordered
+94 25 9:0 /logs/system /var/log rw,nosuid,nodev,noexec,relatime shared:69 - xfs /dev/md0 rw,attr2,inode64,logbsize=64k,sunit=128,swidth=256,noquota
+97 25 202:0 /tmp /tmp rw,nosuid,nodev,noatime - ext4 /dev/xvda rw,nobarrier,stripe=32582,data=ordered
+99 25 202:0 /var/tmp /var/tmp rw,nosuid,nodev,noexec,noatime - ext4 /dev/xvda rw,nobarrier,stripe=32582,data=ordered
+101 23 0:40 / /run/user/0 rw,nosuid,nodev,noexec,relatime shared:76 - tmpfs tmpfs rw,size=3294612k,mode=700

@@ -1,13 +1,12 @@
-#include <gtest/gtest.h>
-#include "test_registry.h"
 #include "../lib/perfmetrics.h"
+#include <gtest/gtest.h>
 
-using atlas::meter::ManualClock;
 using atlasagent::PerfMetrics;
+using spectator::Config;
+using spectator::Registry;
 
 TEST(PerfMetrics, OnlineCpus) {
-  ManualClock clock;
-  TestRegistry registry{&clock};
+  Registry registry{Config{}};
   PerfMetrics p{&registry, "./resources"};
 
   // 0-3,5-7,10-15,23

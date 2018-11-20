@@ -1,13 +1,14 @@
 #include "../lib/logger.h"
 #include "../lib/gpumetrics.h"
-#include "test_registry.h"
 #include "measurement_utils.h"
 #include <gtest/gtest.h>
+#include <spectator/memory.h>
 
 using namespace atlasagent;
 
-using atlas::meter::ManualClock;
-using atlas::meter::Measurements;
+using spectator::Config;
+using spectator::Registry;
+using Measurements = std::vector<spectator::Measurement>;
 
 class TestNvml {
  public:
@@ -68,28 +69,26 @@ class TestNvml {
 
 static void expect_dist_summary(const Measurements& ms, const char* name, double total,
                                 double count, double max, double sq) {
-  auto stat_ref = atlas::util::intern_str("statistic");
   auto num_tags_found = 0;
   for (const auto& m : ms) {
     const auto& cur_name = m.id->Name();
-    if (strcmp(name, cur_name) != 0) continue;
+    if (name != cur_name) continue;
 
     const auto& tags = m.id->GetTags();
-    auto it = tags.at(stat_ref);
-    if (it.length() == 0) {
+    auto stat = tags.at("statistic");
+    if (stat.empty()) {
       FAIL() << "Unable to find statistic tag for name=" << name;
     } else {
-      auto stat = it.get();
-      if (strcmp("totalAmount", stat) == 0) {
-        EXPECT_DOUBLE_EQ(total / 60.0, m.value) << "total does not match for " << name;
+      if (stat == "totalAmount") {
+        EXPECT_DOUBLE_EQ(total, m.value) << "total does not match for " << name;
         num_tags_found++;
-      } else if (strcmp("totalOfSquares", stat) == 0) {
-        EXPECT_DOUBLE_EQ(sq / 60.0, m.value) << "totalOfSquares does not match for " << name;
+      } else if (stat == "totalOfSquares") {
+        EXPECT_DOUBLE_EQ(sq, m.value) << "totalOfSquares does not match for " << name;
         num_tags_found++;
-      } else if (strcmp("count", stat) == 0) {
-        EXPECT_DOUBLE_EQ(count / 60.0, m.value) << "count does not match for " << name;
+      } else if (stat == "count") {
+        EXPECT_DOUBLE_EQ(count, m.value) << "count does not match for " << name;
         num_tags_found++;
-      } else if (strcmp("max", stat) == 0) {
+      } else if (stat == "max") {
         EXPECT_DOUBLE_EQ(max, m.value) << "max does not match for " << name;
         num_tags_found++;
       } else {
@@ -101,27 +100,23 @@ static void expect_dist_summary(const Measurements& ms, const char* name, double
 }
 
 TEST(Gpu, Metrics) {
-  ManualClock clock;
-  TestRegistry registry(&clock);
-  registry.SetWall(1000);
+  Registry registry(Config{});
   auto metrics = GpuMetrics<TestNvml>(&registry, std::make_unique<TestNvml>());
   metrics.gpu_metrics();
-  registry.SetWall(61000);
-  const auto& ms = registry.my_measurements();
+  const auto& ms = registry.Measurements();
   EXPECT_EQ(17, ms.size());
-  auto gpu_ref = atlas::util::intern_str("gpu");
-  auto values = measurements_to_map(ms, gpu_ref);
-  expect_value(values, "gpu.count", 2);
-  expect_value(values, "gpu.usedMemory|gpu-0", 2900);
-  expect_value(values, "gpu.freeMemory|gpu-0", 100);
-  expect_value(values, "gpu.totalMemory|gpu-0", 3000);
-  expect_value(values, "gpu.usedMemory|gpu-1", 2000);
-  expect_value(values, "gpu.freeMemory|gpu-1", 1000);
-  expect_value(values, "gpu.totalMemory|gpu-1", 3000);
-  expect_value(values, "gpu.utilization|gpu-0", 0);
-  expect_value(values, "gpu.utilization|gpu-1", 100);
-  expect_value(values, "gpu.memoryActivity|gpu-0", 0);
-  expect_value(values, "gpu.memoryActivity|gpu-1", 25);
+  auto values = measurements_to_map(ms, "gpu");
+  expect_value(&values, "gpu.count", 2);
+  expect_value(&values, "gpu.usedMemory|gpu-0", 2900);
+  expect_value(&values, "gpu.freeMemory|gpu-0", 100);
+  expect_value(&values, "gpu.totalMemory|gpu-0", 3000);
+  expect_value(&values, "gpu.usedMemory|gpu-1", 2000);
+  expect_value(&values, "gpu.freeMemory|gpu-1", 1000);
+  expect_value(&values, "gpu.totalMemory|gpu-1", 3000);
+  expect_value(&values, "gpu.utilization|gpu-0", 0);
+  expect_value(&values, "gpu.utilization|gpu-1", 100);
+  expect_value(&values, "gpu.memoryActivity|gpu-0", 0);
+  expect_value(&values, "gpu.memoryActivity|gpu-1", 25);
 
   expect_dist_summary(ms, "gpu.temperature", 72 + 42, 2, 72, 72 * 72.0 + 42 * 42);
 }

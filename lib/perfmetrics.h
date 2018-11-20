@@ -1,6 +1,6 @@
 #pragma once
 
-#include <atlas/meter/registry.h>
+#include <spectator/registry.h>
 #include <fmt/format.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -208,7 +208,7 @@ class PerfCounter {
 
 class PerfMetrics {
  public:
-  PerfMetrics(atlas::meter::Registry* registry, std::string path_prefix)
+  PerfMetrics(spectator::Registry* registry, std::string path_prefix)
       : registry_(registry), path_prefix_(std::move(path_prefix)) {
     static constexpr const char* kEnableEnvVar = "ATLAS_ENABLE_PMU_METRICS";
     auto enabled_var = std::getenv(kEnableEnvVar);
@@ -235,10 +235,10 @@ class PerfMetrics {
       return;
     }
 
-    instructions_ds = registry_->distribution_summary("sys.cpu.instructions");
-    cycles_ds = registry_->distribution_summary("sys.cpu.cycles");
-    cache_ds = registry_->ddistribution_summary("sys.cpu.cacheMissRate");
-    branch_ds = registry_->ddistribution_summary("sys.cpu.branchMispredictionRate");
+    instructions_ds = registry_->GetDistributionSummary("sys.cpu.instructions");
+    cycles_ds = registry_->GetDistributionSummary("sys.cpu.cycles");
+    cache_ds = registry_->GetDistributionSummary("sys.cpu.cacheMissRate");
+    branch_ds = registry_->GetDistributionSummary("sys.cpu.branchMispredictionRate");
   }
 
   bool open_perf_counters_if_needed() {
@@ -317,7 +317,7 @@ class PerfMetrics {
 
  private:
   bool disabled_ = true;
-  atlas::meter::Registry* registry_;
+  spectator::Registry* registry_;
   std::string path_prefix_;
   std::vector<bool> online_cpus_;
   UnixFile pid_{-1};
@@ -329,17 +329,17 @@ class PerfMetrics {
   PerfCounter branch_misses{PERF_COUNT_HW_BRANCH_MISSES};
 
   // instructions
-  std::shared_ptr<atlas::meter::DistributionSummary> instructions_ds;
+  std::shared_ptr<spectator::DistributionSummary> instructions_ds;
 
   // cycles
-  std::shared_ptr<atlas::meter::DistributionSummary> cycles_ds;
+  std::shared_ptr<spectator::DistributionSummary> cycles_ds;
 
   // cache miss rate
-  std::shared_ptr<atlas::meter::DDistributionSummary> cache_ds;
+  std::shared_ptr<spectator::DistributionSummary> cache_ds;
   // branch miss rate
-  std::shared_ptr<atlas::meter::DDistributionSummary> branch_ds;
+  std::shared_ptr<spectator::DistributionSummary> branch_ds;
 
-  void update_ds(PerfCounter& a, atlas::meter::DistributionSummary* ds, const char* name) {
+  void update_ds(PerfCounter& a, spectator::DistributionSummary* ds, const char* name) {
     auto a_values = a.read_delta();
     // update our distribution summary with values from each CPU
     for (auto v : a_values) {
@@ -348,7 +348,7 @@ class PerfMetrics {
     }
   }
 
-  static void update_rate(PerfCounter& a, PerfCounter& b, atlas::meter::DDistributionSummary* ds,
+  static void update_rate(PerfCounter& a, PerfCounter& b, spectator::DistributionSummary* ds,
                           const char* name) {
     auto a_values = a.read_delta();
     auto b_values = b.read_delta();

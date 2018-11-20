@@ -1,5 +1,4 @@
 #include "disk.h"
-#include "atlas-helpers.h"
 #include "contain.h"
 #include "logger.h"
 #include "util.h"
@@ -10,12 +9,12 @@
 
 namespace atlasagent {
 
-using atlas::meter::IdPtr;
-using atlas::meter::Registry;
-using atlas::meter::Tags;
+using spectator::IdPtr;
+using spectator::Registry;
+using spectator::Tags;
 
 Disk::Disk(Registry* registry, std::string path_prefix) noexcept
-    : registry_(registry), path_prefix_(std::move(path_prefix)), counters_(registry) {}
+    : registry_(registry), path_prefix_(std::move(path_prefix)) {}
 
 std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix) {
   std::unordered_set<std::string> res;
@@ -211,14 +210,13 @@ void Disk::diskio_stats() noexcept {
     if (st.major == kLoopDevice || st.major == kRamDevice) {
       continue;  // ignore loop and ram devices
     }
-    counters_.get(id_for(registry_, "disk.io.bytes", kRead, st.device))
-        ->Set(static_cast<int64_t>(st.rsect) * 512);
-    counters_.get(id_for(registry_, "disk.io.ops", kRead, st.device))
-        ->Set(static_cast<int64_t>(st.rio));
-    counters_.get(id_for(registry_, "disk.io.bytes", kWrite, st.device))
-        ->Set(static_cast<int64_t>(st.wsect) * 512);
-    counters_.get(id_for(registry_, "disk.io.ops", kWrite, st.device))
-        ->Set(static_cast<int64_t>(st.wio));
+    registry_->GetMonotonicCounter(id_for(registry_, "disk.io.bytes", kRead, st.device))
+        ->Set(st.rsect * 512);
+    registry_->GetMonotonicCounter(id_for(registry_, "disk.io.ops", kRead, st.device))->Set(st.rio);
+    registry_->GetMonotonicCounter(id_for(registry_, "disk.io.bytes", kWrite, st.device))
+        ->Set(st.wsect * 512);
+    registry_->GetMonotonicCounter(id_for(registry_, "disk.io.ops", kWrite, st.device))
+        ->Set(st.wio);
   }
 }
 
@@ -235,7 +233,7 @@ void Disk::update_gauge(const char* prefix, const char* name, const Tags& tags,
                         double value) noexcept {
   std::string nameStr{prefix};
   nameStr += name;
-  gauge(registry_, nameStr, tags)->Update(value);
+  registry_->GetGauge(registry_->CreateId(nameStr, tags))->Set(value);
 }
 
 void Disk::update_stats_for(const MountPoint& mp, const char* prefix) noexcept {

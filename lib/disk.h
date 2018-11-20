@@ -1,11 +1,9 @@
 #pragma once
 
-#include <atlas/meter/registry.h>
+#include <spectator/registry.h>
 #include <vector>
-#include <atlas/meter/id.h>
 #include <contain.h>
 #include "../config.h"
-#include "counters.h"
 
 namespace atlasagent {
 struct MountPoint {
@@ -36,14 +34,13 @@ struct DiskIo {
 
 class Disk {
  public:
-  explicit Disk(atlas::meter::Registry* registry, std::string path_prefix = "") noexcept;
+  explicit Disk(spectator::Registry* registry, std::string path_prefix = "") noexcept;
   void titus_disk_stats() noexcept;
   void disk_stats() noexcept;
   void set_prefix(const std::string& new_prefix) noexcept;  // for testing
  private:
-  atlas::meter::Registry* registry_;
+  spectator::Registry* registry_;
   std::string path_prefix_;
-  Counters counters_;
 
  protected:
   // protected for testing
@@ -54,10 +51,8 @@ class Disk {
   std::vector<DiskIo> get_disk_stats() const noexcept;
   void update_titus_stats_for(const MountPoint& mp) noexcept;
   void update_stats_for(const MountPoint& mp, const char* prefix) noexcept;
-  void btrfs_stats(const MountPoint& mp) noexcept;
-  void overlay_stats(const MountPoint& mp) noexcept;
 
-  void update_gauge(const char* prefix, const char* name, const atlas::meter::Tags& tags,
+  void update_gauge(const char* prefix, const char* name, const spectator::Tags& tags,
                     double value) noexcept;
 
   void diskio_stats() noexcept;

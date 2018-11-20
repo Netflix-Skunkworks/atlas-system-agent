@@ -1,13 +1,12 @@
 #include "proc.h"
-#include "atlas-helpers.h"
 #include "util.h"
 #include <cinttypes>
 #include <cstring>
 
 namespace atlasagent {
 
-Proc::Proc(atlas::meter::Registry* registry, std::string path_prefix) noexcept
-    : registry_(registry), path_prefix_(std::move(path_prefix)), counters_(registry) {}
+Proc::Proc(spectator::Registry* registry, std::string path_prefix) noexcept
+    : registry_(registry), path_prefix_(std::move(path_prefix)) {}
 
 static void discard_line(FILE* fp) {
   for (auto ch = getc_unlocked(fp); ch != EOF && ch != '\n'; ch = getc_unlocked(fp)) {
@@ -15,11 +14,9 @@ static void discard_line(FILE* fp) {
   }
 }
 
-using atlas::meter::IdPtr;
-using atlas::meter::kEmptyTags;
-using atlas::meter::MonotonicCounter;
-using atlas::meter::Registry;
-using atlas::meter::Tags;
+using spectator::IdPtr;
+using spectator::Registry;
+using spectator::Tags;
 
 static IdPtr id_for(Registry* registry, const char* name, const char* iface,
                     const char* idStr) noexcept {
@@ -42,10 +39,13 @@ void Proc::handle_line(FILE* fp) noexcept {
   if (assigned > 0) {
     iface[strlen(iface) - 1] = '\0';  // strip trailing ':'
 
-    counters_.get(id_for(registry_, "net.iface.bytes", iface, "in"))->Set(bytes);
-    counters_.get(id_for(registry_, "net.iface.packets", iface, "in"))->Set(packets);
-    counters_.get(id_for(registry_, "net.iface.errors", iface, "in"))->Set(errs + fifo + frame);
-    counters_.get(id_for(registry_, "net.iface.droppedPackets", iface, "in"))->Set(drop);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.bytes", iface, "in"))->Set(bytes);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.packets", iface, "in"))
+        ->Set(packets);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.errors", iface, "in"))
+        ->Set(errs + fifo + frame);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.droppedPackets", iface, "in"))
+        ->Set(drop);
   }
 
   assigned = fscanf(fp,
@@ -53,11 +53,15 @@ void Proc::handle_line(FILE* fp) noexcept {
                     " %" PRId64 " %" PRId64,
                     &bytes, &packets, &errs, &drop, &fifo, &colls, &carrier, &compressed);
   if (assigned > 0) {
-    counters_.get(id_for(registry_, "net.iface.bytes", iface, "out"))->Set(bytes);
-    counters_.get(id_for(registry_, "net.iface.packets", iface, "out"))->Set(packets);
-    counters_.get(id_for(registry_, "net.iface.errors", iface, "out"))->Set(errs + fifo);
-    counters_.get(id_for(registry_, "net.iface.droppedPackets", iface, "out"))->Set(drop);
-    counters_.get(id_for(registry_, "net.iface.collissions", iface, nullptr))->Set(colls);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.bytes", iface, "out"))->Set(bytes);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.packets", iface, "out"))
+        ->Set(packets);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.errors", iface, "out"))
+        ->Set(errs + fifo);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.droppedPackets", iface, "out"))
+        ->Set(drop);
+    registry_->GetMonotonicCounter(id_for(registry_, "net.iface.collisions", iface, nullptr))
+        ->Set(colls);
   }
 }
 
@@ -109,9 +113,10 @@ void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcep
   }
 }
 
-using gauge_ptr = std::shared_ptr<atlas::meter::Gauge<double>>;
-inline gauge_ptr tcpstate_gauge(Registry* registry, const char* state, const char* protocol) {
-  return registry->gauge(
+using gauge_ptr = std::shared_ptr<spectator::Gauge>;
+inline std::shared_ptr<spectator::Gauge> tcpstate_gauge(Registry* registry, const char* state,
+                                                        const char* protocol) {
+  return registry->GetGauge(
       registry->CreateId("net.tcp.connectionStates", {{"id", state}, {"proto", protocol}}));
 }
 
@@ -136,7 +141,7 @@ inline void update_tcpstates_for_proto(const std::array<gauge_ptr, kConnStates>&
   if (fp != nullptr) {
     sum_tcp_states(fp, &connections);
     for (auto i = 1; i < kConnStates; ++i) {
-      gauges[i]->Update(connections[i]);
+      gauges[i]->Set(connections[i]);
     }
   }
 }
@@ -177,16 +182,15 @@ void Proc::snmp_stats() noexcept {
 }
 
 void Proc::parse_ip_stats(const char* buf) noexcept {
-  static MonotonicCounter ipInReceivesCtr(
-      registry_, registry_->CreateId("net.ip.datagrams", Tags{{"id", "in"}}));
-  static MonotonicCounter ipInDicardsCtr(
-      registry_, registry_->CreateId("net.ip.discards", Tags{{"id", "in"}}));
-  static MonotonicCounter ipOutRequestsCtr(
-      registry_, registry_->CreateId("net.ip.datagrams", Tags{{"id", "out"}}));
-  static MonotonicCounter ipOutDiscardsCtr(
-      registry_, registry_->CreateId("net.ip.discards", Tags{{"id", "out"}}));
-  static MonotonicCounter ipReasmReqdsCtr(registry_,
-                                          registry_->CreateId("net.ip.reasmReqds", kEmptyTags));
+  static auto ipInReceivesCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.ip.datagrams", Tags{{"id", "in"}}));
+  static auto ipInDicardsCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.ip.discards", Tags{{"id", "in"}}));
+  static auto ipOutRequestsCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.ip.datagrams", Tags{{"id", "out"}}));
+  static auto ipOutDiscardsCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.ip.discards", Tags{{"id", "out"}}));
+  static auto ipReasmReqdsCtr = registry_->GetMonotonicCounter("net.ip.reasmReqds");
 
   u_long ipForwarding, ipDefaultTTL, ipInReceives, ipInHdrErrors, ipInAddrErrors, ipForwDatagrams,
       ipInUnknownProtos, ipInDiscards, ipInDelivers, ipOutRequests, ipOutDiscards, ipOutNoRoutes,
@@ -201,34 +205,33 @@ void Proc::parse_ip_stats(const char* buf) noexcept {
          &ipOutRequests, &ipOutDiscards, &ipOutNoRoutes, &ipReasmTimeout, &ipReasmReqds,
          &ipReasmOKs, &ipReasmFails, &ipFragOKs, &ipFragFails, &ipFragCreates);
 
-  ipInReceivesCtr.Set(static_cast<int64_t>(ipInReceives));
-  ipInDicardsCtr.Set(static_cast<int64_t>(ipInDiscards));
-  ipOutRequestsCtr.Set(static_cast<int64_t>(ipOutRequests));
-  ipOutDiscardsCtr.Set(static_cast<int64_t>(ipOutDiscards));
-  ipReasmReqdsCtr.Set(static_cast<int64_t>(ipReasmReqds));
+  ipInReceivesCtr->Set(ipInReceives);
+  ipInDicardsCtr->Set(ipInDiscards);
+  ipOutRequestsCtr->Set(ipOutRequests);
+  ipOutDiscardsCtr->Set(ipOutDiscards);
+  ipReasmReqdsCtr->Set(ipReasmReqds);
 }
 
 void Proc::parse_tcp_stats(const char* buf) noexcept {
-  static MonotonicCounter tcpInSegsCtr(registry_,
-                                       registry_->CreateId("net.tcp.segments", Tags{{"id", "in"}}));
-  static MonotonicCounter tcpOutSegsCtr(
-      registry_, registry_->CreateId("net.tcp.segments", Tags{{"id", "out"}}));
-  static MonotonicCounter tcpRetransSegsCtr(
-      registry_, registry_->CreateId("net.tcp.errors", Tags{{"id", "retransSegs"}}));
-  static MonotonicCounter tcpInErrsCtr(
-      registry_, registry_->CreateId("net.tcp.errors", Tags{{"id", "inErrs"}}));
-  static MonotonicCounter tcpOutRstsCtr(
-      registry_, registry_->CreateId("net.tcp.errors", Tags{{"id", "outRsts"}}));
-  static MonotonicCounter tcpAttemptFailsCtr(
-      registry_, registry_->CreateId("net.tcp.errors", Tags{{"id", "attemptFails"}}));
-  static MonotonicCounter tcpEstabResetsCtr(
-      registry_, registry_->CreateId("net.tcp.errors", Tags{{"id", "estabResets"}}));
-  static MonotonicCounter tcpActiveOpensCtr(
-      registry_, registry_->CreateId("net.tcp.opens", Tags{{"id", "active"}}));
-  static MonotonicCounter tcpPassiveOpensCtr(
-      registry_, registry_->CreateId("net.tcp.opens", Tags{{"id", "passive"}}));
-  static auto tcpCurrEstabGauge =
-      registry_->gauge(registry_->CreateId("net.tcp.currEstab", Tags{}));
+  static auto tcpInSegsCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.tcp.segments", Tags{{"id", "in"}}));
+  static auto tcpOutSegsCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.tcp.segments", Tags{{"id", "out"}}));
+  static auto tcpRetransSegsCtr = registry_->GetMonotonicCounter(
+      registry_->CreateId("net.tcp.errors", Tags{{"id", "retransSegs"}}));
+  static auto tcpInErrsCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.tcp.errors", Tags{{"id", "inErrs"}}));
+  static auto tcpOutRstsCtr = registry_->GetMonotonicCounter(
+      registry_->CreateId("net.tcp.errors", Tags{{"id", "outRsts"}}));
+  static auto tcpAttemptFailsCtr = registry_->GetMonotonicCounter(
+      registry_->CreateId("net.tcp.errors", Tags{{"id", "attemptFails"}}));
+  static auto tcpEstabResetsCtr = registry_->GetMonotonicCounter(
+      registry_->CreateId("net.tcp.errors", Tags{{"id", "estabResets"}}));
+  static auto tcpActiveOpensCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.tcp.opens", Tags{{"id", "active"}}));
+  static auto tcpPassiveOpensCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.tcp.opens", Tags{{"id", "passive"}}));
+  static auto tcpCurrEstabGauge = registry_->GetGauge("net.tcp.currEstab");
 
   if (buf == nullptr) {
     return;
@@ -241,30 +244,30 @@ void Proc::parse_tcp_stats(const char* buf) noexcept {
       sscanf(buf, TCP_STATS_LINE, &tcpRtoAlgorithm, &tcpRtoMin, &tcpRtoMax, &tcpMaxConn,
              &tcpActiveOpens, &tcpPassiveOpens, &tcpAttemptFails, &tcpEstabResets, &tcpCurrEstab,
              &tcpInSegs, &tcpOutSegs, &tcpRetransSegs, &tcpInErrs, &tcpOutRsts);
-  tcpInSegsCtr.Set(static_cast<int64_t>(tcpInSegs));
-  tcpOutSegsCtr.Set(static_cast<int64_t>(tcpOutSegs));
-  tcpRetransSegsCtr.Set(static_cast<int64_t>(tcpRetransSegs));
-  tcpActiveOpensCtr.Set(static_cast<int64_t>(tcpActiveOpens));
-  tcpPassiveOpensCtr.Set(static_cast<int64_t>(tcpPassiveOpens));
-  tcpAttemptFailsCtr.Set(static_cast<int64_t>(tcpAttemptFails));
-  tcpEstabResetsCtr.Set(static_cast<int64_t>(tcpEstabResets));
-  tcpCurrEstabGauge->Update(tcpCurrEstab);
+  tcpInSegsCtr->Set(tcpInSegs);
+  tcpOutSegsCtr->Set(tcpOutSegs);
+  tcpRetransSegsCtr->Set(tcpRetransSegs);
+  tcpActiveOpensCtr->Set(tcpActiveOpens);
+  tcpPassiveOpensCtr->Set(tcpPassiveOpens);
+  tcpAttemptFailsCtr->Set(tcpAttemptFails);
+  tcpEstabResetsCtr->Set(tcpEstabResets);
+  tcpCurrEstabGauge->Set(tcpCurrEstab);
 
   if (ret > 12) {
-    tcpInErrsCtr.Set(static_cast<int64_t>(tcpInErrs));
+    tcpInErrsCtr->Set(tcpInErrs);
   }
   if (ret > 13) {
-    tcpOutRstsCtr.Set(static_cast<int64_t>(tcpOutRsts));
+    tcpOutRstsCtr->Set(tcpOutRsts);
   }
 }
 
 void Proc::parse_udp_stats(const char* buf) noexcept {
-  static MonotonicCounter udpInDatagramsCtr(
-      registry_, registry_->CreateId("net.udp.datagrams", Tags{{"id", "in"}}));
-  static MonotonicCounter udpOutDatagramsCtr(
-      registry_, registry_->CreateId("net.udp.datagrams", Tags{{"id", "out"}}));
-  static MonotonicCounter udpInErrorsCtr(
-      registry_, registry_->CreateId("net.udp.errors", Tags{{"id", "inErrors"}}));
+  static auto udpInDatagramsCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.udp.datagrams", Tags{{"id", "in"}}));
+  static auto udpOutDatagramsCtr =
+      registry_->GetMonotonicCounter(registry_->CreateId("net.udp.datagrams", Tags{{"id", "out"}}));
+  static auto udpInErrorsCtr = registry_->GetMonotonicCounter(
+      registry_->CreateId("net.udp.errors", Tags{{"id", "inErrors"}}));
 
   if (buf == nullptr) {
     return;
@@ -273,22 +276,22 @@ void Proc::parse_udp_stats(const char* buf) noexcept {
   u_long udpInDatagrams, udpNoPorts, udpInErrors, udpOutDatagrams;
   sscanf(buf, UDP_STATS_LINE, &udpInDatagrams, &udpNoPorts, &udpInErrors, &udpOutDatagrams);
 
-  udpInDatagramsCtr.Set(static_cast<int64_t>(udpInDatagrams));
-  udpInErrorsCtr.Set(static_cast<int64_t>(udpInErrors));
-  udpOutDatagramsCtr.Set(static_cast<int64_t>(udpOutDatagrams));
+  udpInDatagramsCtr->Set(udpInDatagrams);
+  udpInErrorsCtr->Set(udpInErrors);
+  udpOutDatagramsCtr->Set(udpOutDatagrams);
 }
 
 void Proc::parse_load_avg(const char* buf) noexcept {
-  static auto loadAvg1Gauge = registry_->gauge(registry_->CreateId("sys.load.1", Tags{}));
-  static auto loadAvg5Gauge = registry_->gauge(registry_->CreateId("sys.load.5", Tags{}));
-  static auto loadAvg15Gauge = registry_->gauge(registry_->CreateId("sys.load.15", Tags{}));
+  static auto loadAvg1Gauge = registry_->GetGauge("sys.load.1");
+  static auto loadAvg5Gauge = registry_->GetGauge("sys.load.5");
+  static auto loadAvg15Gauge = registry_->GetGauge("sys.load.15");
 
   double loadAvg1, loadAvg5, loadAvg15;
   sscanf(buf, LOADAVG_LINE, &loadAvg1, &loadAvg5, &loadAvg15);
 
-  loadAvg1Gauge->Update(loadAvg1);
-  loadAvg5Gauge->Update(loadAvg5);
-  loadAvg15Gauge->Update(loadAvg15);
+  loadAvg1Gauge->Set(loadAvg1);
+  loadAvg5Gauge->Set(loadAvg5);
+  loadAvg15Gauge->Set(loadAvg15);
 }
 
 void Proc::loadavg_stats() noexcept {
@@ -339,8 +342,9 @@ struct cpu_gauge_vals {
   double interrupt;
 };
 
+template <typename G>
 struct cpu_gauges {
-  using gauge_ptr = std::shared_ptr<atlas::meter::Gauge<double>>;
+  using gauge_ptr = std::shared_ptr<G>;
   using gauge_maker_t =
       std::function<gauge_ptr(Registry* registry, const char* name, const char* id)>;
   cpu_gauges(Registry* registry, const char* name, const gauge_maker_t& gauge_maker)
@@ -351,28 +355,28 @@ struct cpu_gauges {
         wait_gauge(gauge_maker(registry, name, "wait")),
         interrupt_gauge(gauge_maker(registry, name, "interrupt")) {}
 
-  std::shared_ptr<atlas::meter::Gauge<double>> user_gauge;
-  std::shared_ptr<atlas::meter::Gauge<double>> system_gauge;
-  std::shared_ptr<atlas::meter::Gauge<double>> stolen_gauge;
-  std::shared_ptr<atlas::meter::Gauge<double>> nice_gauge;
-  std::shared_ptr<atlas::meter::Gauge<double>> wait_gauge;
-  std::shared_ptr<atlas::meter::Gauge<double>> interrupt_gauge;
+  gauge_ptr user_gauge;
+  gauge_ptr system_gauge;
+  gauge_ptr stolen_gauge;
+  gauge_ptr nice_gauge;
+  gauge_ptr wait_gauge;
+  gauge_ptr interrupt_gauge;
 
   void update(const cpu_gauge_vals& vals) {
-    user_gauge->Update(vals.user);
-    system_gauge->Update(vals.system);
-    stolen_gauge->Update(vals.stolen);
-    nice_gauge->Update(vals.nice);
-    wait_gauge->Update(vals.wait);
-    interrupt_gauge->Update(vals.interrupt);
+    user_gauge->Set(vals.user);
+    system_gauge->Set(vals.system);
+    stolen_gauge->Set(vals.stolen);
+    nice_gauge->Set(vals.nice);
+    wait_gauge->Set(vals.wait);
+    interrupt_gauge->Set(vals.interrupt);
   }
 };
 
 struct cores_dist_summary {
   cores_dist_summary(Registry* registry, const char* name)
-      : usage_ds(registry->ddistribution_summary(name)) {}
+      : usage_ds(registry->GetDistributionSummary(name)) {}
 
-  std::shared_ptr<atlas::meter::DDistributionSummary> usage_ds;
+  std::shared_ptr<spectator::DistributionSummary> usage_ds;
 
   void update(const cpu_gauge_vals& vals) {
     auto usage = vals.user + vals.system + vals.stolen + vals.nice + vals.wait + vals.interrupt;
@@ -436,7 +440,7 @@ struct stat_vals {
 }  // namespace detail
 
 inline void set_if_present(const std::unordered_map<std::string, int64_t>& stats, const char* key,
-                           MonotonicCounter* ctr) {
+                           spectator::MonotonicCounter* ctr) {
   auto it = stats.find(key);
   if (it != stats.end()) {
     ctr->Set(it->second);
@@ -444,24 +448,23 @@ inline void set_if_present(const std::unordered_map<std::string, int64_t>& stats
 }
 
 void Proc::vmstats() noexcept {
-  static MonotonicCounter processes{registry_,
-                                    registry_->CreateId("vmstat.procs.count", kEmptyTags)};
+  static auto processes = registry_->GetMonotonicCounter("vmstat.procs.count");
   static auto procs_running =
-      registry_->gauge(registry_->CreateId("vmstat.procs", {{"id", "running"}}));
+      registry_->GetGauge(registry_->CreateId("vmstat.procs", {{"id", "running"}}));
   static auto procs_blocked =
-      registry_->gauge(registry_->CreateId("vmstat.procs", {{"id", "blocked"}}));
+      registry_->GetGauge(registry_->CreateId("vmstat.procs", {{"id", "blocked"}}));
 
-  static MonotonicCounter page_in{registry_,
-                                  registry_->CreateId("vmstat.paging", Tags{{"id", "in"}})};
-  static MonotonicCounter page_out{registry_,
-                                   registry_->CreateId("vmstat.paging", Tags{{"id", "out"}})};
-  static MonotonicCounter swap_in{registry_,
-                                  registry_->CreateId("vmstat.swapping", Tags{{"id", "in"}})};
-  static MonotonicCounter swap_out{registry_,
-                                   registry_->CreateId("vmstat.swapping", Tags{{"id", "out"}})};
+  static auto page_in =
+      registry_->GetMonotonicCounter(registry_->CreateId("vmstat.paging", Tags{{"id", "in"}}));
+  static auto page_out =
+      registry_->GetMonotonicCounter(registry_->CreateId("vmstat.paging", Tags{{"id", "out"}}));
+  static auto swap_in =
+      registry_->GetMonotonicCounter(registry_->CreateId("vmstat.swapping", Tags{{"id", "in"}}));
+  static auto swap_out =
+      registry_->GetMonotonicCounter(registry_->CreateId("vmstat.swapping", Tags{{"id", "out"}}));
 
-  static auto fh_alloc = registry_->gauge(registry_->CreateId("vmstat.fh.allocated", kEmptyTags));
-  static auto fh_max = registry_->gauge(registry_->CreateId("vmstat.fh.max", kEmptyTags));
+  static auto fh_alloc = registry_->GetGauge("vmstat.fh.allocated");
+  static auto fh_max = registry_->GetGauge("vmstat.fh.max");
 
   auto fp = open_file(path_prefix_, "stat");
   if (fp == nullptr) {
@@ -473,39 +476,39 @@ void Proc::vmstats() noexcept {
     if (starts_with(line, "processes")) {
       u_long n;
       sscanf(line, "processes %lu", &n);
-      processes.Set(n);
+      processes->Set(n);
     } else if (starts_with(line, "procs_running")) {
       u_long n;
       sscanf(line, "procs_running %lu", &n);
-      procs_running->Update(n);
+      procs_running->Set(n);
     } else if (starts_with(line, "procs_blocked")) {
       u_long n;
       sscanf(line, "procs_blocked %lu", &n);
-      procs_blocked->Update(n);
+      procs_blocked->Set(n);
     }
   }
 
   std::unordered_map<std::string, int64_t> vmstats;
   parse_kv_from_file(path_prefix_, "vmstat", &vmstats);
-  set_if_present(vmstats, "pgpgin", &page_in);
-  set_if_present(vmstats, "pgpgout", &page_out);
-  set_if_present(vmstats, "pswpin", &swap_in);
-  set_if_present(vmstats, "pswpout", &swap_out);
+  set_if_present(vmstats, "pgpgin", page_in.get());
+  set_if_present(vmstats, "pgpgout", page_out.get());
+  set_if_present(vmstats, "pswpin", swap_in.get());
+  set_if_present(vmstats, "pswpout", swap_out.get());
 
   auto fh = open_file(path_prefix_, "sys/fs/file-nr");
   if (fgets(line, sizeof line, fh) != nullptr) {
     u_long alloc, used, max;
     if (sscanf(line, "%lu %lu %lu", &alloc, &used, &max) == 3) {
-      fh_alloc->Update(alloc);
-      fh_max->Update(max);
+      fh_alloc->Set(alloc);
+      fh_max->Set(max);
     }
   }
 }
 
 void Proc::peak_cpu_stats() noexcept {
-  static detail::cpu_gauges peakUtilizationGauges{
+  static detail::cpu_gauges<spectator::MaxGauge> peakUtilizationGauges{
       registry_, "sys.cpu.peakUtilization", [](Registry* r, const char* name, const char* id) {
-        return r->max_gauge(r->CreateId(name, Tags{{"id", id}}));
+        return r->GetMaxGauge(r->CreateId(name, Tags{{"id", id}}));
       }};
   static detail::stat_vals prev;
 
@@ -527,9 +530,9 @@ void Proc::peak_cpu_stats() noexcept {
 }
 
 void Proc::cpu_stats() noexcept {
-  static detail::cpu_gauges utilizationGauges{
+  static detail::cpu_gauges<spectator::Gauge> utilizationGauges{
       registry_, "sys.cpu.utilization", [](Registry* r, const char* name, const char* id) {
-        return r->gauge(r->CreateId(name, Tags{{"id", id}}));
+        return r->GetGauge(r->CreateId(name, Tags{{"id", id}}));
       }};
 
   static detail::cores_dist_summary coresDistSummary{registry_, "sys.cpu.coreUtilization"};
@@ -575,15 +578,15 @@ void Proc::cpu_stats() noexcept {
 }
 
 void Proc::memory_stats() noexcept {
-  static auto avail_real = registry_->gauge(registry_->CreateId("mem.availReal", kEmptyTags));
-  static auto free_real = registry_->gauge(registry_->CreateId("mem.freeReal", kEmptyTags));
-  static auto total_real = registry_->gauge(registry_->CreateId("mem.totalReal", kEmptyTags));
-  static auto avail_swap = registry_->gauge(registry_->CreateId("mem.availSwap", kEmptyTags));
-  static auto total_swap = registry_->gauge(registry_->CreateId("mem.totalSwap", kEmptyTags));
-  static auto buffer = registry_->gauge(registry_->CreateId("mem.buffer", kEmptyTags));
-  static auto cached = registry_->gauge(registry_->CreateId("mem.cached", kEmptyTags));
-  static auto shared = registry_->gauge(registry_->CreateId("mem.shared", kEmptyTags));
-  static auto total_free = registry_->gauge(registry_->CreateId("mem.totalFree", kEmptyTags));
+  static auto avail_real = registry_->GetGauge("mem.availReal");
+  static auto free_real = registry_->GetGauge("mem.freeReal");
+  static auto total_real = registry_->GetGauge("mem.totalReal");
+  static auto avail_swap = registry_->GetGauge("mem.availSwap");
+  static auto total_swap = registry_->GetGauge("mem.totalSwap");
+  static auto buffer = registry_->GetGauge("mem.buffer");
+  static auto cached = registry_->GetGauge("mem.cached");
+  static auto shared = registry_->GetGauge("mem.shared");
+  static auto total_free = registry_->GetGauge("mem.totalFree");
 
   auto fp = open_file(path_prefix_, "meminfo");
   if (fp == nullptr) {
@@ -596,40 +599,40 @@ void Proc::memory_stats() noexcept {
     if (starts_with(line, "MemTotal:")) {
       u_long n;
       sscanf(line, "MemTotal: %lu", &n);
-      total_real->Update(n * 1024.0);
+      total_real->Set(n * 1024.0);
     } else if (starts_with(line, "MemFree:")) {
       u_long n;
       sscanf(line, "MemFree: %lu", &n);
-      free_real->Update(n * 1024.0);
+      free_real->Set(n * 1024.0);
       total_free_bytes += n;
     } else if (starts_with(line, "MemAvailable:")) {
       u_long n;
       sscanf(line, "MemAvailable: %lu", &n);
-      avail_real->Update(n * 1024.0);
+      avail_real->Set(n * 1024.0);
     } else if (starts_with(line, "SwapFree:")) {
       u_long n;
       sscanf(line, "SwapFree: %lu", &n);
-      avail_swap->Update(n * 1024.0);
+      avail_swap->Set(n * 1024.0);
       total_free_bytes += n;
     } else if (starts_with(line, "SwapTotal:")) {
       u_long n;
       sscanf(line, "SwapTotal: %lu", &n);
-      total_swap->Update(n * 1024.0);
+      total_swap->Set(n * 1024.0);
     } else if (starts_with(line, "Buffers:")) {
       u_long n;
       sscanf(line, "Buffers: %lu", &n);
-      buffer->Update(n * 1024.0);
+      buffer->Set(n * 1024.0);
     } else if (starts_with(line, "Cached:")) {
       u_long n;
       sscanf(line, "Cached: %lu", &n);
-      cached->Update(n * 1024.0);
+      cached->Set(n * 1024.0);
     } else if (starts_with(line, "Shmem:")) {
       u_long n;
       sscanf(line, "Shmem: %lu", &n);
-      shared->Update(n * 1024.0);
+      shared->Set(n * 1024.0);
     }
   }
-  total_free->Update(total_free_bytes * 1024.0);
+  total_free->Set(total_free_bytes * 1024.0);
 }
 
 int64_t to_int64(const std::string& s) {
@@ -639,12 +642,11 @@ int64_t to_int64(const std::string& s) {
 }
 
 void Proc::netstat_stats() noexcept {
-  static MonotonicCounter ect_ctr{
-      registry_, registry_->CreateId("net.ip.ectPackets", Tags{{"id", "capable"}})};
-  static MonotonicCounter noEct_ctr{
-      registry_, registry_->CreateId("net.ip.ectPackets", Tags{{"id", "notCapable"}})};
-  static MonotonicCounter congested_ctr{registry_,
-                                        registry_->CreateId("net.ip.congestedPackets", Tags{})};
+  static auto ect_ctr = registry_->GetMonotonicCounter(
+      registry_->CreateId("net.ip.ectPackets", Tags{{"id", "capable"}}));
+  static auto noEct_ctr = registry_->GetMonotonicCounter(
+      registry_->CreateId("net.ip.ectPackets", Tags{{"id", "notCapable"}}));
+  static auto congested_ctr = registry_->GetMonotonicCounter("net.ip.congestedPackets");
 
   auto fp = open_file(path_prefix_, "net/netstat");
   if (fp == nullptr) {
@@ -684,9 +686,9 @@ void Proc::netstat_stats() noexcept {
   // Set all the counters if we have data. We want to explicitly send a 0 value for congested to
   // distinguish known no congestion from no data
   if (ect > 0 || noEct > 0) {
-    congested_ctr.Set(congested);
-    ect_ctr.Set(ect);
-    noEct_ctr.Set(noEct);
+    congested_ctr->Set(congested);
+    ect_ctr->Set(ect);
+    noEct_ctr->Set(noEct);
   }
 }
 

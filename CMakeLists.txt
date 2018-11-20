@@ -40,11 +40,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFMT_HEADER_ONLY -DSPDLOG_FMT_EXTERNAL 
 set(APP_SOURCE_FILES atlas-agent.cc)
 add_executable(atlas-system-agent ${APP_SOURCE_FILES})
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
-  target_link_libraries(atlasagent libatlasclient.a)
-  target_link_libraries(atlas-system-agent atlasagent libatlasclient.a libatlascurl.a libatlaspcre.a z pthread dl -static-libgcc -static-libstdc++)
+  target_link_libraries(atlasagent libspectator_cpp.a)
+  target_link_libraries(atlas-system-agent atlasagent libspectator_cpp.a libatlascurl.a z pthread dl -static-libgcc -static-libstdc++)
 else()
-  target_link_libraries(atlasagent atlasclient)
-  target_link_libraries(atlas-system-agent atlasagent atlasclient)
+  target_link_libraries(atlasagent spectator_cpp)
+  target_link_libraries(atlas-system-agent atlasagent spectator_cpp)
 endif()
 
 # test configuration
@@ -53,7 +53,7 @@ file(GLOB TEST_SOURCE_FILES test/*.cc)
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   add_executable(test_nvml test_nvml.cc)
-  target_link_libraries(test_nvml atlasagent libatlasclient.a libatlascurl.a libatlaspcre.a z pthread dl -static-libgcc -static-libstdc++)
+  target_link_libraries(test_nvml atlasagent libspectator_cpp.a libatlascurl.a z pthread dl -static-libgcc -static-libstdc++)
 endif ()
 
 add_executable(runtests ${TEST_SOURCE_FILES})
@@ -61,7 +61,7 @@ set_target_properties(runtests PROPERTIES COMPILE_FLAGS "${CMAKE_CXX_FLAGS} -Wno
 
 add_library(gtest 3rd-party/src/gtest/gtest-all.cc)
 
-target_link_libraries(runtests atlasagent atlasclient gtest pthread z)
+target_link_libraries(runtests atlasagent spectator_cpp gtest pthread z)
 add_test(runtests runtests)
 
 add_custom_command(TARGET runtests POST_BUILD
