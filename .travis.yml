@@ -6,7 +6,7 @@ compiler:
   - gcc
 env:
   global:
-    - SPECTATOR_CPP_VERSION=v0.0.1
+    - SPECTATOR_CPP_VERSION=v0.0.2
   matrix:
     - TITUS_AGENT="-DTITUS_AGENT=ON .."
     - TITUS_AGENT=""

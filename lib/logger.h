@@ -5,10 +5,17 @@
 
 namespace atlasagent {
 
-std::shared_ptr<spdlog::logger> Logger() noexcept;
-void UseConsoleLogger() noexcept;
-void SetLoggingLevel(int level) noexcept;
-void SetLoggingDirs(const std::vector<std::string>& dirs) noexcept;
-std::string GetLoggingDir() noexcept;
+class LogManager {
+ public:
+  LogManager() noexcept;
+  std::shared_ptr<spdlog::logger> Logger() noexcept;
+
+ private:
+  std::shared_ptr<spdlog::logger> logger_;
+};
+
+LogManager& log_manager() noexcept;
+
+inline std::shared_ptr<spdlog::logger> Logger() noexcept { return log_manager().Logger(); }
 
 }  // namespace atlasagent
