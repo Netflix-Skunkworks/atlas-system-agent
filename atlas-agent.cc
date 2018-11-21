@@ -177,7 +177,6 @@ int main(int argc, const char* argv[]) {
 #endif
 
   init_signals();
-  atlasagent::UseConsoleLogger();
   auto cfg = GetSpectatorConfig();
   cfg.common_tags["xatlas.process"] = process;
 

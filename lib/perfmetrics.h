@@ -366,4 +366,5 @@ class PerfMetrics {
     }
   }
 };
+
 }  // namespace atlasagent

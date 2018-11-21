@@ -8,7 +8,6 @@ using atlasagent::NvmlDeviceHandle;
 using std::cout;
 
 int main() {
-  atlasagent::UseConsoleLogger();
   auto logger = Logger();
   logger->info("Initializing nvml");
   try {
