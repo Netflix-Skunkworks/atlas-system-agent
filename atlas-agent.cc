@@ -41,6 +41,7 @@ static void gather_minute_system_metrics(Proc* proc, Disk* disk) {
   Logger()->info("Gathering 1-min system metrics");
   proc->cpu_stats();
   proc->network_stats();
+  proc->arp_stats();
   proc->snmp_stats();
   proc->netstat_stats();
   proc->loadavg_stats();

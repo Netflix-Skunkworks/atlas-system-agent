@@ -692,4 +692,21 @@ void Proc::netstat_stats() noexcept {
   }
 }
 
+void Proc::arp_stats() noexcept {
+  static auto arpcache_size = registry_->GetGauge("net.arpCache");
+  auto fp = open_file(path_prefix_, "net/arp");
+  if (fp == nullptr) {
+    return;
+  }
+
+  // discard the header
+  discard_line(fp);
+  auto num_entries = 0;
+  while (!feof(fp)) {
+    discard_line(fp);
+    num_entries++;
+  }
+  arpcache_size->Set(num_entries);
+}
+
 }  // namespace atlasagent
