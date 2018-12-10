@@ -693,7 +693,7 @@ void Proc::netstat_stats() noexcept {
 }
 
 void Proc::arp_stats() noexcept {
-  static auto arpcache_size = registry_->GetGauge("net.arpCache");
+  static auto arpcache_size = registry_->GetGauge("net.arpCacheSize");
   auto fp = open_file(path_prefix_, "net/arp");
   if (fp == nullptr) {
     return;

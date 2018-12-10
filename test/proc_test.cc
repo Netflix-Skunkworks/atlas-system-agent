@@ -222,6 +222,6 @@ TEST(Proc, ArpStats) {
   const auto ms = registry.Measurements();
   EXPECT_EQ(ms.size(), 1);
   const auto& m = ms.front();
-  EXPECT_EQ(m.id->Name(), "net.arpCache");
+  EXPECT_EQ(m.id->Name(), "net.arpCacheSize");
   EXPECT_DOUBLE_EQ(m.value, 6);
 }
