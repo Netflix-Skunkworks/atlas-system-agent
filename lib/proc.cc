@@ -702,9 +702,11 @@ void Proc::arp_stats() noexcept {
   // discard the header
   discard_line(fp);
   auto num_entries = 0;
-  while (!feof(fp)) {
-    discard_line(fp);
-    num_entries++;
+  char line[1024];
+  while (fgets(line, sizeof line, fp) != nullptr) {
+    if (isdigit(line[0])) {
+      num_entries++;
+    }
   }
   arpcache_size->Set(num_entries);
 }
