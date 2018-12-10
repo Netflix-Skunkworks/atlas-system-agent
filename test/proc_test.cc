@@ -214,3 +214,14 @@ TEST(Proc, ParseNetstat) {
   expect_value(&values, "net.ip.congestedPackets", 30);
   EXPECT_TRUE(values.empty());
 }
+
+TEST(Proc, ArpStats) {
+  Registry registry(Config{});
+  Proc proc{&registry, "./resources/proc"};
+  proc.arp_stats();
+  const auto ms = registry.Measurements();
+  EXPECT_EQ(ms.size(), 1);
+  const auto& m = ms.front();
+  EXPECT_EQ(m.id->Name(), "net.arpCacheSize");
+  EXPECT_DOUBLE_EQ(m.value, 6);
+}

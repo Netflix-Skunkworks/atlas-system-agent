@@ -7,6 +7,7 @@ class Proc {
  public:
   explicit Proc(spectator::Registry* registry, std::string path_prefix = "/proc") noexcept;
   void network_stats() noexcept;
+  void arp_stats() noexcept;
   void snmp_stats() noexcept;
   void netstat_stats() noexcept;
   void loadavg_stats() noexcept;
