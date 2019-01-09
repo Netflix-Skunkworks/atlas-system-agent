@@ -239,7 +239,12 @@ void Disk::update_gauge(const char* prefix, const char* name, const Tags& tags,
 void Disk::update_stats_for(const MountPoint& mp, const char* prefix) noexcept {
   struct statvfs st;
   if (statvfs(mp.mount_point.c_str(), &st) != 0) {
-    Logger()->warn("Unable to statfs({}) = {}", mp.mount_point, strerror(errno));
+    // do not generate warnings for tmpfs mount points. On some systems
+    // we'll get a permission denied error (titusagents) and generate a lot
+    // of noise in the logs
+    if (mp.fs_type != "tmpfs") {
+      Logger()->warn("Unable to statvfs({}) = {}", mp.mount_point, strerror(errno));
+    }
     return;
   }
 
