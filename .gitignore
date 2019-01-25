@@ -3,7 +3,6 @@ CMakeFiles/
 CTestTestfile.cmake
 Makefile
 cmake_install.cmake
-build/
 cmake-build-*
 logs/
 root/
@@ -11,3 +10,4 @@ root/
 *.swp
 config.h
 nc/
+cmake-build

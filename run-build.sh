@@ -25,8 +25,8 @@ git init
 git remote add origin https://github.com/Netflix/spectator-cpp.git
 git fetch origin $SPECTATOR_CPP_VERSION
 git reset --hard FETCH_HEAD
-mkdir -p build root
-cd build
+mkdir -p cmake-build root
+cd cmake-build
 cmake -DCMAKE_INSTALL_PREFIX=/ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 make -j4
 make install DESTDIR=../root
@@ -35,8 +35,8 @@ cd ../..
 cp -p sample-config.cc ./lib
 
 # Building project
-mkdir -p build
-cd build
+mkdir -p cmake-build
+cd cmake-build
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT ..
 
 make -j4

@@ -15,6 +15,7 @@
 
 using atlasagent::CGroup;
 using atlasagent::Disk;
+using atlasagent::GetLogger;
 using atlasagent::GpuMetrics;
 using atlasagent::Logger;
 using atlasagent::Nvml;
@@ -188,7 +189,7 @@ int main(int argc, const char* argv[]) {
   }
 #endif
 
-  spectator::Registry registry{cfg};
+  spectator::Registry registry{cfg, GetLogger("spectator")};
   registry.Start();
 #ifdef TITUS_AGENT
   collect_titus_metrics(&registry);
