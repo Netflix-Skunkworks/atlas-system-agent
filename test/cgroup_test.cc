@@ -10,7 +10,7 @@ using spectator::Registry;
 
 // TODO: verify values
 TEST(CGroup, ParseCpu) {
-  Registry registry(Config{});
+  Registry registry(Config{}, Logger());
   CGroup cGroup{&registry, "./resources"};
 
   cGroup.cpu_stats();
@@ -36,7 +36,7 @@ TEST(CGroup, ParseCpu) {
 }
 
 TEST(CGroup, ParseMemory) {
-  Registry registry(Config{});
+  Registry registry(Config{}, Logger());
   CGroup cGroup{&registry, "./resources"};
 
   cGroup.memory_stats();

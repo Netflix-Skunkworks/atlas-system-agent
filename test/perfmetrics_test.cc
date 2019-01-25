@@ -6,7 +6,7 @@ using spectator::Config;
 using spectator::Registry;
 
 TEST(PerfMetrics, OnlineCpus) {
-  Registry registry{Config{}};
+  Registry registry{Config{}, atlasagent::Logger()};
   PerfMetrics p{&registry, "./resources"};
 
   // 0-3,5-7,10-15,23
