@@ -28,7 +28,7 @@ std::shared_ptr<spdlog::logger> LogManager::Logger() noexcept { return logger_; 
 
 std::shared_ptr<spdlog::logger> LogManager::GetLogger(const std::string& name) noexcept {
   auto logger = spdlog::create_async_nb<spdlog::sinks::ansicolor_stdout_sink_mt>(name);
-  logger->set_level(spdlog::level::debug);
+  logger->set_level(spdlog::level::info);
   return logger;
 }
 
