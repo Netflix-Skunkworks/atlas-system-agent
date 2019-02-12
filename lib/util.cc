@@ -30,11 +30,14 @@ void parse_kv_from_file(const std::string& prefix, const char* fn,
     return;
   }
 
+  char buffer[1024];
   char key[1024];
   int64_t value;
-  while (std::fscanf(fp, "%s %" PRId64, key, &value) != EOF) {
-    std::string str_key{key};
-    (*stats)[str_key] = value;
+  while (fgets(buffer, sizeof key, fp) != nullptr) {
+    if (sscanf(buffer, "%s %" PRId64, key, &value) == 2) {
+      std::string str_key{key};
+      (*stats)[str_key] = value;
+    }
   }
 }
 
