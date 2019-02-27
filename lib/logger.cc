@@ -18,7 +18,6 @@ LogManager& log_manager() noexcept {
 LogManager::LogManager() noexcept {
   try {
     logger_ = spdlog::create_async_nb<spdlog::sinks::ansicolor_stdout_sink_mt>(kMainLogger);
-    logger_->set_level(spdlog::level::debug);
   } catch (const spdlog::spdlog_ex& ex) {
     std::cerr << "Log initialization failed: " << ex.what() << "\n";
   }

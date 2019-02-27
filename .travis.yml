@@ -1,12 +1,12 @@
 language: cpp
-dist: trusty
+dist: xenial
 sudo: false
 script: ./run-build.sh
 compiler:
   - gcc
 env:
   global:
-    - SPECTATOR_CPP_VERSION=v0.1.0
+    - SPECTATOR_CPP_VERSION=v0.1.1
   matrix:
     - TITUS_AGENT="-DTITUS_AGENT=ON .."
     - TITUS_AGENT=""
@@ -15,7 +15,6 @@ addons:
     sources:
       - ubuntu-toolchain-r-test
     packages:
-      - g++-5
       - zlib1g-dev 
       - uuid-dev 
       - libblkid-dev 
