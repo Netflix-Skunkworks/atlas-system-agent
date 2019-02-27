@@ -22,8 +22,7 @@ using atlasagent::Nvml;
 using atlasagent::PerfMetrics;
 using atlasagent::Proc;
 
-// This should be provided by the runtime
-spectator::Config GetSpectatorConfig();
+std::unique_ptr<spectator::Config> GetSpectatorConfig();
 
 #ifdef TITUS_AGENT
 static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
@@ -180,16 +179,16 @@ int main(int argc, const char* argv[]) {
 
   init_signals();
   auto cfg = GetSpectatorConfig();
-  cfg.common_tags["xatlas.process"] = process;
+  cfg->common_tags["xatlas.process"] = process;
 
 #ifdef TITUS_AGENT
   auto titus_host = std::getenv("EC2_INSTANCE_ID");
   if (titus_host != nullptr) {
-    cfg.common_tags["titus.host"] = titus_host;
+    cfg->common_tags["titus.host"] = titus_host;
   }
 #endif
 
-  spectator::Registry registry{cfg, GetLogger("spectator")};
+  spectator::Registry registry{std::move(cfg), GetLogger("spectator")};
   registry.Start();
 #ifdef TITUS_AGENT
   collect_titus_metrics(&registry);

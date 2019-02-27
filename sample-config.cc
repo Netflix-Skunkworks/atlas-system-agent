@@ -1,7 +1,7 @@
 #include <spectator/config.h>
 
-spectator::Config GetSpectatorConfig() {
-  return spectator::Config{};
+std::unique_ptr<spectator::Config> GetSpectatorConfig() {
+  return spectator::GetConfiguration();
 }
 
 
