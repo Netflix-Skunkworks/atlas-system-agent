@@ -6,12 +6,12 @@
 
 using namespace atlasagent;
 
-using spectator::Config;
+using spectator::GetConfiguration;
 using spectator::Registry;
 using Measurements = std::vector<spectator::Measurement>;
 
 TEST(Proc, ParseNetwork) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
 
   proc.network_stats();
@@ -45,7 +45,7 @@ TEST(Proc, ParseNetwork) {
 }
 
 TEST(Proc, ParseSnmp) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
 
   proc.snmp_stats();
@@ -105,7 +105,7 @@ TEST(Proc, ParseSnmp) {
 }
 
 TEST(Proc, ParseLoadAvg) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
   proc.loadavg_stats();
   const auto& ms = registry.Measurements();
@@ -125,7 +125,7 @@ TEST(Proc, ParsePidFromSched) {
 }
 
 TEST(Proc, IsContainer) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
   EXPECT_TRUE(proc.is_container());
   proc.set_prefix("./resources/proc-host");
@@ -139,7 +139,7 @@ bool is_gauge(const spectator::IdPtr& id) {
 }
 
 TEST(Proc, CpuStats) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
   proc.cpu_stats();
   proc.peak_cpu_stats();
@@ -154,7 +154,7 @@ TEST(Proc, CpuStats) {
 }
 
 TEST(Proc, VmStats) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
   proc.vmstats();
   auto ms = registry.Measurements();
@@ -181,7 +181,7 @@ TEST(Proc, VmStats) {
 }
 
 TEST(Proc, MemoryStats) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
   proc.memory_stats();
   auto ms = registry.Measurements();
@@ -199,7 +199,7 @@ TEST(Proc, MemoryStats) {
 }
 
 TEST(Proc, ParseNetstat) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
   proc.netstat_stats();
   EXPECT_TRUE(registry.Measurements().empty());
@@ -216,7 +216,7 @@ TEST(Proc, ParseNetstat) {
 }
 
 TEST(Proc, ArpStats) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   Proc proc{&registry, "./resources/proc"};
   proc.arp_stats();
   const auto ms = registry.Measurements();

@@ -12,7 +12,7 @@ std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
 }  // namespace atlasagent
 
 using namespace atlasagent;
-using spectator::Config;
+using spectator::GetConfiguration;
 using spectator::Registry;
 using spectator::Tags;
 
@@ -46,7 +46,7 @@ TEST(Disk, NodevFS) {
 }
 
 TEST(Disk, MountPoints) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   TestDisk disk(&registry);
   auto mount_points = disk.get_mount_points();
   EXPECT_EQ(mount_points.size(), 7);
@@ -71,7 +71,7 @@ TEST(Disk, dev) {
 }
 
 TEST(Disk, InterestingMountPoints) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   TestDisk disk(&registry);
 
   auto interesting = disk.filter_interesting_mount_points(disk.get_mount_points());
@@ -91,7 +91,7 @@ TEST(Disk, InterestingMountPoints) {
 }
 
 TEST(Disk, UpdateTitusStats) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   TestDisk disk(&registry);
 
   disk.titus_disk_stats();
@@ -103,7 +103,7 @@ TEST(Disk, UpdateTitusStats) {
 }
 
 TEST(Disk, UpdateDiskStats) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   TestDisk disk(&registry);
 
   disk.disk_stats();
@@ -133,7 +133,7 @@ TEST(Disk, UpdateDiskStats) {
 }
 
 TEST(Disk, get_disk_stats) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   TestDisk disk(&registry);
 
   const auto& s = disk.get_disk_stats();
@@ -141,7 +141,7 @@ TEST(Disk, get_disk_stats) {
 }
 
 TEST(Disk, diskio_stats) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   TestDisk disk(&registry);
 
   disk.diskio_stats();

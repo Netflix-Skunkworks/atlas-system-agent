@@ -2,11 +2,11 @@
 #include <gtest/gtest.h>
 
 using atlasagent::PerfMetrics;
-using spectator::Config;
+using spectator::GetConfiguration;
 using spectator::Registry;
 
 TEST(PerfMetrics, OnlineCpus) {
-  Registry registry{Config{}, atlasagent::Logger()};
+  Registry registry{GetConfiguration(), atlasagent::Logger()};
   PerfMetrics p{&registry, "./resources"};
 
   // 0-3,5-7,10-15,23

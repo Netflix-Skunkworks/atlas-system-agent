@@ -6,7 +6,7 @@
 
 using namespace atlasagent;
 
-using spectator::Config;
+using spectator::GetConfiguration;
 using spectator::Registry;
 using Measurements = std::vector<spectator::Measurement>;
 
@@ -100,7 +100,7 @@ static void expect_dist_summary(const Measurements& ms, const char* name, double
 }
 
 TEST(Gpu, Metrics) {
-  Registry registry(Config{}, Logger());
+  Registry registry(GetConfiguration(), Logger());
   auto metrics = GpuMetrics<TestNvml>(&registry, std::make_unique<TestNvml>());
   metrics.gpu_metrics();
   const auto& ms = registry.Measurements();
