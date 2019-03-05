@@ -116,11 +116,12 @@ void collect_titus_metrics(spectator::Registry* registry) {
 
   // collect all metrics except perf at startup
   gather_titus_metrics(&cGroup, &proc, &disk);
-  std::chrono::nanoseconds time_to_sleep = seconds(30);
+  auto next_run = system_clock::now();
+  std::chrono::nanoseconds time_to_sleep = seconds(60);
   while (runner.wait_for(time_to_sleep)) {
-    auto next_run = system_clock::now() + seconds(30);
     gather_titus_metrics(&cGroup, &proc, &disk);
     perf_metrics.collect();
+    next_run += seconds(60);
     time_to_sleep = next_run - system_clock::now();
     if (time_to_sleep.count() > 0) {
       Logger()->info("Sleeping {} milliseconds",
@@ -143,12 +144,12 @@ void collect_system_metrics(spectator::Registry* registry) {
   }
 
   PerfMetrics perf_metrics{registry, ""};
-  auto next_slow_run = system_clock::now() + seconds(30);
+  auto now = system_clock::now();
+  auto next_slow_run = now + seconds(60);
+  auto next_run = now;
   std::chrono::nanoseconds time_to_sleep;
   gather_slow_system_metrics(&proc, &disk);
   do {
-    auto now = system_clock::now();
-    auto next_run = now + seconds(1);
     gather_peak_system_metrics(&proc);
     if (now >= next_slow_run) {
       gather_slow_system_metrics(&proc, &disk);
@@ -158,6 +159,7 @@ void collect_system_metrics(spectator::Registry* registry) {
         gpu->gpu_metrics();
       }
     }
+    next_run += seconds(1);
     time_to_sleep = next_run - system_clock::now();
   } while (runner.wait_for(time_to_sleep));
 }
