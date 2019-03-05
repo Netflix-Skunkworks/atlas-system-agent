@@ -37,8 +37,8 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
 #else
 static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
 
-static void gather_minute_system_metrics(Proc* proc, Disk* disk) {
-  Logger()->info("Gathering 1-min system metrics");
+static void gather_slow_system_metrics(Proc* proc, Disk* disk) {
+  Logger()->info("Gathering system metrics");
   proc->cpu_stats();
   proc->network_stats();
   proc->arp_stats();
@@ -116,9 +116,9 @@ void collect_titus_metrics(spectator::Registry* registry) {
 
   // collect all metrics except perf at startup
   gather_titus_metrics(&cGroup, &proc, &disk);
-  std::chrono::nanoseconds time_to_sleep = seconds(60);
+  std::chrono::nanoseconds time_to_sleep = seconds(30);
   while (runner.wait_for(time_to_sleep)) {
-    auto next_run = system_clock::now() + seconds(60);
+    auto next_run = system_clock::now() + seconds(30);
     gather_titus_metrics(&cGroup, &proc, &disk);
     perf_metrics.collect();
     time_to_sleep = next_run - system_clock::now();
@@ -143,17 +143,17 @@ void collect_system_metrics(spectator::Registry* registry) {
   }
 
   PerfMetrics perf_metrics{registry, ""};
-  auto next_slow_run = system_clock::now() + seconds(60);
+  auto next_slow_run = system_clock::now() + seconds(30);
   std::chrono::nanoseconds time_to_sleep;
-  gather_minute_system_metrics(&proc, &disk);
+  gather_slow_system_metrics(&proc, &disk);
   do {
     auto now = system_clock::now();
     auto next_run = now + seconds(1);
     gather_peak_system_metrics(&proc);
     if (now >= next_slow_run) {
-      gather_minute_system_metrics(&proc, &disk);
+      gather_slow_system_metrics(&proc, &disk);
       perf_metrics.collect();
-      next_slow_run += seconds(60);
+      next_slow_run += seconds(30);
       if (gpu) {
         gpu->gpu_metrics();
       }
@@ -188,14 +188,20 @@ int main(int argc, const char* argv[]) {
   }
 #endif
 
-  spectator::Registry registry{std::move(cfg), GetLogger("spectator")};
+  auto spectator_logger = GetLogger("spectator");
+  auto logger = Logger();
+  if (std::getenv("VERBOSE_AGENT") != nullptr) {
+    spectator_logger->set_level(spdlog::level::debug);
+    logger->set_level(spdlog::level::debug);
+  }
+  spectator::Registry registry{std::move(cfg), spectator_logger};
   registry.Start();
 #ifdef TITUS_AGENT
   collect_titus_metrics(&registry);
 #else
   collect_system_metrics(&registry);
 #endif
-  Logger()->info("Shutting down spectator registry");
+  logger->info("Shutting down spectator registry");
   registry.Stop();
   return 0;
 }

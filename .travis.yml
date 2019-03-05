@@ -12,8 +12,6 @@ env:
     - TITUS_AGENT=""
 addons:
   apt:
-    sources:
-      - ubuntu-toolchain-r-test
     packages:
       - zlib1g-dev 
       - uuid-dev 
