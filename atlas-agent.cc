@@ -151,7 +151,7 @@ void collect_system_metrics(spectator::Registry* registry) {
   gather_slow_system_metrics(&proc, &disk);
   do {
     gather_peak_system_metrics(&proc);
-    if (now >= next_slow_run) {
+    if (system_clock::now() >= next_slow_run) {
       gather_slow_system_metrics(&proc, &disk);
       perf_metrics.collect();
       next_slow_run += seconds(30);
