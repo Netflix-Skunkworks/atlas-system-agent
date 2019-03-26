@@ -98,7 +98,7 @@ void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcep
   }
   while (fgets(line, sizeof line, fp) != nullptr) {
     std::vector<std::string> fields;
-    split(line, &fields);
+    split(line, isspace, &fields);
     // all lines have at least 12 fields. Just being extra paranoid here:
     if (fields.size() < 4) {
       continue;
@@ -659,14 +659,14 @@ void Proc::netstat_stats() noexcept {
     if (starts_with(line, "IpExt:")) {
       // get header indexes
       std::vector<std::string> headers;
-      split(line, &headers);
+      split(line, isspace, &headers);
       if (fgets(line, sizeof line, fp) == nullptr) {
         Logger()->warn("Unable to parse {}/net/netstat", path_prefix_);
         return;
       }
       std::vector<std::string> values;
       values.reserve(headers.size());
-      split(line, &values);
+      split(line, isspace, &values);
       assert(values.size() == headers.size());
       auto idx = 0u;
       for (const auto& header : headers) {
