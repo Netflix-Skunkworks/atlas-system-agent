@@ -39,7 +39,7 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
 #else
 static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
 
-static void gather_slow_system_metrics(Proc* proc, Disk* disk, Chrony* chrony) {
+static void gather_slow_system_metrics(Proc* proc, Disk* disk, Chrony<>* chrony) {
   Logger()->info("Gathering system metrics");
   proc->cpu_stats();
   proc->network_stats();
@@ -138,7 +138,7 @@ void collect_system_metrics(spectator::Registry* registry) {
   using std::chrono::system_clock;
   Proc proc{registry};
   Disk disk{registry, ""};
-  Chrony chrony{registry};
+  Chrony<> chrony{registry};
 
   auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
   try {
