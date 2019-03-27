@@ -41,24 +41,25 @@ void parse_kv_from_file(const std::string& prefix, const char* fn,
   }
 }
 
-void split(const char* line, std::vector<std::string>* fields) noexcept {
+void split(const char* line, const std::function<bool(int)>& is_sep,
+           std::vector<std::string>* fields) noexcept {
   const char* p = line;
   const char* end = line + strlen(line);
   char field[256];
   constexpr size_t max = sizeof field - 1;
   size_t i = 0;
 
-  while (p < end && isspace(*p)) {
+  while (p < end && is_sep(*p)) {
     ++p;
   }
 
   while (p < end) {
-    while (!isspace(*p) && i < max) {
+    while (!is_sep(*p) && i < max) {
       field[i] = *p;
       ++i;
       ++p;
     }
-    while (isspace(*p)) {
+    while (is_sep(*p)) {
       ++p;
     }
     field[i] = '\0';
@@ -75,6 +76,30 @@ bool starts_with(const char* line, const char* prefix) noexcept {
   }
 
   return std::memcmp(line, prefix, prefix_len) == 0;
+}
+
+std::string read_output_string(const char* cmd) {
+  StdPipe fp{cmd};
+  std::string result;
+  static constexpr int kBufSize = 4096;
+  char buf[kBufSize] = {0};
+  while ((std::fgets(buf, kBufSize, fp)) != nullptr) {
+    result += buf;
+  }
+  return result;
+}
+
+std::vector<std::string> read_output_lines(const char* cmd) {
+  StdPipe fp{cmd};
+  std::vector<std::string> result;
+  std::string line;
+  static constexpr int kBufSize = 4096;
+  char buf[kBufSize] = {0};
+  char* st;
+  while ((st = std::fgets(buf, kBufSize, fp)) != nullptr) {
+    result.emplace_back(buf);
+  }
+  return result;
 }
 
 }  // namespace atlasagent
