@@ -6,13 +6,30 @@
 using atlasagent::Chrony;
 using atlasagent::Logger;
 
-class CT : public Chrony {
+struct TestClock : std::chrono::system_clock {
+  using base_type = std::chrono::system_clock;
+  static time_point now() {
+    static auto fixed = base_type::now();
+    return fixed;
+  }
+};
+
+class CT : public Chrony<TestClock> {
  public:
   CT(spectator::Registry* registry) : Chrony{registry} {}
   void stats(const std::string& tracking, const std::vector<std::string>& sources) noexcept {
     Chrony::tracking_stats(tracking, sources);
   }
+
+  TestClock::time_point lastSample() const { return lastSampleTime_; }
 };
+
+double get_default_sample_age(const CT& chrony) {
+  auto nanos =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(TestClock::now() - chrony.lastSample())
+          .count();
+  return nanos / 1e9;
+}
 
 TEST(Chrony, Stats) {
   spectator::Registry registry{spectator::GetConfiguration(), Logger()};
@@ -58,7 +75,11 @@ TEST(Chrony, StatsInvalid) {
   chrony.stats(tracking, sources);
 
   auto ms = registry.Measurements();
-  EXPECT_TRUE(ms.empty());
+  auto map = measurements_to_map(ms, "");
+
+  std::unordered_map<std::string, double> expected = {
+      {"sys.time.lastSampleAge", get_default_sample_age(chrony)}};
+  EXPECT_EQ(expected, map);
 }
 
 // ensure we deal properly when the server in tracking gets lost
@@ -78,6 +99,7 @@ TEST(Chrony, NoSources) {
 
   auto ms = registry.Measurements();
   auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {{"sys.time.offset", 10}};
+  std::unordered_map<std::string, double> expected = {
+      {"sys.time.offset", 10}, {"sys.time.lastSampleAge", get_default_sample_age(chrony)}};
   EXPECT_EQ(map, expected);
 }
