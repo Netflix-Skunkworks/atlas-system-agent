@@ -58,7 +58,7 @@ TEST(Chrony, StatsEmpty) {
   chrony.stats("", {});
 
   auto ms = registry.Measurements();
-  EXPECT_TRUE(ms.empty());
+  EXPECT_EQ(ms.size(), 1); // we always report 
 }
 
 TEST(Chrony, StatsInvalid) {
