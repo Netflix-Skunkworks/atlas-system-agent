@@ -27,29 +27,19 @@ class Chrony {
   void tracking_stats(const std::string& tracking,
                       const std::vector<std::string>& sources) noexcept {
     auto is_comma = [](int c) { return c == ','; };
-    if (tracking.empty()) {
-      return;
-    }
-
     std::vector<std::string> fields;
     split(tracking.c_str(), is_comma, &fields);
-    if (fields.size() < 5) {
-      return;
-    }
-
-    try {
-      auto system_time = std::stod(fields[4], nullptr);
-      sysTimeOffset_->Set(system_time);
-    } catch (const std::invalid_argument& e) {
-      atlasagent::Logger()->error("Unable to parse {} as a double: {}", fields[4], e.what());
-    }
-
-    if (sources.empty()) {
-      return;
+    if (fields.size() >= 5) {
+      try {
+        auto system_time = std::stod(fields[4], nullptr);
+        sysTimeOffset_->Set(system_time);
+      } catch (const std::invalid_argument& e) {
+        atlasagent::Logger()->error("Unable to parse {} as a double: {}", fields[4], e.what());
+      }
     }
 
     // get the last rx time for the current server
-    auto& current_server = fields[1];
+    std::string current_server = fields.size() > 1 ? fields[1] : "";
     for (const auto& source : sources) {
       std::vector<std::string> source_fields;
       split(source.c_str(), is_comma, &source_fields);
