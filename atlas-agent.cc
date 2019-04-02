@@ -1,10 +1,10 @@
 #include "config.h"
 #include "contain/contain.h"
 #include "lib/cgroup.h"
-#include "lib/chrony.h"
 #include "lib/disk.h"
 #include "lib/gpumetrics.h"
 #include "lib/logger.h"
+#include "lib/ntp.h"
 #include "lib/nvml.h"
 #include "lib/perfmetrics.h"
 #include "lib/proc.h"
@@ -15,11 +15,11 @@
 #include <spectator/memory.h>
 
 using atlasagent::CGroup;
-using atlasagent::Chrony;
 using atlasagent::Disk;
 using atlasagent::GetLogger;
 using atlasagent::GpuMetrics;
 using atlasagent::Logger;
+using atlasagent::Ntp;
 using atlasagent::Nvml;
 using atlasagent::PerfMetrics;
 using atlasagent::Proc;
@@ -39,7 +39,7 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
 #else
 static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
 
-static void gather_slow_system_metrics(Proc* proc, Disk* disk, Chrony<>* chrony) {
+static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ntp<>* ntp) {
   Logger()->info("Gathering system metrics");
   proc->cpu_stats();
   proc->network_stats();
@@ -50,7 +50,7 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Chrony<>* chrony)
   proc->memory_stats();
   proc->vmstats();
   disk->disk_stats();
-  chrony->update_stats();
+  ntp->update_stats();
 }
 #endif
 
@@ -138,7 +138,7 @@ void collect_system_metrics(spectator::Registry* registry) {
   using std::chrono::system_clock;
   Proc proc{registry};
   Disk disk{registry, ""};
-  Chrony<> chrony{registry};
+  Ntp<> ntp{registry};
 
   auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
   try {
@@ -152,11 +152,11 @@ void collect_system_metrics(spectator::Registry* registry) {
   auto next_slow_run = now + seconds(60);
   auto next_run = now;
   std::chrono::nanoseconds time_to_sleep;
-  gather_slow_system_metrics(&proc, &disk, &chrony);
+  gather_slow_system_metrics(&proc, &disk, &ntp);
   do {
     gather_peak_system_metrics(&proc);
     if (system_clock::now() >= next_slow_run) {
-      gather_slow_system_metrics(&proc, &disk, &chrony);
+      gather_slow_system_metrics(&proc, &disk, &ntp);
       perf_metrics.collect();
       next_slow_run += seconds(30);
       if (gpu) {

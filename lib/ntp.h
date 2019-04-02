@@ -2,41 +2,52 @@
 
 #include "util.h"
 #include <spectator/registry.h>
+#include <sys/timex.h>
 
 namespace atlasagent {
 
 template <typename Clock = std::chrono::system_clock>
-class Chrony {
+class Ntp {
  public:
-  explicit Chrony(spectator::Registry* registry) noexcept
-      : sysTimeOffset_{registry->GetGauge("sys.time.offset")},
-        sysLastSampleAge_{registry->GetGauge("sys.time.lastSampleAge")} {}
+  explicit Ntp(spectator::Registry* registry) noexcept
+      : lastSampleAge_{registry->GetGauge("sys.time.lastSampleAge")},
+        estimatedError_{registry->GetGauge("sys.time.estimatedError")},
+        unsynchronized_{registry->GetGauge("sys.time.unsynchronized")} {}
+
   void update_stats() noexcept {
     auto tracking_csv = read_output_string("chronyc -c tracking");
     auto sources_csv = read_output_lines("chronyc -c sources");
-    tracking_stats(tracking_csv, sources_csv);
+    chrony_stats(tracking_csv, sources_csv);
+
+    struct timex time {};
+
+    auto err = ntp_adjtime(&time);
+    ntp_stats(err, &time);
   }
 
  private:
-  std::shared_ptr<spectator::Gauge> sysTimeOffset_;
-  std::shared_ptr<spectator::Gauge> sysLastSampleAge_;
+  std::shared_ptr<spectator::Gauge> lastSampleAge_;
+  std::shared_ptr<spectator::Gauge> estimatedError_;
+  std::shared_ptr<spectator::Gauge> unsynchronized_;
 
  protected:
   // for testing
   typename Clock::time_point lastSampleTime_{};
-  void tracking_stats(const std::string& tracking,
-                      const std::vector<std::string>& sources) noexcept {
+
+  void ntp_stats(int err, timex* time) {
+    if (err == -1) {
+      atlasagent::Logger()->warn("Unable to ntp_gettime: {}", strerror(errno));
+      return;
+    }
+
+    unsynchronized_->Set(err == TIME_ERROR);
+    estimatedError_->Set(time->esterror / 1e6);
+  }
+
+  void chrony_stats(const std::string& tracking, const std::vector<std::string>& sources) noexcept {
     auto is_comma = [](int c) { return c == ','; };
     std::vector<std::string> fields;
     split(tracking.c_str(), is_comma, &fields);
-    if (fields.size() >= 5) {
-      try {
-        auto system_time = std::stod(fields[4], nullptr);
-        sysTimeOffset_->Set(system_time);
-      } catch (const std::invalid_argument& e) {
-        atlasagent::Logger()->error("Unable to parse {} as a double: {}", fields[4], e.what());
-      }
-    }
 
     // get the last rx time for the current server
     std::string current_server = fields.size() > 1 ? fields[1] : "";
@@ -61,7 +72,7 @@ class Chrony {
     auto ageNanos =
         std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - lastSampleTime_);
     auto seconds = ageNanos.count() / 1e9;
-    sysLastSampleAge_->Set(seconds);
+    lastSampleAge_->Set(seconds);
   }
 };
 }  // namespace atlasagent

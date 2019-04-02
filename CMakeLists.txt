@@ -23,7 +23,8 @@ set(CMAKE_BUILD_TYPE, RelWithDebInfo)
 include_directories(3rd-party /usr/local/include contain ${PROJECT_SOURCE_DIR}/nc/root/include)
 link_directories(/usr/local/lib ${PROJECT_SOURCE_DIR}/nc/root/lib)
 
-file(GLOB LIB_SOURCE_FILES lib/*.cc lib/*.h)
+file(GLOB LIB_SOURCE_FILES lib/[a-zA-Z]*.cc lib/[a-zA-Z]*.h)
+
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
   link_directories(/usr/lib/x86_64-linux-gnu)
   add_library(contain OBJECT contain/contain.c)
