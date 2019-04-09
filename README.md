@@ -8,7 +8,7 @@ An agent that reports metrics for ec2 instances or titus containers.
 ## Build Instructions
 
 * This build requires a C++11 compiler, some system libraries, and
-  [libatlasclient](https://github.com/Netflix-Skunkworks/atlas-native-client)
+  [spectator-cpp](https://github.com/Netflix/spectator-cpp)
 
 * To build the titus-agent:
 
@@ -17,17 +17,15 @@ An agent that reports metrics for ec2 instances or titus containers.
 sudo apt-get update
 sudo apt-get install -y zlib1g-dev uuid-dev libblkid-dev libpcre3-dev libcap-dev
 
-rm -rf build && mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DTITUS_AGENT=ON ..
-make VERBOSE=1 -j4
-./runtests && make DESTDIR=../root install
+TITUS_AGENT=ON ./run-build.sh
 
 ```
 
 * To build the system agent:
 
-Repeat the above commands but do not define `-DTITUS_AGENT=ON`
+```sh
+./run-build.sh
+```
 
 ## Titus Agent
 
@@ -110,7 +108,7 @@ process reads from a memory zone which has been swapped out, or which correspond
 to a mapped file: in that case, the kernel will load the page from disk, and let
 the CPU complete the memory access. It can also happen when the process writes to
 a copy-on-write memory zone: likewise, the kernel will preempt the process,
-duplicate the memory page, and resume the write operation on the process` own copy
+duplicate the memory page, and resume the write operation on the process' own copy
 of the page. "Major" faults happen when the kernel actually has to read the data
 from disk. When it just has to duplicate an existing page, or allocate an empty
 page, it is a regular (or "minor") fault.
