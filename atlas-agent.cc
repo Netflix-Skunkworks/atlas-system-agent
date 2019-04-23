@@ -158,7 +158,7 @@ void collect_system_metrics(spectator::Registry* registry) {
     if (system_clock::now() >= next_slow_run) {
       gather_slow_system_metrics(&proc, &disk, &ntp);
       perf_metrics.collect();
-      next_slow_run += seconds(30);
+      next_slow_run += seconds(60);
       if (gpu) {
         gpu->gpu_metrics();
       }
