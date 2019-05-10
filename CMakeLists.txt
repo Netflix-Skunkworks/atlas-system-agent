@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 2.8)
-cmake_minimum_required(VERSION 2.8)
 
 set(PROJECT_NAME_STR atlas-system-agent)
 set(CMAKE_MACOSX_RPATH 1)
