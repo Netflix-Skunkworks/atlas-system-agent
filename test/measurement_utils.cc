@@ -10,7 +10,8 @@ measurement_map measurements_to_map(const std::vector<Measurement>& ms,
   for (const auto& m : ms) {
     std::ostringstream os;
     const auto& tags = m.id->GetTags();
-    os << m.id->Name();
+    auto st = tags.at("statistic");
+    os << m.id->Name() << "|" << st;
     auto it = tags.at("id");
     if (!it.empty()) {
       os << "|" << it;

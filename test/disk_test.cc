@@ -15,6 +15,7 @@ using namespace atlasagent;
 using spectator::GetConfiguration;
 using spectator::Registry;
 using spectator::Tags;
+using time_point = spectator::Registry::clock::time_point;
 
 class TestDisk : public Disk {
  public:
@@ -29,13 +30,17 @@ class TestDisk : public Disk {
     return v;
   }
 
+  void set_last_updated(time_point now) { Disk::set_last_updated(now); }
+
   std::vector<MountPoint> get_mount_points() const noexcept { return Disk::get_mount_points(); }
 
   std::vector<DiskIo> get_disk_stats() const noexcept { return Disk::get_disk_stats(); }
 
   void update_titus_stats_for(const MountPoint& mp) noexcept { Disk::update_titus_stats_for(mp); }
 
-  void diskio_stats() noexcept { Disk::diskio_stats(); }
+  void diskio_stats(time_point start) noexcept { Disk::diskio_stats(start); }
+
+  void do_disk_stats(time_point start) noexcept { Disk::do_disk_stats(start); }
 };
 
 TEST(Disk, NodevFS) {
@@ -106,25 +111,39 @@ TEST(Disk, UpdateDiskStats) {
   Registry registry(GetConfiguration(), Logger());
   TestDisk disk(&registry);
 
-  disk.disk_stats();
+  auto start = Registry::clock::now();
+  disk.do_disk_stats(start);
+  disk.set_last_updated(start);
+
   auto initial = registry.Measurements();
 
   disk.set_prefix("./resources2");
-  disk.disk_stats();
+  disk.do_disk_stats(start + std::chrono::seconds(5));
+
   auto ms = registry.Measurements();
   auto values = measurements_to_map(ms, "dev");
-  expect_value(&values, "disk.io.bytes|read|md0", 512 * 1e4);
-  expect_value(&values, "disk.io.bytes|read|xvda", 512 * 1e4);
-  expect_value(&values, "disk.io.bytes|write|md0", 1535488.0 + 1562112.0);
-  expect_value(&values, "disk.io.bytes|write|xvda", 1404928.0);
-  expect_value(&values, "disk.io.bytes|write|xvdb", 1535488.0);
-  expect_value(&values, "disk.io.bytes|write|xvdc", 1562112.0);
-  expect_value(&values, "disk.io.ops|read|md0", 100);
-  expect_value(&values, "disk.io.ops|read|xvda", 100);
-  expect_value(&values, "disk.io.ops|write|md0", 147);
-  expect_value(&values, "disk.io.ops|write|xvda", 130);
-  expect_value(&values, "disk.io.ops|write|xvdb", 69);
-  expect_value(&values, "disk.io.ops|write|xvdc", 60);
+  expect_value(&values, "disk.io.bytes|count|read|md0", 512 * 1e4);
+  expect_value(&values, "disk.io.bytes|count|read|xvda", 512 * 1e4);
+  expect_value(&values, "disk.io.bytes|count|write|md0", 1535488.0 + 1562112.0);
+  expect_value(&values, "disk.io.bytes|count|write|xvda", 1404928.0);
+  expect_value(&values, "disk.io.bytes|count|write|xvdb", 1535488.0);
+  expect_value(&values, "disk.io.bytes|count|write|xvdc", 1562112.0);
+  expect_value(&values, "disk.io.ops|count|read|md0", 102);
+  expect_value(&values, "disk.io.ops|count|read|xvda", 101);
+  expect_value(&values, "disk.io.ops|count|write|md0", 147);
+  expect_value(&values, "disk.io.ops|count|write|xvda", 280);
+  expect_value(&values, "disk.io.ops|count|write|xvdb", 79);
+  expect_value(&values, "disk.io.ops|count|write|xvdc", 69);
+  expect_value(&values, "disk.io.ops|totalTime|read|md0", 1);
+  expect_value(&values, "disk.io.ops|totalTime|read|xvda", 1);
+  expect_value(&values, "disk.io.ops|totalTime|write|md0", 0.5);
+  expect_value(&values, "disk.io.ops|totalTime|write|xvda", 0.216);
+  expect_value(&values, "disk.io.ops|totalTime|write|xvdb", 0.072);
+  expect_value(&values, "disk.io.ops|totalTime|write|xvdc", 0.028);
+  expect_value(&values, "disk.percentBusy|gauge|md0", 80);
+  expect_value(&values, "disk.percentBusy|gauge|xvda", 40);
+  expect_value(&values, "disk.percentBusy|gauge|xvdb", 90);
+  expect_value(&values, "disk.percentBusy|gauge|xvdc", 96);
 
   // the following values are coming from statvfs
   for (const auto& pair : values) {
@@ -144,26 +163,33 @@ TEST(Disk, diskio_stats) {
   Registry registry(GetConfiguration(), Logger());
   TestDisk disk(&registry);
 
-  disk.diskio_stats();
+  auto start = spectator::Registry::clock::now();
+  disk.diskio_stats(start);
   auto initial = registry.Measurements();
   EXPECT_TRUE(initial.empty());
 
   disk.set_prefix("./resources2");
-  disk.diskio_stats();
+  disk.diskio_stats(start + std::chrono::seconds{60});
 
   auto ms = registry.Measurements();
   auto values = measurements_to_map(ms, "dev");
-  expect_value(&values, "disk.io.bytes|read|md0", 512 * 1e4);
-  expect_value(&values, "disk.io.bytes|read|xvda", 512 * 1e4);
-  expect_value(&values, "disk.io.bytes|write|md0", 1535488.0 + 1562112.0);
-  expect_value(&values, "disk.io.bytes|write|xvda", 1404928.0);
-  expect_value(&values, "disk.io.bytes|write|xvdb", 1535488.0);
-  expect_value(&values, "disk.io.bytes|write|xvdc", 1562112.0);
-  expect_value(&values, "disk.io.ops|read|md0", 100);
-  expect_value(&values, "disk.io.ops|read|xvda", 100);
-  expect_value(&values, "disk.io.ops|write|md0", 147);
-  expect_value(&values, "disk.io.ops|write|xvda", 130);
-  expect_value(&values, "disk.io.ops|write|xvdb", 69);
-  expect_value(&values, "disk.io.ops|write|xvdc", 60);
+  expect_value(&values, "disk.io.bytes|count|read|md0", 512 * 1e4);
+  expect_value(&values, "disk.io.bytes|count|read|xvda", 512 * 1e4);
+  expect_value(&values, "disk.io.bytes|count|write|md0", 1535488.0 + 1562112.0);
+  expect_value(&values, "disk.io.bytes|count|write|xvda", 1404928.0);
+  expect_value(&values, "disk.io.bytes|count|write|xvdb", 1535488.0);
+  expect_value(&values, "disk.io.bytes|count|write|xvdc", 1562112.0);
+  expect_value(&values, "disk.io.ops|count|read|md0", 102);
+  expect_value(&values, "disk.io.ops|count|read|xvda", 101);
+  expect_value(&values, "disk.io.ops|count|write|md0", 147);
+  expect_value(&values, "disk.io.ops|count|write|xvda", 280);
+  expect_value(&values, "disk.io.ops|count|write|xvdb", 79);
+  expect_value(&values, "disk.io.ops|count|write|xvdc", 69);
+  expect_value(&values, "disk.io.ops|totalTime|read|md0", 1);
+  expect_value(&values, "disk.io.ops|totalTime|read|xvda", 1);
+  expect_value(&values, "disk.io.ops|totalTime|write|md0", 0.5);
+  expect_value(&values, "disk.io.ops|totalTime|write|xvda", 0.216);
+  expect_value(&values, "disk.io.ops|totalTime|write|xvdb", 0.072);
+  expect_value(&values, "disk.io.ops|totalTime|write|xvdc", 0.028);
   EXPECT_TRUE(values.empty());
 }

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <sys/statvfs.h>
 #include <unordered_set>
+#include <iostream>
 
 namespace atlasagent {
 
@@ -146,11 +147,14 @@ void Disk::stats_for_interesting_mps(
   }
 }
 
-void Disk::disk_stats() noexcept {
+void Disk::disk_stats() noexcept { do_disk_stats(spectator::Registry::clock::now()); }
+
+void Disk::do_disk_stats(spectator::Registry::clock::time_point start) noexcept {
   stats_for_interesting_mps(
       [](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp, ""); });
 
-  diskio_stats();
+  diskio_stats(start);
+  last_updated_ = spectator::Registry::clock::now();
 }
 
 // parse /proc/diskstats
@@ -177,17 +181,17 @@ std::vector<DiskIo> Disk::get_disk_stats() const noexcept {
     diskIo.major = major;
     in >> diskIo.minor;
     in >> diskIo.device;
-    in >> diskIo.rio;
-    in >> diskIo.rmerge;
+    in >> diskIo.reads_completed;
+    in >> diskIo.reads_merged;
     in >> diskIo.rsect;
-    in >> diskIo.ruse;
-    in >> diskIo.wio;
-    in >> diskIo.wmerge;
+    in >> diskIo.ms_reading;
+    in >> diskIo.writes_completed;
+    in >> diskIo.writes_merged;
     in >> diskIo.wsect;
-    in >> diskIo.wuse;
-    in >> diskIo.running;
-    in >> diskIo.use;
-    in >> diskIo.aveq;
+    in >> diskIo.ms_writing;
+    in >> diskIo.ios_in_progress;
+    in >> diskIo.ms_doing_io;
+    in >> diskIo.weighted_ms_doing_io;
 
     res.push_back(diskIo);
   }
@@ -204,19 +208,52 @@ static constexpr int kRamDevice = 1;
 static constexpr const char* kRead = "read";
 static constexpr const char* kWrite = "write";
 
-void Disk::diskio_stats() noexcept {
+void Disk::diskio_stats(spectator::Registry::clock::time_point start) noexcept {
   const auto& stats = get_disk_stats();
+
   for (const auto& st : stats) {
     if (st.major == kLoopDevice || st.major == kRamDevice) {
       continue;  // ignore loop and ram devices
     }
+
+    auto mono_read_id = id_for(registry_, "disk.io.ops", kRead, st.device);
+    auto mono_write_id = id_for(registry_, "disk.io.ops", kWrite, st.device);
+    auto busy_gauge_id = registry_->CreateId("disk.percentBusy", Tags{{"dev", st.device}});
+
+    std::shared_ptr<MonotonicTimer> read_timer;
+    std::shared_ptr<MonotonicTimer> write_timer;
+
+    auto it = monotonic_timers_.find(mono_read_id);
+    if (it != monotonic_timers_.end()) {
+      read_timer = it->second;
+      write_timer = monotonic_timers_[mono_write_id];
+    } else {
+      read_timer.reset(new MonotonicTimer(registry_, mono_read_id));
+      write_timer.reset(new MonotonicTimer(registry_, mono_write_id));
+
+      monotonic_timers_[mono_read_id] = read_timer;
+      monotonic_timers_[mono_write_id] = write_timer;
+    }
+
+    std::chrono::milliseconds read_time{st.ms_reading};
+    std::chrono::milliseconds write_time{st.ms_writing};
+    read_timer->update(read_time, st.reads_completed + st.reads_merged);
+    write_timer->update(write_time, st.writes_completed + st.writes_merged);
+
+    if (last_updated_.time_since_epoch().count()) {
+      auto delta_t = start - last_updated_;
+      auto delta_millis = std::chrono::duration_cast<std::chrono::milliseconds>(delta_t);
+      auto last_time = last_ms_doing_io[st.device];
+      if (st.ms_doing_io >= last_time) {
+        auto delta_time_doing_io = st.ms_doing_io - last_time;
+        registry_->GetGauge(busy_gauge_id)->Set(100.0 * delta_time_doing_io / delta_millis.count());
+      }
+    }
+    last_ms_doing_io[st.device] = st.ms_doing_io;
     registry_->GetMonotonicCounter(id_for(registry_, "disk.io.bytes", kRead, st.device))
         ->Set(st.rsect * 512);
-    registry_->GetMonotonicCounter(id_for(registry_, "disk.io.ops", kRead, st.device))->Set(st.rio);
     registry_->GetMonotonicCounter(id_for(registry_, "disk.io.bytes", kWrite, st.device))
         ->Set(st.wsect * 512);
-    registry_->GetMonotonicCounter(id_for(registry_, "disk.io.ops", kWrite, st.device))
-        ->Set(st.wio);
   }
 }
 

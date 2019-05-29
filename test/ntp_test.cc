@@ -20,9 +20,7 @@ class CT : public Ntp<TestClock> {
   void stats(const std::string& tracking, const std::vector<std::string>& sources) noexcept {
     Ntp::chrony_stats(tracking, sources);
   }
-  void ntp(int err, timex* time) {
-    Ntp::ntp_stats(err, time);
-  }
+  void ntp(int err, timex* time) { Ntp::ntp_stats(err, time); }
 
   TestClock::time_point lastSample() const { return lastSampleTime_; }
 };
@@ -50,7 +48,7 @@ TEST(Ntp, Stats) {
 
   auto ms = registry.Measurements();
   auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {{"sys.time.lastSampleAge", 74}};
+  std::unordered_map<std::string, double> expected = {{"sys.time.lastSampleAge|gauge", 74}};
   EXPECT_EQ(map, expected);
 }
 
@@ -80,7 +78,7 @@ TEST(Ntp, StatsInvalid) {
   auto map = measurements_to_map(ms, "");
 
   std::unordered_map<std::string, double> expected = {
-      {"sys.time.lastSampleAge", get_default_sample_age(ntp)}};
+      {"sys.time.lastSampleAge|gauge", get_default_sample_age(ntp)}};
   EXPECT_EQ(expected, map);
 }
 
@@ -102,7 +100,7 @@ TEST(Ntp, NoSources) {
   auto ms = registry.Measurements();
   auto map = measurements_to_map(ms, "");
   std::unordered_map<std::string, double> expected = {
-      {"sys.time.lastSampleAge", get_default_sample_age(ntp)}};
+      {"sys.time.lastSampleAge|gauge", get_default_sample_age(ntp)}};
   EXPECT_EQ(map, expected);
 }
 
@@ -110,15 +108,14 @@ TEST(Ntp, adjtime) {
   spectator::Registry registry{spectator::GetConfiguration(), Logger()};
   CT ntp{&registry};
 
-  struct timex t{};
+  struct timex t {};
   t.esterror = 100000;
   ntp.ntp(TIME_OK, &t);
 
   auto ms = registry.Measurements();
   auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {
-      {"sys.time.unsynchronized", 0},
-      {"sys.time.estimatedError", 0.1}};
+  std::unordered_map<std::string, double> expected = {{"sys.time.unsynchronized|gauge", 0},
+                                                      {"sys.time.estimatedError|gauge", 0.1}};
   EXPECT_EQ(map, expected);
 }
 
@@ -126,14 +123,13 @@ TEST(Ntp, adjtime_err) {
   spectator::Registry registry{spectator::GetConfiguration(), Logger()};
   CT ntp{&registry};
 
-  struct timex t{};
+  struct timex t {};
   t.esterror = 200000;
   ntp.ntp(TIME_ERROR, &t);
 
   auto ms = registry.Measurements();
   auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {
-      {"sys.time.unsynchronized", 1},
-      {"sys.time.estimatedError", 0.2}};
+  std::unordered_map<std::string, double> expected = {{"sys.time.unsynchronized|gauge", 1},
+                                                      {"sys.time.estimatedError|gauge", 0.2}};
   EXPECT_EQ(map, expected);
 }
