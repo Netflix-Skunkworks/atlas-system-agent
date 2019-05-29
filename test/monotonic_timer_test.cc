@@ -8,7 +8,7 @@ TEST(MonotonicTimer, NoActivity) {
   MonotonicTimer timer{&registry, registry.CreateId("test", spectator::Tags{})};
 
   EXPECT_EQ(registry.Measurements().size(), 0);
-};
+}
 
 TEST(MonotonicTimer, Record) {
   spectator::Registry registry{spectator::GetConfiguration(), spectator::DefaultLogger()};
