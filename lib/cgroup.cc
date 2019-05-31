@@ -6,12 +6,8 @@
 
 namespace atlasagent {
 
-void CGroup::cpu_shares() noexcept {
+void CGroup::cpu_shares(time_point now) noexcept {
   auto shares = read_num_from_file(path_prefix_, "cpu/cpu.shares");
-  if (shares >= 0) {
-    registry_->GetGauge("cgroup.cpu.shares")->Set(shares);
-  }
-
   // attempt to use an environment variable to set the processing capacity
   // falling back to shares if needed
   auto num_cpu = std::getenv("TITUS_NUM_CPU");
@@ -26,7 +22,16 @@ void CGroup::cpu_shares() noexcept {
     n = shares / 100.0;
   }
   if (n > 0) {
-    registry_->GetGauge("cgroup.cpu.processingCapacity")->Set(n);
+    if (!last_updated_.time_since_epoch().count()) {
+      last_updated_ = now - update_interval_;
+    }
+    std::chrono::duration<double> delta_t = now - last_updated_;
+    last_updated_ = now;
+
+    registry_->GetCounter("cgroup.cpu.processingCapacity")->Add(delta_t.count() * n);
+  }
+  if (shares >= 0) {
+    registry_->GetGauge("cgroup.cpu.shares")->Set(shares);
   }
 }
 
@@ -172,14 +177,19 @@ void CGroup::cpu_throttle() noexcept {
   prev_throttled_time = throttled_time;
 }
 
-void CGroup::cpu_stats() noexcept {
+void CGroup::cpu_stats() noexcept { do_cpu_stats(spectator::Registry::clock::now()); }
+
+void CGroup::do_cpu_stats(time_point now) noexcept {
   cpu_processing_time();
   cpu_usage_time();
-  cpu_shares();
+  cpu_shares(now);
   cpu_throttle();
 }
 
-CGroup::CGroup(spectator::Registry* registry, std::string path_prefix) noexcept
-    : registry_(registry), path_prefix_(std::move(path_prefix)) {}
+CGroup::CGroup(spectator::Registry* registry, std::string path_prefix,
+               std::chrono::seconds update_interval) noexcept
+    : registry_(registry),
+      path_prefix_(std::move(path_prefix)),
+      update_interval_{update_interval} {}
 
 }  // namespace atlasagent

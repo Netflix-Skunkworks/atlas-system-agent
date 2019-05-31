@@ -7,27 +7,38 @@
 using namespace atlasagent;
 using spectator::GetConfiguration;
 using spectator::Registry;
+using std::chrono::seconds;
+
+class CGroupTest : public CGroup {
+ public:
+  explicit CGroupTest(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
+                      std::chrono::seconds update_interval = std::chrono::seconds{60}) noexcept
+      : CGroup(registry, path_prefix, update_interval) {}
+
+  void do_cpu_stats(time_point now) { CGroup::do_cpu_stats(now); }
+};
 
 // TODO: verify values
 TEST(CGroup, ParseCpu) {
   Registry registry(GetConfiguration(), Logger());
-  CGroup cGroup{&registry, "./resources"};
+  CGroupTest cGroup{&registry, "./resources", seconds(30)};
 
-  cGroup.cpu_stats();
+  auto now = Registry::clock::now();
+  cGroup.do_cpu_stats(now);
   auto initial = registry.Measurements();
   auto initial_map = measurements_to_map(initial, "");
-  expect_value(&initial_map, "cgroup.cpu.processingCapacity|gauge", 10.24);
+  expect_value(&initial_map, "cgroup.cpu.processingCapacity|count", 10.24 * 30.0);
   expect_value(&initial_map, "cgroup.cpu.shares|gauge", 1024);
   EXPECT_TRUE(initial_map.empty());
 
   cGroup.set_prefix("./resources2");
-  cGroup.cpu_stats();
+  cGroup.do_cpu_stats(now + seconds{5});
 
   const auto& ms = registry.Measurements();
   measurement_map map = measurements_to_map(ms, "proto");
   expect_value(&map, "cgroup.cpu.usageTime|count|system", 120);
   expect_value(&map, "cgroup.cpu.usageTime|count|user", 60);
-  expect_value(&map, "cgroup.cpu.processingCapacity|gauge", 10.24);
+  expect_value(&map, "cgroup.cpu.processingCapacity|count", 10.24 * 5.0);
   expect_value(&map, "cgroup.cpu.shares|gauge", 1024);
   expect_value(&map, "cgroup.cpu.processingTime|count", 30);
   expect_value(&map, "cgroup.cpu.numThrottled|count", 2);
