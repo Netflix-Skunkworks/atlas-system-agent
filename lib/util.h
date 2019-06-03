@@ -26,4 +26,7 @@ std::string read_output_string(const char* cmd);
 // Execute cmd using the shell and return its output as a vector of lines
 std::vector<std::string> read_output_lines(const char* cmd);
 
+// determine whether the program passed is available
+bool can_execute(const std::string& program);
+
 }  // namespace atlasagent

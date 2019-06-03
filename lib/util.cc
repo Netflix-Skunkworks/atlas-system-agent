@@ -102,4 +102,34 @@ std::vector<std::string> read_output_lines(const char* cmd) {
   return result;
 }
 
+static bool can_execute_full_path(const std::string& program) {
+  struct stat st {};
+  return stat(program.c_str(), &st) == 0 && st.st_mode & S_IXUSR;
+}
+
+bool can_execute(const std::string& program) {
+  if (program[0] == '/') {
+    return can_execute_full_path(program);
+  }
+
+  auto path = std::getenv("PATH");
+  // should never happen
+  if (path == nullptr) {
+    return false;
+  }
+
+  auto is_colon = [](int c) { return c == ':'; };
+  std::vector<std::string> dirs{};
+  split(path, is_colon, &dirs);
+  for (const auto& dir : dirs) {
+    auto full_path = fmt::format("{}/{}", dir, program);
+    if (can_execute_full_path(full_path)) {
+      Logger()->debug("Looking for {} found {}", program, full_path);
+      return true;
+    }
+  }
+  Logger()->debug("Could not find {} in {}", program, path);
+  return false;
+}
+
 }  // namespace atlasagent
