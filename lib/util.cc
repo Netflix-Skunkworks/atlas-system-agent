@@ -2,6 +2,7 @@
 #include "logger.h"
 #include <cinttypes>
 #include <sstream>
+#include <unistd.h>
 
 namespace atlasagent {
 
@@ -102,9 +103,8 @@ std::vector<std::string> read_output_lines(const char* cmd) {
   return result;
 }
 
-static bool can_execute_full_path(const std::string& program) {
-  struct stat st {};
-  return stat(program.c_str(), &st) == 0 && st.st_mode & S_IXUSR;
+inline bool can_execute_full_path(const std::string& program) {
+  return access(program.c_str(), X_OK) == 0;
 }
 
 bool can_execute(const std::string& program) {
