@@ -15,9 +15,11 @@ class Ntp {
         unsynchronized_{registry->GetGauge("sys.time.unsynchronized")} {}
 
   void update_stats() noexcept {
-    auto tracking_csv = read_output_string("chronyc -c tracking");
-    auto sources_csv = read_output_lines("chronyc -c sources");
-    chrony_stats(tracking_csv, sources_csv);
+    if (can_execute("chronyc")) {
+      auto tracking_csv = read_output_string("chronyc -c tracking");
+      auto sources_csv = read_output_lines("chronyc -c sources");
+      chrony_stats(tracking_csv, sources_csv);
+    }
 
     struct timex time {};
 

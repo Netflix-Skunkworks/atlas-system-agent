@@ -48,3 +48,13 @@ TEST(Utils, ReadOutputLinesErr) {
   auto v = atlasagent::read_output_string("/bin/does-not-exist");
   EXPECT_TRUE(v.empty());
 }
+
+TEST(Utils, CanExecute) {
+  EXPECT_TRUE(atlasagent::can_execute("echo"));
+  EXPECT_FALSE(atlasagent::can_execute("program-does-not-exist"));
+}
+
+TEST(Utils, CanExecuteFullPath) {
+  EXPECT_TRUE(atlasagent::can_execute("/bin/sh"));
+  EXPECT_FALSE(atlasagent::can_execute("/bin/pr-does-not-exist"));
+}
