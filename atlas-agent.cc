@@ -1,5 +1,6 @@
 #include "config.h"
 #include "contain/contain.h"
+#include "lib/aws.h"
 #include "lib/cgroup.h"
 #include "lib/disk.h"
 #include "lib/gpumetrics.h"
@@ -14,6 +15,7 @@
 #include <csignal>
 #include <spectator/memory.h>
 
+using atlasagent::Aws;
 using atlasagent::CGroup;
 using atlasagent::Disk;
 using atlasagent::GetLogger;
@@ -27,7 +29,7 @@ using atlasagent::Proc;
 std::unique_ptr<spectator::Config> GetSpectatorConfig();
 
 #ifdef TITUS_AGENT
-static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
+static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
   Logger()->info("Gathering titus metrics");
   cGroup->cpu_stats();
   cGroup->memory_stats();
@@ -35,11 +37,12 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk) {
   proc->network_stats();
   proc->snmp_stats();
   proc->netstat_stats();
+  aws->update_stats();
 }
 #else
 static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
 
-static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ntp<>* ntp) {
+static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ntp<>* ntp, Aws* aws) {
   Logger()->info("Gathering system metrics");
   proc->cpu_stats();
   proc->network_stats();
@@ -51,6 +54,7 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ntp<>* ntp) {
   proc->vmstats();
   disk->disk_stats();
   ntp->update_stats();
+  aws->update_stats();
 }
 #endif
 
@@ -112,17 +116,18 @@ void collect_titus_metrics(spectator::Registry* registry) {
   using std::chrono::seconds;
   using std::chrono::system_clock;
 
+  Aws aws{registry};
   CGroup cGroup{registry};
   Proc proc{registry};
   Disk disk{registry, ""};
   PerfMetrics perf_metrics{registry, ""};
 
   // collect all metrics except perf at startup
-  gather_titus_metrics(&cGroup, &proc, &disk);
+  gather_titus_metrics(&cGroup, &proc, &disk, &aws);
   auto next_run = system_clock::now();
   std::chrono::nanoseconds time_to_sleep = seconds(60);
   while (runner.wait_for(time_to_sleep)) {
-    gather_titus_metrics(&cGroup, &proc, &disk);
+    gather_titus_metrics(&cGroup, &proc, &disk, &aws);
     perf_metrics.collect();
     next_run += seconds(60);
     time_to_sleep = next_run - system_clock::now();
@@ -139,6 +144,7 @@ void collect_system_metrics(spectator::Registry* registry) {
   Proc proc{registry};
   Disk disk{registry, ""};
   Ntp<> ntp{registry};
+  Aws aws{registry};
 
   auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
   try {
@@ -152,11 +158,11 @@ void collect_system_metrics(spectator::Registry* registry) {
   auto next_slow_run = now + seconds(60);
   auto next_run = now;
   std::chrono::nanoseconds time_to_sleep;
-  gather_slow_system_metrics(&proc, &disk, &ntp);
+  gather_slow_system_metrics(&proc, &disk, &ntp, &aws);
   do {
     gather_peak_system_metrics(&proc);
     if (system_clock::now() >= next_slow_run) {
-      gather_slow_system_metrics(&proc, &disk, &ntp);
+      gather_slow_system_metrics(&proc, &disk, &ntp, &aws);
       perf_metrics.collect();
       next_slow_run += seconds(60);
       if (gpu) {

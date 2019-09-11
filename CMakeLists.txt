@@ -17,7 +17,7 @@ option (TITUS_AGENT
 configure_file("${PROJECT_SOURCE_DIR}/config.h.in" "${PROJECT_SOURCE_DIR}/config.h")
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_BUILD_TYPE, RelWithDebInfo)
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
 include_directories(3rd-party /usr/local/include contain ${PROJECT_SOURCE_DIR}/nc/root/include)
 link_directories(/usr/local/lib ${PROJECT_SOURCE_DIR}/nc/root/lib)
