@@ -17,7 +17,7 @@ if [ "$CC" = gcc ] ; then
   export CXX=g++-5
 fi
 
-# Fetch and build libatlasclient
+# Fetch and build spectator-cpp
 rm -rf nc
 mkdir nc
 cd nc
