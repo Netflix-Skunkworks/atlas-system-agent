@@ -122,6 +122,13 @@ void collect_titus_metrics(spectator::Registry* registry) {
   Disk disk{registry, ""};
   PerfMetrics perf_metrics{registry, ""};
 
+  auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
+  try {
+    gpu.reset(new GpuMetrics<Nvml>(registry, std::make_unique<Nvml>()));
+  } catch (...) {
+    Logger()->debug("Unable to start collection of GPU metrics");
+  }
+
   // collect all metrics except perf at startup
   gather_titus_metrics(&cGroup, &proc, &disk, &aws);
   auto next_run = system_clock::now();
@@ -129,6 +136,9 @@ void collect_titus_metrics(spectator::Registry* registry) {
   while (runner.wait_for(time_to_sleep)) {
     gather_titus_metrics(&cGroup, &proc, &disk, &aws);
     perf_metrics.collect();
+    if (gpu) {
+      gpu->gpu_metrics();
+    }
     next_run += seconds(60);
     time_to_sleep = next_run - system_clock::now();
     if (time_to_sleep.count() > 0) {
