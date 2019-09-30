@@ -28,6 +28,19 @@ using atlasagent::Proc;
 
 std::unique_ptr<spectator::Config> GetSpectatorConfig();
 
+std::unique_ptr<GpuMetrics<Nvml>> init_gpu(spectator::Registry* registry) {
+  auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
+  try {
+    gpu.reset(new GpuMetrics<Nvml>(registry, std::make_unique<Nvml>()));
+  } catch (const atlasagent::NvmlException& e) {
+    auto errmsg = fmt::format("Unable to start collection of GPU metrics: {}", e.what());
+    Logger()->debug(errmsg);
+  } catch (...) {
+    Logger()->debug("Unable to start collection of GPU metrics");
+  }
+  return gpu;
+}
+
 #ifdef TITUS_AGENT
 static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
   Logger()->info("Gathering titus metrics");
@@ -122,12 +135,7 @@ void collect_titus_metrics(spectator::Registry* registry) {
   Disk disk{registry, ""};
   PerfMetrics perf_metrics{registry, ""};
 
-  auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
-  try {
-    gpu.reset(new GpuMetrics<Nvml>(registry, std::make_unique<Nvml>()));
-  } catch (...) {
-    Logger()->debug("Unable to start collection of GPU metrics");
-  }
+  auto gpu = init_gpu(registry);
 
   // collect all metrics except perf at startup
   gather_titus_metrics(&cGroup, &proc, &disk, &aws);
@@ -156,12 +164,7 @@ void collect_system_metrics(spectator::Registry* registry) {
   Ntp<> ntp{registry};
   Aws aws{registry};
 
-  auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
-  try {
-    gpu.reset(new GpuMetrics<Nvml>(registry, std::make_unique<Nvml>()));
-  } catch (...) {
-    Logger()->debug("Unable to start collection of GPU metrics");
-  }
+  auto gpu = init_gpu(registry);
 
   PerfMetrics perf_metrics{registry, ""};
   auto now = system_clock::now();
