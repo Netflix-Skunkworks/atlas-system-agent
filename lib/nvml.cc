@@ -105,11 +105,17 @@ static NvmlRet resolve_symbols() {
     return NvmlRet::Success;
   }
 
-  if ((nvml_dso = dlopen(kNvidiaLib, RTLD_NOW)) == nullptr) {
+  const char* library = getenv("NVIDIA_LIBRARY");
+  if (library == nullptr) {
+    library = kNvidiaLib;
+  }
+
+  Logger()->debug("Attemping to load {}", library);
+  if ((nvml_dso = dlopen(library, RTLD_NOW)) == nullptr) {
     return NvmlRet::ErrorLibraryNotFound;
   }
 
-  Logger()->info("Successfully opened NVIDIA NVML library");
+  Logger()->info("Successfully opened NVIDIA NVML library: {}", library);
 
   for (auto& sh : nvml_symtab) {
     sh.handle = dlsym(nvml_dso, sh.symbol);
