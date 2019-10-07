@@ -28,17 +28,12 @@ using atlasagent::Proc;
 
 std::unique_ptr<spectator::Config> GetSpectatorConfig();
 
-std::unique_ptr<GpuMetrics<Nvml>> init_gpu(spectator::Registry* registry) {
-  auto gpu = std::unique_ptr<GpuMetrics<Nvml> >(nullptr);
-  try {
-    gpu.reset(new GpuMetrics<Nvml>(registry, std::make_unique<Nvml>()));
-  } catch (const atlasagent::NvmlException& e) {
-    auto errmsg = fmt::format("Unable to start collection of GPU metrics: {}", e.what());
-    Logger()->debug(errmsg);
-  } catch (...) {
-    Logger()->debug("Unable to start collection of GPU metrics");
+std::unique_ptr<GpuMetrics<Nvml>> init_gpu(spectator::Registry* registry,
+                                           std::unique_ptr<Nvml> lib) {
+  if (lib) {
+    return std::make_unique<GpuMetrics<Nvml>>(registry, std::move(lib));
   }
-  return gpu;
+  return std::unique_ptr<GpuMetrics<Nvml>>(nullptr);
 }
 
 #ifdef TITUS_AGENT
@@ -124,7 +119,7 @@ static void init_signals() {
 }
 
 #ifdef TITUS_AGENT
-void collect_titus_metrics(spectator::Registry* registry) {
+void collect_titus_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib) {
   using std::chrono::milliseconds;
   using std::chrono::seconds;
   using std::chrono::system_clock;
@@ -135,7 +130,7 @@ void collect_titus_metrics(spectator::Registry* registry) {
   Disk disk{registry, ""};
   PerfMetrics perf_metrics{registry, ""};
 
-  auto gpu = init_gpu(registry);
+  auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
   // collect all metrics except perf at startup
   gather_titus_metrics(&cGroup, &proc, &disk, &aws);
@@ -156,7 +151,7 @@ void collect_titus_metrics(spectator::Registry* registry) {
   }
 }
 #else
-void collect_system_metrics(spectator::Registry* registry) {
+void collect_system_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib) {
   using std::chrono::seconds;
   using std::chrono::system_clock;
   Proc proc{registry};
@@ -164,7 +159,7 @@ void collect_system_metrics(spectator::Registry* registry) {
   Ntp<> ntp{registry};
   Aws aws{registry};
 
-  auto gpu = init_gpu(registry);
+  auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
   PerfMetrics perf_metrics{registry, ""};
   auto now = system_clock::now();
@@ -194,6 +189,21 @@ int main(int argc, const char* argv[]) {
   if (maybe_reexec(argv)) {
     return 1;
   }
+#endif
+  auto spectator_logger = GetLogger("spectator");
+  auto logger = Logger();
+  if (std::getenv("VERBOSE_AGENT") != nullptr) {
+    spectator_logger->set_level(spdlog::level::debug);
+    logger->set_level(spdlog::level::debug);
+  }
+  std::unique_ptr<Nvml> nvidia_lib;
+  try {
+    nvidia_lib = std::make_unique<Nvml>();
+  } catch (atlasagent::NvmlException& e) {
+    logger->info("Will not collect GPU metrics: {}", e.what());
+  }
+
+#ifdef TITUS_AGENT
   if (maybe_contain(&c) != 0) {
     return 1;
   }
@@ -213,18 +223,12 @@ int main(int argc, const char* argv[]) {
   }
 #endif
 
-  auto spectator_logger = GetLogger("spectator");
-  auto logger = Logger();
-  if (std::getenv("VERBOSE_AGENT") != nullptr) {
-    spectator_logger->set_level(spdlog::level::debug);
-    logger->set_level(spdlog::level::debug);
-  }
   spectator::Registry registry{std::move(cfg), spectator_logger};
   registry.Start();
 #ifdef TITUS_AGENT
-  collect_titus_metrics(&registry);
+  collect_titus_metrics(&registry, std::move(nvidia_lib));
 #else
-  collect_system_metrics(&registry);
+  collect_system_metrics(&registry, std::move(nvidia_lib));
 #endif
   logger->info("Shutting down spectator registry");
   registry.Stop();
