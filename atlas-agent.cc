@@ -33,7 +33,7 @@ std::unique_ptr<GpuMetrics<Nvml>> init_gpu(spectator::Registry* registry,
   if (lib) {
     return std::make_unique<GpuMetrics<Nvml>>(registry, std::move(lib));
   }
-  return std::unique_ptr<GpuMetrics<Nvml>>(nullptr);
+  return std::unique_ptr<GpuMetrics<Nvml>>();
 }
 
 #ifdef TITUS_AGENT
@@ -190,20 +190,15 @@ int main(int argc, const char* argv[]) {
     return 1;
   }
 #endif
-  auto spectator_logger = GetLogger("spectator");
-  auto logger = Logger();
-  if (std::getenv("VERBOSE_AGENT") != nullptr) {
-    spectator_logger->set_level(spdlog::level::debug);
-    logger->set_level(spdlog::level::debug);
-  }
   std::unique_ptr<Nvml> nvidia_lib;
   try {
     nvidia_lib = std::make_unique<Nvml>();
+    fprintf(stderr, "Will collect GPU metrics\n");
   } catch (atlasagent::NvmlException& e) {
-    logger->info("Will not collect GPU metrics: {}", e.what());
+    fprintf(stderr, "Will not collect GPU metrics: %s\n", e.what());
   }
-
 #ifdef TITUS_AGENT
+
   if (maybe_contain(&c) != 0) {
     return 1;
   }
@@ -223,6 +218,12 @@ int main(int argc, const char* argv[]) {
   }
 #endif
 
+  auto spectator_logger = GetLogger("spectator");
+  auto logger = Logger();
+  if (std::getenv("VERBOSE_AGENT") != nullptr) {
+    spectator_logger->set_level(spdlog::level::debug);
+    logger->set_level(spdlog::level::debug);
+  }
   spectator::Registry registry{std::move(cfg), spectator_logger};
   registry.Start();
 #ifdef TITUS_AGENT
