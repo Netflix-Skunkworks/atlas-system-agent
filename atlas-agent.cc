@@ -31,6 +31,7 @@ std::unique_ptr<spectator::Config> GetSpectatorConfig();
 std::unique_ptr<GpuMetrics<Nvml>> init_gpu(spectator::Registry* registry,
                                            std::unique_ptr<Nvml> lib) {
   if (lib) {
+    lib->initialize();
     return std::make_unique<GpuMetrics<Nvml>>(registry, std::move(lib));
   }
   return std::unique_ptr<GpuMetrics<Nvml>>();

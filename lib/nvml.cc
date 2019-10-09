@@ -10,26 +10,6 @@ struct sym_handle {
   void* handle;
 };
 
-enum NvmlRet {
-  Success = 0,
-  ErrorUninitialized = 1,
-  ErrorInvalidArgument = 2,
-  ErrorNotSupported = 3,
-  ErrorNoPermission = 4,
-  ErrorAlreadyInitialized = 5,
-  ErrorNotFound = 6,
-  ErrorInsufficientSize = 7,
-  ErrorInsufficientPower = 8,
-  ErrorDriverNotLoaded = 9,
-  ErrorTimeout = 10,
-  ErrorIrqIssue = 11,
-  ErrorLibraryNotFound = 12,
-  ErrorFunctionNotFound = 13,
-  ErrorCorruptedInforom = 14,
-  ErrorGpuIsLost = 15,
-  ErrorUnknown = 999
-};
-
 const char* to_string(NvmlRet ret) noexcept {
   switch (ret) {
     case NvmlRet::Success:
@@ -98,10 +78,8 @@ std::array<sym_handle, 11> nvml_symtab = {{
     {"nvmlDeviceGetPerformanceState", nullptr},
 }};
 
-static NvmlRet resolve_symbols() {
-  static void* nvml_dso;
-
-  if (nvml_dso != nullptr) {
+NvmlRet Nvml::resolve_symbols() {
+  if (nvml_dso_ != nullptr) {
     return NvmlRet::Success;
   }
 
@@ -110,15 +88,11 @@ static NvmlRet resolve_symbols() {
     library = kNvidiaLib;
   }
 
-  if ((nvml_dso = dlopen(library, RTLD_NOW)) == nullptr) {
+  if ((nvml_dso_ = dlopen(library, RTLD_NOW)) == nullptr) {
     return NvmlRet::ErrorLibraryNotFound;
   }
 
   fprintf(stderr, "Successfully opened NVIDIA NVML library: %s\n", library);
-
-  for (auto& sh : nvml_symtab) {
-    sh.handle = dlsym(nvml_dso, sh.symbol);
-  }
   return NvmlRet::Success;
 }
 
@@ -127,8 +101,14 @@ Nvml::Nvml() {
   if (load != NvmlRet::Success) {
     throw NvmlException(load);
   }
+}
 
+void Nvml::initialize() {
   void* func;
+  for (auto& sh : nvml_symtab) {
+    sh.handle = dlsym(nvml_dso_, sh.symbol);
+  }
+
   if ((func = nvml_symtab[NvmlIndex::Init].handle) == nullptr) {
     throw NvmlException("init function not found");
   }

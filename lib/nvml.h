@@ -25,12 +25,33 @@ struct NvmlUtilization {
   unsigned int memory;
 };
 
+enum NvmlRet {
+  Success = 0,
+  ErrorUninitialized = 1,
+  ErrorInvalidArgument = 2,
+  ErrorNotSupported = 3,
+  ErrorNoPermission = 4,
+  ErrorAlreadyInitialized = 5,
+  ErrorNotFound = 6,
+  ErrorInsufficientSize = 7,
+  ErrorInsufficientPower = 8,
+  ErrorDriverNotLoaded = 9,
+  ErrorTimeout = 10,
+  ErrorIrqIssue = 11,
+  ErrorLibraryNotFound = 12,
+  ErrorFunctionNotFound = 13,
+  ErrorCorruptedInforom = 14,
+  ErrorGpuIsLost = 15,
+  ErrorUnknown = 999
+};
+
 class Nvml {
  public:
   Nvml();
   ~Nvml() noexcept;
   Nvml(const Nvml& other) = delete;
 
+  void initialize();
   bool get_count(unsigned int* count) noexcept;
   bool get_by_index(unsigned int index, NvmlDeviceHandle* device) noexcept;
 
@@ -40,6 +61,10 @@ class Nvml {
   bool get_temperature(NvmlDeviceHandle device, unsigned int* temperature) noexcept;
   bool get_name(NvmlDeviceHandle device, std::string* name) noexcept;
   bool get_fan_speed(NvmlDeviceHandle device, unsigned int* speed) noexcept;
+
+ private:
+  void* nvml_dso_{nullptr};
+  NvmlRet resolve_symbols();
 };
 
 }  // namespace atlasagent
