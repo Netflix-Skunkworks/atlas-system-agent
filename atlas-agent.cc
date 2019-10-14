@@ -31,8 +31,12 @@ std::unique_ptr<spectator::Config> GetSpectatorConfig();
 std::unique_ptr<GpuMetrics<Nvml>> init_gpu(spectator::Registry* registry,
                                            std::unique_ptr<Nvml> lib) {
   if (lib) {
-    lib->initialize();
-    return std::make_unique<GpuMetrics<Nvml>>(registry, std::move(lib));
+    try {
+      lib->initialize();
+      return std::make_unique<GpuMetrics<Nvml>>(registry, std::move(lib));
+    } catch (atlasagent::NvmlException& e) {
+      fprintf(stderr, "Will not collect GPU metrics: %s\n", e.what());
+    }
   }
   return std::unique_ptr<GpuMetrics<Nvml>>();
 }
@@ -194,7 +198,7 @@ int main(int argc, const char* argv[]) {
   std::unique_ptr<Nvml> nvidia_lib;
   try {
     nvidia_lib = std::make_unique<Nvml>();
-    fprintf(stderr, "Will collect GPU metrics\n");
+    fprintf(stderr, "Will attempt to collect GPU metrics\n");
   } catch (atlasagent::NvmlException& e) {
     fprintf(stderr, "Will not collect GPU metrics: %s\n", e.what());
   }
