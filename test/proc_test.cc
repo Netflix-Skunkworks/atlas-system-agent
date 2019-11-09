@@ -225,3 +225,15 @@ TEST(Proc, ArpStats) {
   EXPECT_EQ(m.id->Name(), "net.arpCacheSize");
   EXPECT_DOUBLE_EQ(m.value, 6);
 }
+
+TEST(Proc, ProcessStats) {
+  Registry registry(GetConfiguration(), Logger());
+  Proc proc{&registry, "./resources/proc"};
+  proc.process_stats();
+
+  const auto& ms = registry.Measurements();
+  auto map = measurements_to_map(ms, "");
+  expect_value(&map, "sys.currentProcesses|gauge", 2.0);
+  expect_value(&map, "sys.currentTasks|gauge", 1.0 + 4.0);
+  expect_value(&map, "sys.maxProcesses|gauge", 32768.0);
+}

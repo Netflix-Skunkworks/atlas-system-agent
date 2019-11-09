@@ -711,4 +711,51 @@ void Proc::arp_stats() noexcept {
   arpcache_size->Set(num_entries);
 }
 
+static bool all_digits(const char* str) {
+  assert(*str != '\0');
+
+  for (; *str != '\0'; ++str) {
+    auto c = *str;
+    if (!isdigit(c)) return false;
+  }
+  return true;
+}
+
+int32_t count_tasks(const std::string& dirname) {
+  DirHandle dh{dirname.c_str()};
+  auto count = 0;
+
+  for (;;) {
+    auto entry = readdir(dh);
+    if (entry == nullptr) break;
+
+    if (all_digits(entry->d_name)) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+void Proc::process_stats() noexcept {
+  static auto cur_pids = registry_->GetGauge("sys.currentProcesses");
+  static auto cur_tasks = registry_->GetGauge("sys.currentTasks");
+  static auto max_pids = registry_->GetGauge("sys.maxProcesses");
+
+  DirHandle dir_handle{path_prefix_.c_str()};
+  auto pids = 0, tasks = 0;
+  for (;;) {
+    auto entry = readdir(dir_handle);
+    if (entry == nullptr) break;
+    if (all_digits(entry->d_name)) {
+      ++pids;
+      auto task_dir = fmt::format("{}/{}/task", path_prefix_, entry->d_name);
+      tasks += count_tasks(task_dir);
+    }
+  }
+  auto max_processes = read_num_from_file(path_prefix_, "sys/kernel/pid_max");
+  max_pids->Set(static_cast<double>(max_processes));
+  cur_pids->Set(pids);
+  cur_tasks->Set(tasks);
+}
+
 }  // namespace atlasagent
