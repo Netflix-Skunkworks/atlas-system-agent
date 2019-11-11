@@ -234,6 +234,5 @@ TEST(Proc, ProcessStats) {
   const auto& ms = registry.Measurements();
   auto map = measurements_to_map(ms, "");
   expect_value(&map, "sys.currentProcesses|gauge", 2.0);
-  expect_value(&map, "sys.currentTasks|gauge", 1.0 + 4.0);
-  expect_value(&map, "sys.maxProcesses|gauge", 32768.0);
+  expect_value(&map, "sys.currentThreads|gauge", 1.0 + 4.0);
 }

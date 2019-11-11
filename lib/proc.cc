@@ -738,8 +738,7 @@ int32_t count_tasks(const std::string& dirname) {
 
 void Proc::process_stats() noexcept {
   static auto cur_pids = registry_->GetGauge("sys.currentProcesses");
-  static auto cur_tasks = registry_->GetGauge("sys.currentTasks");
-  static auto max_pids = registry_->GetGauge("sys.maxProcesses");
+  static auto cur_threads = registry_->GetGauge("sys.currentThreads");
 
   DirHandle dir_handle{path_prefix_.c_str()};
   auto pids = 0, tasks = 0;
@@ -752,10 +751,8 @@ void Proc::process_stats() noexcept {
       tasks += count_tasks(task_dir);
     }
   }
-  auto max_processes = read_num_from_file(path_prefix_, "sys/kernel/pid_max");
-  max_pids->Set(static_cast<double>(max_processes));
   cur_pids->Set(pids);
-  cur_tasks->Set(tasks);
+  cur_threads->Set(tasks);
 }
 
 }  // namespace atlasagent
