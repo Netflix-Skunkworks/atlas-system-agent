@@ -50,6 +50,7 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aw
   proc->network_stats();
   proc->snmp_stats();
   proc->netstat_stats();
+  proc->process_stats();
   aws->update_stats();
 }
 #else
@@ -65,6 +66,7 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ntp<>* ntp, Aws* 
   proc->loadavg_stats();
   proc->memory_stats();
   proc->vmstats();
+  proc->process_stats();
   disk->disk_stats();
   ntp->update_stats();
   aws->update_stats();

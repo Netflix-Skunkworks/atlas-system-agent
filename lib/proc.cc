@@ -711,4 +711,48 @@ void Proc::arp_stats() noexcept {
   arpcache_size->Set(num_entries);
 }
 
+static bool all_digits(const char* str) {
+  assert(*str != '\0');
+
+  for (; *str != '\0'; ++str) {
+    auto c = *str;
+    if (!isdigit(c)) return false;
+  }
+  return true;
+}
+
+int32_t count_tasks(const std::string& dirname) {
+  DirHandle dh{dirname.c_str()};
+  auto count = 0;
+
+  for (;;) {
+    auto entry = readdir(dh);
+    if (entry == nullptr) break;
+
+    if (all_digits(entry->d_name)) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+void Proc::process_stats() noexcept {
+  static auto cur_pids = registry_->GetGauge("sys.currentProcesses");
+  static auto cur_threads = registry_->GetGauge("sys.currentThreads");
+
+  DirHandle dir_handle{path_prefix_.c_str()};
+  auto pids = 0, tasks = 0;
+  for (;;) {
+    auto entry = readdir(dir_handle);
+    if (entry == nullptr) break;
+    if (all_digits(entry->d_name)) {
+      ++pids;
+      auto task_dir = fmt::format("{}/{}/task", path_prefix_, entry->d_name);
+      tasks += count_tasks(task_dir);
+    }
+  }
+  cur_pids->Set(pids);
+  cur_threads->Set(tasks);
+}
+
 }  // namespace atlasagent
