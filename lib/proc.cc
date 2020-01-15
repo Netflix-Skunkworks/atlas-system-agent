@@ -723,8 +723,11 @@ static bool all_digits(const char* str) {
 
 int32_t count_tasks(const std::string& dirname) {
   DirHandle dh{dirname.c_str()};
-  auto count = 0;
+  if (!dh) {
+    return 0;
+  }
 
+  auto count = 0;
   for (;;) {
     auto entry = readdir(dh);
     if (entry == nullptr) break;
@@ -741,6 +744,10 @@ void Proc::process_stats() noexcept {
   static auto cur_threads = registry_->GetGauge("sys.currentThreads");
 
   DirHandle dir_handle{path_prefix_.c_str()};
+  if (!dir_handle) {
+    return;
+  }
+
   auto pids = 0, tasks = 0;
   for (;;) {
     auto entry = readdir(dir_handle);
