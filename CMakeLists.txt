@@ -4,6 +4,9 @@ set(PROJECT_NAME_STR atlas-system-agent)
 set(CMAKE_MACOSX_RPATH 1)
 set(CMAKE_EXPORT_COMPILE_COMMANDS "ON")
 project(${PROJECT_NAME_STR})
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(CMAKE_SYSTEM_NAME STREQUAL Linux)
   set(DSO_EXT "so")
@@ -35,7 +38,7 @@ endif()
 
 set_target_properties(atlasagent PROPERTIES COMPILE_FLAGS "${CMAKE_CXX_FLAGS} -Wextra -Wno-missing-braces")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFMT_HEADER_ONLY -DSPDLOG_FMT_EXTERNAL -fno-rtti -pedantic -Werror -Wall -Wno-missing-braces -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFMT_HEADER_ONLY -DSPDLOG_FMT_EXTERNAL -fno-rtti -pedantic -Werror -Wall -Wno-missing-braces")
 
 set(APP_SOURCE_FILES atlas-agent.cc)
 add_executable(atlas-system-agent ${APP_SOURCE_FILES})
