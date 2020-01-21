@@ -5,6 +5,8 @@ namespace atlasagent {
 static constexpr const char* const kMetadataUrl =
     "http://169.254.169.254/latest/meta-data/iam/security-credentials/";
 
+static constexpr const char* const kMetadataToken = "http://169.254.169.254/latest/api/token";
+
 Aws::Aws(spectator::Registry* registry) noexcept
     : registry_{registry},
       http_client_{registry,
@@ -12,23 +14,36 @@ Aws::Aws(spectator::Registry* registry) noexcept
                                                false, true, true}} {}
 
 void Aws::update_stats() noexcept {
+  auto logger = Logger();
+  // get a token
+  std::vector<std::string> tokenTtl{"X-aws-ec2-metadata-token-ttl-seconds: 60"};
+  auto resp = http_client_.Put(kMetadataToken, tokenTtl);
+  if (resp.status != 200) {
+    logger->error("Unable to get a security token from AWS: {}", resp.raw_body);
+    return;
+  }
+  const auto& token = resp.raw_body;
+  std::vector<std::string> tokenHeader{fmt::format("X-aws-ec2-metadata-token: {}", token)};
+
   if (creds_url_.empty()) {
-    auto resp = http_client_.Get(kMetadataUrl);
+    // get the instance profile
+    resp = http_client_.Get(kMetadataUrl, tokenHeader);
     if (resp.status == 200) {
+      // save the resulting URL now that we know the instance profile
       creds_url_ = fmt::format("{}{}", kMetadataUrl, resp.raw_body);
-      Logger()->info("Using {} as the credentials URL", creds_url_);
+      logger->info("Using {} as the credentials URL", creds_url_);
     } else {
       return;
     }
   }
 
-  auto res = http_client_.Get(creds_url_);
-  if (res.status != 200) {
+  resp = http_client_.Get(creds_url_, tokenHeader);
+  if (resp.status != 200) {
     registry_->GetCounter("aws.credentialsRefreshErrors")->Increment();
     return;
   }
 
-  update_stats_from(std::chrono::system_clock::now(), res.raw_body);
+  update_stats_from(std::chrono::system_clock::now(), resp.raw_body);
 }
 
 static std::chrono::system_clock::time_point getDateFrom(const rapidjson::Document& doc,
