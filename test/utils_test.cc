@@ -69,4 +69,8 @@ TEST(Utils, ParseTags) {
 TEST(Utils, ParseTagsEmpty) {
   auto tags = atlasagent::parse_tags("");
   EXPECT_EQ(tags.size(), 0);
+
+  auto some_invalid = atlasagent::parse_tags("key=val, key2=, =");
+  EXPECT_EQ(some_invalid.size(), 1);
+  EXPECT_EQ(some_invalid.at("key"), "val");
 }

@@ -142,7 +142,9 @@ spectator::Tags parse_tags(const char* s) {
     if (pos != std::string::npos) {
       auto key = f.substr(0, pos);
       auto value = f.substr(pos + 1, f.length());
-      tags.add(key, value);
+      if (!key.empty() && !value.empty()) {
+        tags.add(key, value);
+      }
     }
   }
   return tags;
