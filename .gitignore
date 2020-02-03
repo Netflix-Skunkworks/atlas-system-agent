@@ -9,5 +9,5 @@ root/
 .idea
 *.swp
 config.h
-nc/
+nc
 cmake-build
