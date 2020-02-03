@@ -20,6 +20,10 @@ measurement_map measurements_to_map(const std::vector<Measurement>& ms,
     if (!proto_it.empty()) {
       os << "|" << proto_it;
     }
+    auto extra = tags.at("nf.test");
+    if (!extra.empty()) {
+      os << "|" << extra;
+    }
     res[os.str()] = m.value;
   }
   return res;

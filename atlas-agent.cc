@@ -9,11 +9,12 @@
 #include "lib/nvml.h"
 #include "lib/perfmetrics.h"
 #include "lib/proc.h"
-#include <spectator/registry.h>
 #include <cinttypes>
 #include <condition_variable>
 #include <csignal>
+#include <getopt.h>
 #include <spectator/memory.h>
+#include <spectator/registry.h>
 
 using atlasagent::Aws;
 using atlasagent::CGroup;
@@ -126,14 +127,15 @@ static void init_signals() {
 }
 
 #ifdef TITUS_AGENT
-void collect_titus_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib) {
+void collect_titus_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib,
+    spectator::Tags net_tags) {
   using std::chrono::milliseconds;
   using std::chrono::seconds;
   using std::chrono::system_clock;
 
   Aws aws{registry};
   CGroup cGroup{registry};
-  Proc proc{registry};
+  Proc proc{registry, std::move(net_tags)};
   Disk disk{registry, ""};
   PerfMetrics perf_metrics{registry, ""};
 
@@ -158,10 +160,11 @@ void collect_titus_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> 
   }
 }
 #else
-void collect_system_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib) {
+void collect_system_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib,
+    spectator::Tags net_tags) {
   using std::chrono::seconds;
   using std::chrono::system_clock;
-  Proc proc{registry};
+  Proc proc{registry, std::move(net_tags)};
   Disk disk{registry, ""};
   Ntp<> ntp{registry};
   Aws aws{registry};
@@ -190,7 +193,46 @@ void collect_system_metrics(spectator::Registry* registry, std::unique_ptr<Nvml>
 }
 #endif
 
-int main(int argc, const char* argv[]) {
+struct agent_options {
+  spectator::Tags network_tags;
+  bool verbose;
+};
+
+static void usage(const char* progname) {
+  fprintf(stderr, "Usage: %s [-v] [-t extra-network-tags]\n"
+                  "\t-v\tBe very verbose\n"
+                  "\t-t tags\tAdd extra tags to the network metrics.\n"
+                  "\t\tExpects a string of the form key=val,key2=val2\n", progname);
+  exit(EXIT_FAILURE);
+}
+
+static int parse_options(int& argc, char * const argv[], agent_options* result) {
+  result->verbose = std::getenv("VERBOSE_AGENT") != nullptr; // default for backwards compat
+
+  int ch;
+  while ((ch = getopt(argc, argv, "vt:")) != -1) {
+    switch (ch) {
+      case 'v':
+        result->verbose = true;
+        break;
+      case 't':
+        result->network_tags = atlasagent::parse_tags(optarg);
+        break;
+      case '?':
+      default:
+        usage(argv[0]);
+    }
+  }
+  return optind;
+}
+
+int main(int argc, char* const argv[]) {
+  agent_options options{};
+  auto idx = parse_options(argc, argv, &options);
+  assert(idx >= 0);
+  argc -= idx;
+  argv += idx;
+
 #ifdef TITUS_AGENT
   container_handle c;
   if (maybe_reexec(argv)) {
@@ -227,16 +269,16 @@ int main(int argc, const char* argv[]) {
 
   auto spectator_logger = GetLogger("spectator");
   auto logger = Logger();
-  if (std::getenv("VERBOSE_AGENT") != nullptr) {
+  if (options.verbose) {
     spectator_logger->set_level(spdlog::level::debug);
     logger->set_level(spdlog::level::debug);
   }
   spectator::Registry registry{std::move(cfg), spectator_logger};
   registry.Start();
 #ifdef TITUS_AGENT
-  collect_titus_metrics(&registry, std::move(nvidia_lib));
+  collect_titus_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));
 #else
-  collect_system_metrics(&registry, std::move(nvidia_lib));
+  collect_system_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));
 #endif
   logger->info("Shutting down spectator registry");
   registry.Stop();

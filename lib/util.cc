@@ -132,4 +132,22 @@ bool can_execute(const std::string& program) {
   return false;
 }
 
+spectator::Tags parse_tags(const char* s) {
+  spectator::Tags tags{};
+  std::vector<std::string> fields{};
+  split(
+      s, [](int ch) { return ch == ',' || ch == ' '; }, &fields);
+  for (const auto& f : fields) {
+    auto pos = f.find('=');
+    if (pos != std::string::npos) {
+      auto key = f.substr(0, pos);
+      auto value = f.substr(pos + 1, f.length());
+      if (!key.empty() && !value.empty()) {
+        tags.add(key, value);
+      }
+    }
+  }
+  return tags;
+}
+
 }  // namespace atlasagent

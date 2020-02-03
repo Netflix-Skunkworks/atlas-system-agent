@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 #include "files.h"
+#include <spectator/id.h>
 
 namespace atlasagent {
 
@@ -28,5 +29,8 @@ std::vector<std::string> read_output_lines(const char* cmd);
 
 // determine whether the program passed is available
 bool can_execute(const std::string& program);
+
+// parse a string of the form key=val,key2=val2 into spectator Tags
+spectator::Tags parse_tags(const char* s);
 
 }  // namespace atlasagent

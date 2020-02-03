@@ -220,7 +220,7 @@ static int read_buf(char *pid1dir, char **env, int *length, struct stat *st) {
 static char *LD_LIBRARY_PATH = "/proc/self/lib/x86_64-linux-gnu:/proc/self/usr/local/lib";
 static char *LD_BIND_NOW1 = "LD_BIND_NOW=1";
 
-bool maybe_reexec(const char* argv[]) {
+bool maybe_reexec(char* const* argv) {
 	char user_gid_env[128], user_uid_env[128];
 	char *pid1dir, *env = NULL;
 	int err, offset = 0;
