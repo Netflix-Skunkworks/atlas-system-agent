@@ -47,6 +47,7 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aw
   Logger()->info("Gathering titus metrics");
   cGroup->cpu_stats();
   cGroup->memory_stats();
+  cGroup->network_stats();
   disk->titus_disk_stats();
   proc->network_stats();
   proc->snmp_stats();
@@ -128,7 +129,7 @@ static void init_signals() {
 
 #ifdef TITUS_AGENT
 void collect_titus_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib,
-    spectator::Tags net_tags) {
+                           spectator::Tags net_tags) {
   using std::chrono::milliseconds;
   using std::chrono::seconds;
   using std::chrono::system_clock;
@@ -161,7 +162,7 @@ void collect_titus_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> 
 }
 #else
 void collect_system_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib,
-    spectator::Tags net_tags) {
+                            spectator::Tags net_tags) {
   using std::chrono::seconds;
   using std::chrono::system_clock;
   Proc proc{registry, std::move(net_tags)};
@@ -199,15 +200,17 @@ struct agent_options {
 };
 
 static void usage(const char* progname) {
-  fprintf(stderr, "Usage: %s [-v] [-t extra-network-tags]\n"
-                  "\t-v\tBe very verbose\n"
-                  "\t-t tags\tAdd extra tags to the network metrics.\n"
-                  "\t\tExpects a string of the form key=val,key2=val2\n", progname);
+  fprintf(stderr,
+          "Usage: %s [-v] [-t extra-network-tags]\n"
+          "\t-v\tBe very verbose\n"
+          "\t-t tags\tAdd extra tags to the network metrics.\n"
+          "\t\tExpects a string of the form key=val,key2=val2\n",
+          progname);
   exit(EXIT_FAILURE);
 }
 
-static int parse_options(int& argc, char * const argv[], agent_options* result) {
-  result->verbose = std::getenv("VERBOSE_AGENT") != nullptr; // default for backwards compat
+static int parse_options(int& argc, char* const argv[], agent_options* result) {
+  result->verbose = std::getenv("VERBOSE_AGENT") != nullptr;  // default for backwards compat
 
   int ch;
   while ((ch = getopt(argc, argv, "vt:")) != -1) {
