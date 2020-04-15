@@ -18,6 +18,31 @@ class CGroupTest : public CGroup {
   void do_cpu_stats(time_point now) { CGroup::do_cpu_stats(now); }
 };
 
+inline long megabits2bytes(int mbits) {
+  return mbits * 125000;
+}
+
+TEST(CGroup, Net) {
+  Registry registry(GetConfiguration(), Logger());
+  CGroupTest cGroup{&registry};
+
+  unsetenv("TITUS_NUM_NETWORK_BANDWIDTH");
+  cGroup.network_stats();
+  auto ms = registry.Measurements();
+  EXPECT_EQ(ms.size(), 0);
+
+  setenv("TITUS_NUM_NETWORK_BANDWIDTH", "abc", 1);
+  cGroup.network_stats();
+  ms = registry.Measurements();
+  EXPECT_EQ(ms.size(), 0);
+
+  setenv("TITUS_NUM_NETWORK_BANDWIDTH", "128", 1);
+  cGroup.network_stats();
+  ms = registry.Measurements();
+  auto map = measurements_to_map(ms, "");
+  EXPECT_EQ(map["cgroup.net.bandwidthBytes|gauge"], megabits2bytes(128));
+}
+
 // TODO: verify values
 TEST(CGroup, ParseCpu) {
   Registry registry(GetConfiguration(), Logger());

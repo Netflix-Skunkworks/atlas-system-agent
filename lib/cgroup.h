@@ -12,6 +12,7 @@ class CGroup {
                   std::chrono::seconds update_interval = std::chrono::seconds{60}) noexcept;
   void cpu_stats() noexcept;
   void memory_stats() noexcept;
+  void network_stats() noexcept;
   void set_prefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
  private:

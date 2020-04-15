@@ -1,10 +1,22 @@
 #include "cgroup.h"
 #include "logger.h"
 #include "util.h"
-#include <spectator/id.h>
+#include <cstdlib>
 #include <map>
+#include <spectator/id.h>
 
 namespace atlasagent {
+
+void CGroup::network_stats() noexcept {
+  auto megabits = std::getenv("TITUS_NUM_NETWORK_BANDWIDTH");
+  if (megabits != nullptr) {
+    auto n = strtol(megabits, nullptr, 10);
+    if (n > 0) {
+      auto bytes = n * 125000.0;  // 1 megabit = 1,000,000 bits / 8 = 125,000 bytes
+      registry_->GetGauge("cgroup.net.bandwidthBytes")->Set(bytes);
+    }
+  }
+}
 
 void CGroup::cpu_shares(time_point now) noexcept {
   auto shares = read_num_from_file(path_prefix_, "cpu/cpu.shares");
