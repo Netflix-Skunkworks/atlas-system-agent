@@ -31,32 +31,6 @@ class StdIoFile {
   char buf[65536];
 };
 
-class StdPipe {
- public:
-  explicit StdPipe(const char* cmd) noexcept : fp_(::popen(cmd, "r")) {
-    if (fp_ == nullptr) {
-      Logger()->warn("Unable to execute {}", cmd);
-    } else {
-      setbuffer(fp_, buf, sizeof buf);
-    }
-  }
-  StdPipe(const StdPipe&) = delete;
-  StdPipe(StdPipe&& other) noexcept : fp_(other.fp_) { other.fp_ = nullptr; }
-
-  ~StdPipe() {
-    if (fp_ != nullptr) {
-      ::pclose(fp_);
-      fp_ = nullptr;
-    }
-  }
-
-  operator FILE*() const { return fp_; }
-
- private:
-  FILE* fp_;
-  char buf[65536];
-};
-
 class UnixFile {
  public:
   explicit UnixFile(int fd) : fd_(fd) {}
@@ -92,7 +66,7 @@ class UnixFile {
 
 class DirHandle {
  public:
-  explicit DirHandle(const char* name) noexcept : dh_{ opendir(name)} {
+  explicit DirHandle(const char* name) noexcept : dh_{opendir(name)} {
     if (dh_ == nullptr) {
       Logger()->warn("Unable to opendir {}: {}", name, strerror(errno));
     }

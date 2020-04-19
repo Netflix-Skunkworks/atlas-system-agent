@@ -3,6 +3,10 @@
 #include <cinttypes>
 #include <sstream>
 #include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
+
+extern char** environ;
 
 namespace atlasagent {
 
@@ -79,28 +83,108 @@ bool starts_with(const char* line, const char* prefix) noexcept {
   return std::memcmp(line, prefix, prefix_len) == 0;
 }
 
-std::string read_output_string(const char* cmd) {
-  StdPipe fp{cmd};
+enum class read_result_t { timeout, error, success };
+
+static read_result_t read_with_timeout(int fd, int timeout_millis, std::string* output) {
+  char buf[4096];
+  fd_set input_set;
+  timeval timeout;
+
   std::string result;
-  static constexpr int kBufSize = 4096;
-  char buf[kBufSize] = {0};
-  while ((std::fgets(buf, kBufSize, fp)) != nullptr) {
-    result += buf;
+  while (true) {
+    FD_ZERO(&input_set);
+    FD_SET(fd, &input_set);
+
+    timeout.tv_sec = timeout_millis / 1000;
+    timeout.tv_usec = (timeout_millis % 1000) * 1000L;
+    auto ready = select(fd + 1, &input_set, nullptr, nullptr, &timeout);
+    if (ready < 0) {
+      return read_result_t::error;
+    }
+    if (ready == 0) {
+      return read_result_t::timeout;
+    }
+
+    auto read_bytes = read(fd, buf, sizeof buf);
+    if (read_bytes < 0) {
+      // error
+      return read_result_t::error;
+    }
+    if (read_bytes == 0) {
+      // end of file
+      *output = std::move(result);
+      return read_result_t::success;
+    }
+    std::string partial{buf, static_cast<std::string::size_type>(read_bytes)};
+    result += partial;
   }
+}
+
+std::string read_output_string(const char* cmd, int timeout_millis) {
+  std::string result;
+
+  int pipe_descriptors[2];
+  char* argp[] = {const_cast<char*>("sh"), const_cast<char*>("-c"), nullptr, nullptr};
+  if (pipe(pipe_descriptors) < 0) {
+    Logger()->warn("Unable to create a pipe: {}", strerror(errno));
+    return "";
+  }
+
+  int pid = fork();
+  switch (pid) {
+    case -1:  // error
+      close(pipe_descriptors[0]);
+      close(pipe_descriptors[1]);
+      Logger()->warn("Unable to fork when trying to read output for {}: {}", cmd, strerror(errno));
+      return "";
+    case 0:  // child
+      // close child's input
+      close(pipe_descriptors[0]);
+      // ensure stdout for the child is the parent's end of the pipe
+      if (pipe_descriptors[1] != STDOUT_FILENO) {
+        dup2(pipe_descriptors[1], STDOUT_FILENO);
+        close(pipe_descriptors[1]);
+      }
+      argp[2] = const_cast<char*>(cmd);
+      execve("/bin/sh", argp, environ);
+      // if we couldn't exec the shell just die
+      _exit(255);
+  }
+
+  // parent
+
+  close(pipe_descriptors[1]);
+  auto res = read_with_timeout(pipe_descriptors[0], timeout_millis, &result);
+  close(pipe_descriptors[0]);
+
+  if (res != read_result_t::success) {
+    std::string err_msg;
+    if (res == read_result_t::timeout) {
+      Logger()->warn("timeout - killing child (pid={})", pid);
+      kill(pid, SIGKILL);
+      err_msg = fmt::format("timeout after {}ms", timeout_millis);
+    } else {
+      err_msg = strerror(errno);
+    }
+    Logger()->warn("Unable to read output from {}: {}", cmd, err_msg);
+  }
+
+  int wait_pid = 0;
+  do {
+    int pstat;
+    wait_pid = waitpid(pid, &pstat, 0);
+  } while (wait_pid == -1 && errno == EINTR);
+
   return result;
 }
 
-std::vector<std::string> read_output_lines(const char* cmd) {
-  StdPipe fp{cmd};
-  std::vector<std::string> result;
-  std::string line;
-  static constexpr int kBufSize = 4096;
-  char buf[kBufSize] = {0};
-  char* st;
-  while ((st = std::fgets(buf, kBufSize, fp)) != nullptr) {
-    result.emplace_back(buf);
-  }
-  return result;
+std::vector<std::string> read_output_lines(const char* cmd, int timeout_millis) {
+  // use read whole-string with timeout and then split for simplicity
+  auto output_str = read_output_string(cmd, timeout_millis);
+  std::vector<std::string> lines{};
+  split(
+      output_str.c_str(), [](int ch) { return ch == '\n'; }, &lines);
+  return lines;
 }
 
 inline bool can_execute_full_path(const std::string& program) {

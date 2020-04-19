@@ -22,10 +22,10 @@ void split(const char* line, const std::function<bool(int)>& is_sep,
 bool starts_with(const char* line, const char* prefix) noexcept;
 
 // Execute cmd using the shell, and return its output as a string
-std::string read_output_string(const char* cmd);
+std::string read_output_string(const char* cmd, int timeout_millis = 1000);
 
 // Execute cmd using the shell and return its output as a vector of lines
-std::vector<std::string> read_output_lines(const char* cmd);
+std::vector<std::string> read_output_lines(const char* cmd, int timeout_millis = 1000);
 
 // determine whether the program passed is available
 bool can_execute(const std::string& program);
