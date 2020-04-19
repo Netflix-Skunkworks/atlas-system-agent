@@ -3,6 +3,7 @@
 
 #include "../lib/util.h"
 
+namespace {
 std::vector<std::string> expected = {"foo:", "bar", "baz", "43.2", "x&z"};
 TEST(Utils, SplitEmpty) {
   std::vector<std::string> res;
@@ -35,8 +36,18 @@ TEST(Utils, ReadOutputString) {
 
 TEST(Utils, ReadOutputLines) {
   auto lines = atlasagent::read_output_lines("echo first line;echo second line;echo third line");
-  std::vector<std::string> expected = {"first line\n", "second line\n", "third line\n"};
+  std::vector<std::string> expected = {"first line", "second line", "third line"};
   EXPECT_EQ(lines, expected);
+}
+
+TEST(Utils, ReadOutputTimeoutNoInput) {
+  auto lines = atlasagent::read_output_lines("sleep 4; echo hi", 10);
+  EXPECT_TRUE(lines.empty());
+}
+
+TEST(Utils, ReadOutputTimeoutAfterInput) {
+  auto lines = atlasagent::read_output_lines("echo foo; sleep 1; echo bar", 10);
+  EXPECT_TRUE(lines.empty());
 }
 
 TEST(Utils, ReadOutputStringErr) {
@@ -74,3 +85,4 @@ TEST(Utils, ParseTagsEmpty) {
   EXPECT_EQ(some_invalid.size(), 1);
   EXPECT_EQ(some_invalid.at("key"), "val");
 }
+}  // namespace
