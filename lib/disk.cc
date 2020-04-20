@@ -260,6 +260,10 @@ void Disk::diskio_stats(spectator::Registry::clock::time_point start) noexcept {
 void Disk::titus_disk_stats() noexcept {
   stats_for_interesting_mps(
       [](Disk* disk, const MountPoint& mp) { disk->update_titus_stats_for(mp); });
+
+  auto start = Registry::clock::now();
+  diskio_stats(start);
+  last_updated_ = spectator::Registry::clock::now();
 }
 
 void Disk::update_titus_stats_for(const MountPoint& mp) noexcept {
