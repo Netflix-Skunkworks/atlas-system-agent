@@ -220,8 +220,7 @@ static int read_buf(char *pid1dir, char **env, int *length, struct stat *st) {
 static char *LD_LIBRARY_PATH = "/proc/self/lib/x86_64-linux-gnu:/proc/self/usr/local/lib";
 static char *LD_BIND_NOW1 = "LD_BIND_NOW=1";
 
-bool maybe_reexec(char* binary_path) {
-	char *const argv[] = {binary_path, 0};
+bool maybe_reexec(char* const* argv) {
 	char user_gid_env[128], user_uid_env[128];
 	char *pid1dir, *env = NULL;
 	int err, offset = 0;
@@ -268,7 +267,7 @@ bool maybe_reexec(char* binary_path) {
 	if (err)
 		goto end;
 
-	execvpe(binary_path, argv, envp);
+	execvpe(argv[0], (char * const*)argv, envp);
 end:
 	fprintf(stderr, "Could not reexec: %s\n", strerror(err));
 	return true;
