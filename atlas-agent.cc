@@ -231,6 +231,9 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
 
 int main(int argc, char* const argv[]) {
   agent_options options{};
+#ifdef TITUS_AGENT
+  auto binary_path = argv[0];
+#endif
   auto idx = parse_options(argc, argv, &options);
   assert(idx >= 0);
   argc -= idx;
@@ -238,7 +241,7 @@ int main(int argc, char* const argv[]) {
 
 #ifdef TITUS_AGENT
   container_handle c;
-  if (maybe_reexec(argv)) {
+  if (maybe_reexec(binary_path)) {
     return 1;
   }
 #endif

@@ -11,10 +11,10 @@ struct container_handle {
 #include <stdbool.h>
 
 #ifdef __linux__
-bool maybe_reexec(char* const* argv);
+bool maybe_reexec(char* argv);
 int maybe_contain(struct container_handle *);
 #else
-inline bool maybe_reexec(char* const* /*argv*/) {
+inline bool maybe_reexec(char* /*binary_path*/) {
 	return false;
 }
 
