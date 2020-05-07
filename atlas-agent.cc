@@ -231,10 +231,6 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
 
 int main(int argc, char* const argv[]) {
   agent_options options{};
-  auto idx = parse_options(argc, argv, &options);
-  assert(idx >= 0);
-  argc -= idx;
-  argv += idx;
 
 #ifdef TITUS_AGENT
   container_handle c;
@@ -242,6 +238,11 @@ int main(int argc, char* const argv[]) {
     return 1;
   }
 #endif
+  auto idx = parse_options(argc, argv, &options);
+  assert(idx >= 0);
+  argc -= idx;
+  argv += idx;
+
   std::unique_ptr<Nvml> nvidia_lib;
   try {
     nvidia_lib = std::make_unique<Nvml>();
