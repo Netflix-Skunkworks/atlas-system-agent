@@ -170,28 +170,30 @@ std::vector<DiskIo> Disk::get_disk_stats() const noexcept {
     return res;
   }
 
-  while (in) {
-    int major = -1;
-    in >> major;
+  for (std::string line; std::getline(in, line);) {
+    std::vector<std::string> fields;
+    split(line.c_str(), isspace, &fields);
+    if (fields.size() < 14) continue;
+    int major = std::stoi(fields[0]);
     if (major < 0) {
       break;
     }
 
     DiskIo diskIo;
     diskIo.major = major;
-    in >> diskIo.minor;
-    in >> diskIo.device;
-    in >> diskIo.reads_completed;
-    in >> diskIo.reads_merged;
-    in >> diskIo.rsect;
-    in >> diskIo.ms_reading;
-    in >> diskIo.writes_completed;
-    in >> diskIo.writes_merged;
-    in >> diskIo.wsect;
-    in >> diskIo.ms_writing;
-    in >> diskIo.ios_in_progress;
-    in >> diskIo.ms_doing_io;
-    in >> diskIo.weighted_ms_doing_io;
+    diskIo.minor = std::stoi(fields[1]);
+    diskIo.device = std::move(fields[2]);
+    diskIo.reads_completed = std::strtoul(fields[3].c_str(), nullptr, 10);
+    diskIo.reads_merged = std::strtoul(fields[4].c_str(), nullptr, 10);
+    diskIo.rsect = std::strtoul(fields[5].c_str(), nullptr, 10);
+    diskIo.ms_reading = std::strtoul(fields[6].c_str(), nullptr, 10);
+    diskIo.writes_completed = std::strtoul(fields[7].c_str(), nullptr, 10);
+    diskIo.writes_merged = std::strtoul(fields[8].c_str(), nullptr, 10);
+    diskIo.wsect = std::strtoul(fields[9].c_str(), nullptr, 10);
+    diskIo.ms_writing = std::strtoul(fields[10].c_str(), nullptr, 10);
+    diskIo.ios_in_progress = std::strtoul(fields[11].c_str(), nullptr, 10);
+    diskIo.ms_doing_io = std::strtoul(fields[12].c_str(), nullptr, 10);
+    diskIo.weighted_ms_doing_io = std::strtoul(fields[13].c_str(), nullptr, 10);
 
     res.push_back(diskIo);
   }
