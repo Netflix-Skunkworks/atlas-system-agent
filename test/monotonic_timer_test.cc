@@ -3,6 +3,7 @@
 #include "../lib/monotonic_timer.h"
 #include "measurement_utils.h"
 
+namespace {
 TEST(MonotonicTimer, NoActivity) {
   spectator::Registry registry{spectator::GetConfiguration(), spectator::DefaultLogger()};
   MonotonicTimer timer{&registry, registry.CreateId("test", spectator::Tags{})};
@@ -32,12 +33,13 @@ TEST(MonotonicTimer, Overflow) {
 
   using millis = std::chrono::milliseconds;
   timer.update(millis{2000}, 10);
-  EXPECT_EQ(registry.Measurements().size(), 0);
+  EXPECT_EQ(my_measurements(&registry).size(), 0);
   timer.update(millis{1000}, 15);  // overflow time
-  EXPECT_EQ(registry.Measurements().size(), 0);
+  EXPECT_EQ(my_measurements(&registry).size(), 0);
   timer.update(millis{3000}, 12);  // overflow count
-  EXPECT_EQ(registry.Measurements().size(), 0);
+  EXPECT_EQ(my_measurements(&registry).size(), 0);
 
   timer.update(millis{4000}, 13);  // back to normal
-  EXPECT_EQ(registry.Measurements().size(), 2);
+  EXPECT_EQ(my_measurements(&registry).size(), 2);
 }
+}  // namespace

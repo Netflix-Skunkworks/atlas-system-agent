@@ -101,7 +101,7 @@ TEST(Disk, UpdateTitusStats) {
 
   disk.titus_disk_stats();
 
-  const auto& ms = registry.Measurements();
+  const auto& ms = my_measurements(&registry);
   for (const auto& m : ms) {
     Logger()->info("Got {}", m);
   }
@@ -115,12 +115,12 @@ TEST(Disk, UpdateDiskStats) {
   disk.do_disk_stats(start);
   disk.set_last_updated(start);
 
-  auto initial = registry.Measurements();
+  auto initial = my_measurements(&registry);
 
   disk.set_prefix("./resources2");
   disk.do_disk_stats(start + std::chrono::seconds(5));
 
-  auto ms = registry.Measurements();
+  auto ms = my_measurements(&registry);
   auto values = measurements_to_map(ms, "dev");
   expect_value(&values, "disk.io.bytes|count|read|md0", 512 * 1e4);
   expect_value(&values, "disk.io.bytes|count|read|xvda", 512 * 1e4);
@@ -165,13 +165,13 @@ TEST(Disk, diskio_stats) {
 
   auto start = spectator::Registry::clock::now();
   disk.diskio_stats(start);
-  auto initial = registry.Measurements();
+  auto initial = my_measurements(&registry);
   EXPECT_TRUE(initial.empty());
 
   disk.set_prefix("./resources2");
   disk.diskio_stats(start + std::chrono::seconds{60});
 
-  auto ms = registry.Measurements();
+  auto ms = my_measurements(&registry);
   auto values = measurements_to_map(ms, "dev");
   expect_value(&values, "disk.io.bytes|count|read|md0", 512 * 1e4);
   expect_value(&values, "disk.io.bytes|count|read|xvda", 512 * 1e4);

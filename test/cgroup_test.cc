@@ -18,9 +18,7 @@ class CGroupTest : public CGroup {
   void do_cpu_stats(time_point now) { CGroup::do_cpu_stats(now); }
 };
 
-inline long megabits2bytes(int mbits) {
-  return mbits * 125000;
-}
+inline long megabits2bytes(int mbits) { return mbits * 125000; }
 
 TEST(CGroup, Net) {
   Registry registry(GetConfiguration(), Logger());
@@ -28,17 +26,17 @@ TEST(CGroup, Net) {
 
   unsetenv("TITUS_NUM_NETWORK_BANDWIDTH");
   cGroup.network_stats();
-  auto ms = registry.Measurements();
+  auto ms = my_measurements(&registry);
   EXPECT_EQ(ms.size(), 0);
 
   setenv("TITUS_NUM_NETWORK_BANDWIDTH", "abc", 1);
   cGroup.network_stats();
-  ms = registry.Measurements();
+  ms = my_measurements(&registry);
   EXPECT_EQ(ms.size(), 0);
 
   setenv("TITUS_NUM_NETWORK_BANDWIDTH", "128", 1);
   cGroup.network_stats();
-  ms = registry.Measurements();
+  ms = my_measurements(&registry);
   auto map = measurements_to_map(ms, "");
   EXPECT_EQ(map["cgroup.net.bandwidthBytes|gauge"], megabits2bytes(128));
 }
@@ -50,7 +48,7 @@ TEST(CGroup, ParseCpu) {
 
   auto now = Registry::clock::now();
   cGroup.do_cpu_stats(now);
-  auto initial = registry.Measurements();
+  auto initial = my_measurements(&registry);
   auto initial_map = measurements_to_map(initial, "");
   expect_value(&initial_map, "cgroup.cpu.processingCapacity|count", 10.24 * 30.0);
   expect_value(&initial_map, "cgroup.cpu.shares|gauge", 1024);
@@ -59,7 +57,7 @@ TEST(CGroup, ParseCpu) {
   cGroup.set_prefix("./resources2");
   cGroup.do_cpu_stats(now + seconds{5});
 
-  const auto& ms = registry.Measurements();
+  const auto& ms = my_measurements(&registry);
   measurement_map map = measurements_to_map(ms, "proto");
   expect_value(&map, "cgroup.cpu.usageTime|count|system", 120);
   expect_value(&map, "cgroup.cpu.usageTime|count|user", 60);
@@ -76,12 +74,12 @@ TEST(CGroup, ParseMemory) {
   CGroup cGroup{&registry, "./resources"};
 
   cGroup.memory_stats();
-  auto initial = registry.Measurements();
+  auto initial = my_measurements(&registry);
   EXPECT_EQ(initial.size(), 12);  // 12 gauges
 
   cGroup.set_prefix("./resources2");
   cGroup.memory_stats();
-  auto ms = registry.Measurements();
+  auto ms = my_measurements(&registry);
   auto values = measurements_to_map(ms, "");
   expect_value(&values, "cgroup.kmem.tcpUsed|gauge", 0);
   expect_value(&values, "cgroup.mem.processUsage|gauge|mapped_file", 3);

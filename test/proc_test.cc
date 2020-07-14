@@ -16,12 +16,12 @@ TEST(Proc, ParseNetwork) {
   Proc proc{&registry, extra, "./resources/proc"};
 
   proc.network_stats();
-  EXPECT_TRUE(registry.Measurements().empty());
+  EXPECT_TRUE(my_measurements(&registry).empty());
 
   proc.set_prefix("./resources/proc2");
   proc.network_stats();
 
-  const auto& ms = registry.Measurements();
+  const auto& ms = my_measurements(&registry);
   auto map = measurements_to_map(ms, "iface");
   expect_value(&map, "net.iface.bytes|count|in|eth1|extra", 1e3);
   expect_value(&map, "net.iface.errors|count|in|eth1|extra", 1);
@@ -52,14 +52,14 @@ TEST(Proc, ParseSnmp) {
 
   proc.snmp_stats();
   // only gauges
-  auto initial = registry.Measurements();
+  auto initial = my_measurements(&registry);
   for (const auto& m : initial) {
     EXPECT_EQ(m.id->GetTags().at("statistic"), "gauge");
   }
   proc.set_prefix("./resources/proc2");
   proc.snmp_stats();
 
-  auto ms = registry.Measurements();
+  auto ms = my_measurements(&registry);
   measurement_map values = measurements_to_map(ms, "proto");
   expect_value(&values, "net.tcp.connectionStates|gauge|closeWait|v4|extra", 0);
   expect_value(&values, "net.tcp.connectionStates|gauge|closeWait|v6|extra", 0);
@@ -111,7 +111,7 @@ TEST(Proc, ParseLoadAvg) {
   spectator::Tags extra{{"nf.test", "extra"}};
   Proc proc{&registry, extra, "./resources/proc"};
   proc.loadavg_stats();
-  const auto& ms = registry.Measurements();
+  const auto& ms = my_measurements(&registry);
   EXPECT_EQ(3, ms.size()) << "3 metrics for loadavg";
 
   for (const auto& m : ms) {
@@ -149,13 +149,13 @@ TEST(Proc, CpuStats) {
   Proc proc{&registry, extra, "./resources/proc"};
   proc.cpu_stats();
   proc.peak_cpu_stats();
-  const auto& ms = registry.Measurements();
+  const auto& ms = my_measurements(&registry);
   EXPECT_TRUE(ms.empty());
 
   proc.set_prefix("./resources/proc2");
   proc.cpu_stats();
   proc.peak_cpu_stats();
-  const auto& ms2 = registry.Measurements();
+  const auto& ms2 = my_measurements(&registry);
   EXPECT_EQ(16, ms2.size());
 }
 
@@ -164,7 +164,7 @@ TEST(Proc, VmStats) {
   spectator::Tags extra{{"nf.test", "extra"}};
   Proc proc{&registry, extra, "./resources/proc"};
   proc.vmstats();
-  auto ms = registry.Measurements();
+  auto ms = my_measurements(&registry);
   auto ms_map = measurements_to_map(ms, "proto");
   expect_value(&ms_map, "vmstat.procs|gauge|blocked", 1);
   expect_value(&ms_map, "vmstat.procs|gauge|running", 2);
@@ -174,7 +174,7 @@ TEST(Proc, VmStats) {
 
   proc.set_prefix("./resources/proc2");
   proc.vmstats();
-  auto ms2 = registry.Measurements();
+  auto ms2 = my_measurements(&registry);
   auto ms2_map = measurements_to_map(ms2, "proto");
   expect_value(&ms2_map, "vmstat.procs|gauge|blocked", 2);
   expect_value(&ms2_map, "vmstat.procs|gauge|running", 3);
@@ -192,7 +192,7 @@ TEST(Proc, MemoryStats) {
   spectator::Tags extra{{"nf.test", "extra"}};
   Proc proc{&registry, extra, "./resources/proc"};
   proc.memory_stats();
-  auto ms = registry.Measurements();
+  auto ms = my_measurements(&registry);
   auto ms_map = measurements_to_map(ms, "proto");
   expect_value(&ms_map, "mem.freeReal|gauge", 1024.0 * 9631224);
   expect_value(&ms_map, "mem.availReal|gauge", 1024.0 * 9557144);
@@ -211,12 +211,12 @@ TEST(Proc, ParseNetstat) {
   spectator::Tags extra{{"nf.test", "extra"}};
   Proc proc{&registry, extra, "./resources/proc"};
   proc.netstat_stats();
-  EXPECT_TRUE(registry.Measurements().empty());
+  EXPECT_TRUE(my_measurements(&registry).empty());
 
   proc.set_prefix("./resources/proc2");
   proc.netstat_stats();
 
-  const auto& ms = registry.Measurements();
+  const auto& ms = my_measurements(&registry);
   measurement_map values = measurements_to_map(ms, "proto");
   expect_value(&values, "net.ip.ectPackets|count|capable|extra", 180.0);
   expect_value(&values, "net.ip.ectPackets|count|notCapable|extra", 60.0);
@@ -229,7 +229,7 @@ TEST(Proc, ArpStats) {
   spectator::Tags extra{{"nf.test", "extra"}};
   Proc proc{&registry, extra, "./resources/proc"};
   proc.arp_stats();
-  const auto ms = registry.Measurements();
+  const auto ms = my_measurements(&registry);
   EXPECT_EQ(ms.size(), 1);
   const auto& m = ms.front();
   EXPECT_EQ(m.id->Name(), "net.arpCacheSize");
@@ -243,7 +243,7 @@ TEST(Proc, ProcessStats) {
   Proc proc{&registry, extra, "./resources/proc"};
   proc.process_stats();
 
-  const auto& ms = registry.Measurements();
+  const auto& ms = my_measurements(&registry);
   auto map = measurements_to_map(ms, "");
   expect_value(&map, "sys.currentProcesses|gauge", 2.0);
   expect_value(&map, "sys.currentThreads|gauge", 1.0 + 4.0);
