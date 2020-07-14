@@ -55,10 +55,7 @@ class Disk {
   std::vector<MountPoint> get_mount_points() const noexcept;
   std::vector<DiskIo> get_disk_stats() const noexcept;
   void update_titus_stats_for(const MountPoint& mp) noexcept;
-  void update_stats_for(const MountPoint& mp, const char* prefix) noexcept;
-
-  void update_gauge(const char* prefix, const char* name, const spectator::Tags& tags,
-                    double value) noexcept;
+  void update_stats_for(const MountPoint& mp) noexcept;
 
   void diskio_stats(spectator::Registry::clock::time_point start) noexcept;
   void set_last_updated(spectator::Registry::clock::time_point updated) { last_updated_ = updated; }

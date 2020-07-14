@@ -150,8 +150,7 @@ void Disk::stats_for_interesting_mps(
 void Disk::disk_stats() noexcept { do_disk_stats(spectator::Registry::clock::now()); }
 
 void Disk::do_disk_stats(spectator::Registry::clock::time_point start) noexcept {
-  stats_for_interesting_mps(
-      [](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp, ""); });
+  stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
 
   diskio_stats(start);
   last_updated_ = spectator::Registry::clock::now();
@@ -260,22 +259,10 @@ void Disk::diskio_stats(spectator::Registry::clock::time_point start) noexcept {
 }
 
 void Disk::titus_disk_stats() noexcept {
-  stats_for_interesting_mps(
-      [](Disk* disk, const MountPoint& mp) { disk->update_titus_stats_for(mp); });
+  stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
 }
 
-void Disk::update_titus_stats_for(const MountPoint& mp) noexcept {
-  update_stats_for(mp, "cgroup.");
-}
-
-void Disk::update_gauge(const char* prefix, const char* name, const Tags& tags,
-                        double value) noexcept {
-  std::string nameStr{prefix};
-  nameStr += name;
-  registry_->GetGauge(registry_->CreateId(nameStr, tags))->Set(value);
-}
-
-void Disk::update_stats_for(const MountPoint& mp, const char* prefix) noexcept {
+void Disk::update_stats_for(const MountPoint& mp) noexcept {
   struct statvfs st;
   if (statvfs(mp.mount_point.c_str(), &st) != 0) {
     // do not generate warnings for tmpfs mount points. On some systems
@@ -294,18 +281,18 @@ void Disk::update_stats_for(const MountPoint& mp, const char* prefix) noexcept {
   auto bytes_free = st.f_bfree * st.f_bsize;
   auto bytes_used = bytes_total - bytes_free;
   auto bytes_percent = 100.0 * bytes_used / bytes_total;
-  update_gauge(prefix, "disk.bytesFree", tags, bytes_free);
-  update_gauge(prefix, "disk.bytesUsed", tags, bytes_used);
-  update_gauge(prefix, "disk.bytesMax", tags, bytes_total);
-  update_gauge(prefix, "disk.bytesPercentUsed", tags, bytes_percent);
+  registry_->GetGauge("disk.bytesFree", tags)->Set(bytes_free);
+  registry_->GetGauge("disk.bytesUsed", tags)->Set(bytes_used);
+  registry_->GetGauge("disk.bytesMax", tags)->Set(bytes_total);
+  registry_->GetGauge("disk.bytesPercentUsed", tags)->Set(bytes_percent);
 
   if (st.f_files > 0) {
     auto inodes_free = st.f_ffree;
     auto inodes_used = st.f_files - st.f_ffree;
     auto inodes_percent = 100.0 * inodes_used / st.f_files;
-    update_gauge(prefix, "disk.inodesFree", tags, inodes_free);
-    update_gauge(prefix, "disk.inodesUsed", tags, inodes_used);
-    update_gauge(prefix, "disk.inodesPercentUsed", tags, inodes_percent);
+    registry_->GetGauge("disk.inodesFree", tags)->Set(inodes_free);
+    registry_->GetGauge("disk.inodesUsed", tags)->Set(inodes_used);
+    registry_->GetGauge("disk.inodesPercentUsed", tags)->Set(inodes_percent);
   }
 }
 

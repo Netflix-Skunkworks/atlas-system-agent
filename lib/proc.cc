@@ -124,9 +124,9 @@ void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcep
 
 using gauge_ptr = std::shared_ptr<spectator::Gauge>;
 
-inline IdPtr create_id(Registry* registry, const char* name, const Tags& tags, const Tags& extra) {
+inline IdPtr create_id(Registry* registry, const char* name, const Tags& tags, Tags extra) {
   Tags all_tags{tags};
-  all_tags.add_all(extra);
+  all_tags.move_all(std::move(extra));
   return registry->CreateId(name, all_tags);
 }
 
