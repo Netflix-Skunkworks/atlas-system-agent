@@ -12,7 +12,8 @@ class Ntp {
   explicit Ntp(spectator::Registry* registry) noexcept
       : lastSampleAge_{registry->GetGauge("sys.time.lastSampleAge")},
         estimatedError_{registry->GetGauge("sys.time.estimatedError")},
-        unsynchronized_{registry->GetGauge("sys.time.unsynchronized")} {}
+        unsynchronized_{registry->GetGauge("sys.time.unsynchronized")},
+        lastSampleTime_{Clock::now()} {}
 
   void update_stats() noexcept {
     if (can_execute("chronyc")) {
@@ -34,7 +35,7 @@ class Ntp {
 
  protected:
   // for testing
-  typename Clock::time_point lastSampleTime_{};
+  typename Clock::time_point lastSampleTime_;
 
   void ntp_stats(int err, timex* time) {
     if (err == -1) {
