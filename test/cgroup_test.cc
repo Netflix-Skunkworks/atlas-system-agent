@@ -9,6 +9,7 @@ using spectator::GetConfiguration;
 using spectator::Registry;
 using std::chrono::seconds;
 
+namespace {
 class CGroupTest : public CGroup {
  public:
   explicit CGroupTest(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
@@ -99,3 +100,4 @@ TEST(CGroup, ParseMemory) {
   expect_value(&values, "cgroup.mem.failures|count", 2);
   EXPECT_TRUE(values.empty());
 }
+}  // namespace

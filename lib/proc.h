@@ -5,8 +5,8 @@
 namespace atlasagent {
 class Proc {
  public:
-  explicit Proc(spectator::Registry* registry, spectator::Tags net_tags,
-                std::string path_prefix = "/proc") noexcept;
+  Proc(spectator::Registry* registry, spectator::Tags net_tags,
+       std::string path_prefix = "/proc") noexcept;
   void network_stats() noexcept;
   void arp_stats() noexcept;
   void snmp_stats() noexcept;

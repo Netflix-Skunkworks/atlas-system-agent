@@ -17,6 +17,7 @@ using spectator::Registry;
 using spectator::Tags;
 using time_point = spectator::Registry::clock::time_point;
 
+namespace {
 class TestDisk : public Disk {
  public:
   explicit TestDisk(spectator::Registry* registry) : Disk(registry, "./resources") {}
@@ -193,3 +194,4 @@ TEST(Disk, diskio_stats) {
   expect_value(&values, "disk.io.ops|totalTime|write|xvdc", 0.028);
   EXPECT_TRUE(values.empty());
 }
+}  // namespace

@@ -2,6 +2,7 @@
 #include "contain/contain.h"
 #include "lib/aws.h"
 #include "lib/cgroup.h"
+#include "lib/cpufreq.h"
 #include "lib/disk.h"
 #include "lib/gpumetrics.h"
 #include "lib/logger.h"
@@ -18,6 +19,7 @@
 
 using atlasagent::Aws;
 using atlasagent::CGroup;
+using atlasagent::CpuFreq;
 using atlasagent::Disk;
 using atlasagent::GetLogger;
 using atlasagent::GpuMetrics;
@@ -57,6 +59,8 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aw
 }
 #else
 static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
+
+static void gather_scaling_metrics(CpuFreq* cpufreq) { cpufreq->Stats(); }
 
 static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ntp<>* ntp, Aws* aws) {
   Logger()->info("Gathering system metrics");
@@ -169,6 +173,7 @@ void collect_system_metrics(spectator::Registry* registry, std::unique_ptr<Nvml>
   Disk disk{registry, ""};
   Ntp<> ntp{registry};
   Aws aws{registry};
+  CpuFreq cpufreq{registry};
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
@@ -180,6 +185,7 @@ void collect_system_metrics(spectator::Registry* registry, std::unique_ptr<Nvml>
   gather_slow_system_metrics(&proc, &disk, &ntp, &aws);
   do {
     gather_peak_system_metrics(&proc);
+    gather_scaling_metrics(&cpufreq);
     if (system_clock::now() >= next_slow_run) {
       gather_slow_system_metrics(&proc, &disk, &ntp, &aws);
       perf_metrics.collect();
