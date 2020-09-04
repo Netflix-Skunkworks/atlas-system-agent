@@ -3,6 +3,7 @@
 #include "measurement_utils.h"
 #include <gtest/gtest.h>
 
+namespace {
 using atlasagent::Logger;
 using atlasagent::Ntp;
 
@@ -133,3 +134,4 @@ TEST(Ntp, adjtime_err) {
                                                       {"sys.time.estimatedError|gauge", 0.2}};
   EXPECT_EQ(map, expected);
 }
+}  // namespace
