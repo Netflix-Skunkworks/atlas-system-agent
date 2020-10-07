@@ -10,14 +10,12 @@ error() { >&2 echo -e "${RED}$1${NC}"; }
 showinfo() { echo -e "${BG}$1${NC}"; }
 workingprocess() { echo -e "${BB}$1${NC}"; }
 
-alias bazel=bazel-3.5.0
-
 if [ -z $TITUS_AGENT ]; then
   showinfo "Building atlas-system-agent"
-  bazel --output_user_root=$HOME/.cache/bazel-a --batch build --config asan //... --verbose_failures
+  bazel-3.5.0 --output_user_root=$HOME/.cache/bazel-a --batch build --config asan //... --verbose_failures
 else
   showinfo "Building atlas-titus-agent"
-  bazel --output_user_root=$HOME/.cache/bazel-t --batch build --config asan //... --define titus_agent=yes --verbose_failures
+  bazel-3.5.0 --output_user_root=$HOME/.cache/bazel-t --batch build --config asan //... --define titus_agent=yes --verbose_failures
 fi
 
 # If command fails it outputs number between 0 to 255
