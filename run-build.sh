@@ -1,7 +1,6 @@
 #!/bin/bash
 
 set -e
-
 RED='\033[0;31m' # Red
 BB='\033[0;34m'  # Blue
 NC='\033[0m' # No Color
@@ -10,39 +9,23 @@ BG='\033[0;32m' # Green
 error() { >&2 echo -e "${RED}$1${NC}"; }
 showinfo() { echo -e "${BG}$1${NC}"; }
 workingprocess() { echo -e "${BB}$1${NC}"; }
-alert () { echo -e "${RED}$1${NC}"; }
 
-if [ "$CC" = gcc ] ; then
-  export CC=gcc-5
-  export CXX=g++-5
+
+showinfo "Installing bazel"
+curl -fsSL https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
+echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+
+sudo apt update && sudo apt install bazel-3.5.0
+alias bazel=bazel-3.5.0
+
+if [ -z $TITUS_AGENT ]; then
+  showinfo "Building atlas-system-agent"
+  bazel build --config asan //...
+else
+  showinfo "Building atlas-titus-agent"
+  bazel build --config asan //... --define titus_agent=yes
 fi
 
-# Fetch and build spectator-cpp
-rm -rf nc
-mkdir nc
-cd nc
-git init
-git remote add origin https://github.com/Netflix/spectator-cpp.git
-git fetch origin $SPECTATOR_CPP_VERSION
-git reset --hard FETCH_HEAD
-mkdir -p cmake-build root
-cd cmake-build
-cmake -DCMAKE_INSTALL_PREFIX=/ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
-make -j4
-make install DESTDIR=../root
-cd ../..
-
-cp -p sample-config.cc ./lib
-
-# Building project
-mkdir -p cmake-build
-cd cmake-build
-cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo $TITUS_AGENT ..
-
-make -j4
-# Checks if last comand didn't output 0
-# $? checks what last command outputed
-# If output is 0 then command is succesfuly executed
 # If command fails it outputs number between 0 to 255
 if [ $? -ne 0 ]; then
     error "Error: there are compile errors!"
@@ -51,8 +34,8 @@ if [ $? -ne 0 ]; then
 fi
 
 showinfo "Running tests ..."
+./bazel-bin/sysagent_test
 
-./runtests
 
 if [ $? -ne 0 ]; then
     error "Error: there are failed tests!"

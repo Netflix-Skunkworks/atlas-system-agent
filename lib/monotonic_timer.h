@@ -1,18 +1,20 @@
 #pragma once
 
-#include <spectator/registry.h>
+#include "spectator/registry.h"
 
+namespace atlasagent {
+template <typename Reg>
 class MonotonicTimer {
  public:
-  MonotonicTimer(spectator::Registry* registry, spectator::IdPtr id)
-      : count_{registry->GetCounter(id->WithStat("count"))},
-        total_time_{registry->GetCounter(id->WithStat("totalTime"))} {}
+  MonotonicTimer(Reg* registry, const spectator::Id& id)
+      : count_{registry->GetCounter(id.WithStat("count"))},
+        total_time_{registry->GetCounter(id.WithStat("totalTime"))} {}
 
-  void update(std::chrono::nanoseconds monotonic_time, int64_t monotonic_count) {
+  void update(absl::Duration monotonic_time, int64_t monotonic_count) {
     if (prev_count > 0) {
       auto delta_count = monotonic_count - prev_count;
       if (delta_count > 0) {
-        auto seconds = (monotonic_time - prev_time).count() / 1e9;
+        auto seconds = absl::ToDoubleSeconds(monotonic_time - prev_time);
         if (seconds >= 0) {
           total_time_->Add(seconds);
           count_->Add(delta_count);
@@ -24,8 +26,10 @@ class MonotonicTimer {
   }
 
  private:
-  std::chrono::nanoseconds prev_time;
-  int64_t prev_count;
-  std::shared_ptr<spectator::Counter> count_;
-  std::shared_ptr<spectator::Counter> total_time_;
+  absl::Duration prev_time;
+  int64_t prev_count{};
+  typename Reg::counter_ptr count_;
+  typename Reg::counter_ptr total_time_;
 };
+
+}  // namespace atlasagent

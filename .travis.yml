@@ -1,20 +1,20 @@
 language: cpp
-dist: xenial
-sudo: false
+dist: bionic
 script: ./run-build.sh
 compiler:
   - gcc
 env:
-  global:
-    - SPECTATOR_CPP_VERSION=v0.8.0
   matrix:
-    - TITUS_AGENT="-DTITUS_AGENT=ON .."
+    - TITUS_AGENT=YES
     - TITUS_AGENT=""
 addons:
+  sources:
+    - sourceline: 'deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8'
+      key_url: 'https://bazel.build/bazel-release.pub.gpg'
+    - sourceline: 'ppa:ubuntu-toolchain-r/test'
   apt:
     packages:
-      - zlib1g-dev 
-      - uuid-dev 
-      - libblkid-dev 
-      - libpcre3-dev
       - libcap-dev
+      - bazel-3.5.0
+      - binutils-dev
+      - libiberty-dev

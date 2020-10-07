@@ -1,4 +1,0 @@
-#pragma once
-
-#cmakedefine TITUS_AGENT
-static constexpr const char* kNvidiaLib = "libnvidia-ml.@DSO_EXT@";
