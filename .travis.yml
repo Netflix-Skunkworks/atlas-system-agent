@@ -7,6 +7,11 @@ env:
   matrix:
     - TITUS_AGENT=YES
     - TITUS_AGENT=""
+  global:
+    - LANG="en_US.UTF-8"
+    - CC='gcc-10' 
+    - CXX='g++-10'
+
 addons:
   apt:
     sources:
@@ -18,6 +23,7 @@ addons:
       - bazel-3.5.0
       - binutils-dev
       - libiberty-dev
+      - g++-10
 cache:
   directories:
   - $HOME/.cache/bazel-a
