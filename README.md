@@ -16,6 +16,7 @@ An agent that reports metrics for ec2 instances or titus containers.
 
 ```sh
 
+export CXX=g++-10 CC=gcc-10 # if needed
 bazel build --define titus_agent=yes atlas_system_agent sysagent_test
 
 # Run tests
