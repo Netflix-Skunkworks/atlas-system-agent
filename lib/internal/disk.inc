@@ -231,8 +231,8 @@ void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
       read_timer = it->second;
       write_timer = monotonic_timers_[mono_write_id];
     } else {
-      read_timer.reset(new MonotonicTimer(registry_, *mono_read_id));
-      write_timer.reset(new MonotonicTimer(registry_, *mono_write_id));
+      read_timer.reset(new MonotonicTimer<Reg>(registry_, *mono_read_id));
+      write_timer.reset(new MonotonicTimer<Reg>(registry_, *mono_write_id));
 
       monotonic_timers_[mono_read_id] = read_timer;
       monotonic_timers_[mono_write_id] = write_timer;
