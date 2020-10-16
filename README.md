@@ -7,24 +7,29 @@ An agent that reports metrics for ec2 instances or titus containers.
 
 ## Build Instructions
 
-* This build requires a C++11 compiler, some system libraries, and
-  [spectator-cpp](https://github.com/Netflix/spectator-cpp)
+* This build requires a C++17 compiler and uses [bazel](https://bazel.build/)
+  as its build system. This has been tested with clang 11 and g++ 10
 
-* To build the titus-agent:
+* [Install bazel](https://docs.bazel.build/versions/master/install.html)
+
+* To build the titus agent:
 
 ```sh
 
-sudo apt-get update
-sudo apt-get install -y zlib1g-dev uuid-dev libblkid-dev libpcre3-dev libcap-dev
+bazel build --define titus_agent=yes atlas_system_agent sysagent_test
 
-TITUS_AGENT=ON ./run-build.sh
-
+# Run tests
+./bazel-bin/sysagent_test
 ```
 
 * To build the system agent:
 
 ```sh
-./run-build.sh
+
+bazel build atlas_system_agent sysagent_test
+
+# Run tests
+./bazel-bin/sysagent_test
 ```
 
 ## Titus Agent
