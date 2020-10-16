@@ -3,9 +3,9 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 def nflx_atlas_sysagent():
     http_archive(
         name = "spectator",
-        urls = ["https://github.com/Netflix/spectator-cpp/archive/28f0ad2c1fe5b9553a36fc7c51560c58d7032474.zip"],
-        strip_prefix = "spectator-cpp-28f0ad2c1fe5b9553a36fc7c51560c58d7032474",
-        sha256 = "d711b7ac8745fac437a8c63b6bf7308ee252723aa15090112255c98d3c53c153",
+        urls = ["https://github.com/Netflix/spectator-cpp/archive/26d556fbb9545c2a4a1ea0fa6aec703091348d7e.zip"],
+        strip_prefix = "spectator-cpp-26d556fbb9545c2a4a1ea0fa6aec703091348d7e",
+        sha256 = "c814674427ac275bf135ac4f9d54eda4c157d29c8201a749451e9032135667ed",
     )
 
     # GoogleTest/GoogleMock framework.
