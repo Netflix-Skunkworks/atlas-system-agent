@@ -8,7 +8,7 @@ An agent that reports metrics for ec2 instances or titus containers.
 ## Build Instructions
 
 * This build requires a C++17 compiler and uses [bazel](https://bazel.build/)
-  as its build system. This has been tested with clang 11 and g++ 10
+  as its build system. This has been tested with clang 11, g++ 7, and g++ 10.
 
 * [Install bazel](https://docs.bazel.build/versions/master/install.html)
 
