@@ -60,7 +60,7 @@ class Ntp {
     // get the last rx time for the current server
     std::string current_server = fields.size() > 1 ? fields[1] : "";
     for (const auto& source : sources) {
-      std::vector<std::string> source_fields = absl::StrSplit(source, ',');;
+      std::vector<std::string> source_fields = absl::StrSplit(source, ',');
       if (source_fields.size() < 7) {
         continue;
       }

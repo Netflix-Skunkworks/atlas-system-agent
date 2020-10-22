@@ -62,6 +62,7 @@ TEST(Proc, ParseSnmp) {
 
   auto ms = my_measurements(&registry);
   measurement_map values = measurements_to_map(ms, "proto");
+
   expect_value(&values, "net.tcp.connectionStates|gauge|closeWait|v4|extra", 0);
   expect_value(&values, "net.tcp.connectionStates|gauge|closeWait|v6|extra", 0);
   expect_value(&values, "net.tcp.connectionStates|gauge|close|v4|extra", 0);
@@ -86,10 +87,10 @@ TEST(Proc, ParseSnmp) {
   expect_value(&values, "net.tcp.connectionStates|gauge|timeWait|v6|extra", 0);
   expect_value(&values, "net.tcp.currEstab|gauge|extra", 27);
 
-  expect_value(&values, "net.ip.datagrams|count|out|extra", 20);
-  expect_value(&values, "net.ip.discards|count|out|extra", 3);
-  expect_value(&values, "net.ip.datagrams|count|in|extra", 100);
-  expect_value(&values, "net.ip.discards|count|in|extra", 1);
+  expect_value(&values, "net.ip.datagrams|count|out|v4|extra", 20);
+  expect_value(&values, "net.ip.discards|count|out|v4|extra", 3);
+  expect_value(&values, "net.ip.datagrams|count|in|v4|extra", 100);
+  expect_value(&values, "net.ip.discards|count|in|v4|extra", 1);
 
   expect_value(&values, "net.tcp.errors|count|attemptFails|extra", 1);
   expect_value(&values, "net.tcp.errors|count|estabResets|extra", 10);
@@ -101,9 +102,25 @@ TEST(Proc, ParseSnmp) {
   expect_value(&values, "net.tcp.segments|count|in|extra", 1e+06);
   expect_value(&values, "net.tcp.segments|count|out|extra", 1.1e+06);
 
-  expect_value(&values, "net.udp.datagrams|count|in|extra", 10000);
-  expect_value(&values, "net.udp.datagrams|count|out|extra", 1000);
-  expect_value(&values, "net.udp.errors|count|inErrors|extra", 1);
+  expect_value(&values, "net.udp.datagrams|count|in|v4|extra", 10000);
+  expect_value(&values, "net.udp.datagrams|count|out|v4|extra", 1000);
+  expect_value(&values, "net.udp.errors|count|inErrors|v4|extra", 1);
+
+  expect_value(&values, "net.ip.discards|count|in|v6|extra", 1.0);
+  expect_value(&values, "net.ip.discards|count|out|v6|extra", 2.0);
+  expect_value(&values, "net.ip.datagrams|count|in|v6|extra", 100.0);
+  expect_value(&values, "net.ip.datagrams|count|out|v6|extra", 1000.0);
+  expect_value(&values, "net.ip.reasmReqds|count|v6|extra", 42.0);
+  expect_value(&values, "net.ip.congestedPackets|count|v6|extra", 2.0);
+  expect_value(&values, "net.ip.ectPackets|count|capable|v6|extra", 42.0);
+  expect_value(&values, "net.ip.ectPackets|count|notCapable|v6|extra", 10.0);
+
+  expect_value(&values, "net.udp.datagrams|count|in|v6|extra", 10.0);
+  expect_value(&values, "net.udp.datagrams|count|out|v6|extra", 10.0);
+  expect_value(&values, "net.udp.errors|count|inErrors|v6|extra", 1.0);
+  for (const auto& m : values) {
+    Logger()->info("Unexpected {} = {}", m.first, m.second);
+  }
   EXPECT_TRUE(values.empty());
 }
 
@@ -214,9 +231,9 @@ TEST(Proc, ParseNetstat) {
 
   const auto& ms = my_measurements(&registry);
   measurement_map values = measurements_to_map(ms, "proto");
-  expect_value(&values, "net.ip.ectPackets|count|capable|extra", 180.0);
-  expect_value(&values, "net.ip.ectPackets|count|notCapable|extra", 60.0);
-  expect_value(&values, "net.ip.congestedPackets|count|extra", 30);
+  expect_value(&values, "net.ip.ectPackets|count|capable|v4|extra", 180.0);
+  expect_value(&values, "net.ip.ectPackets|count|notCapable|v4|extra", 60.0);
+  expect_value(&values, "net.ip.congestedPackets|count|v4|extra", 30);
   EXPECT_TRUE(values.empty());
 }
 

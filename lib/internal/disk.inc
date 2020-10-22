@@ -173,7 +173,8 @@ std::vector<DiskIo> Disk<Reg>::get_disk_stats() const noexcept {
   }
 
   for (std::string line; std::getline(in, line);) {
-    std::vector<std::string> fields = absl::StrSplit(line, absl::ByAnyChar(" \t"), absl::SkipWhitespace());
+    std::vector<std::string> fields =
+        absl::StrSplit(line, absl::ByAnyChar(" \t"), absl::SkipWhitespace());
     if (fields.size() < 14) continue;
     int major = std::stoi(fields[0]);
     if (major < 0) {

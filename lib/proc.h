@@ -18,7 +18,7 @@ class Proc {
   void memory_stats() noexcept;
   void process_stats() noexcept;
   void vmstats() noexcept;
-  bool is_container() const noexcept;
+  [[nodiscard]] bool is_container() const noexcept;
 
   void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
@@ -31,6 +31,8 @@ class Proc {
   void parse_ip_stats(const char* buf) noexcept;
   void parse_tcp_stats(const char* buf) noexcept;
   void parse_udp_stats(const char* buf) noexcept;
+  void parse_ipv6_stats(const std::unordered_map<std::string, int64_t>& snmp_stats) noexcept;
+  void parse_udpv6_stats(const std::unordered_map<std::string, int64_t>& snmp_stats) noexcept;
   void parse_load_avg(const char* buf) noexcept;
   void parse_tcp_connections() noexcept;
 };
