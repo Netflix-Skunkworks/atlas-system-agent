@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/Netflix-Skunkworks/atlas-system-agent.svg?branch=master)](https://travis-ci.org/Netflix-Skunkworks/atlas-system-agent)
+[![Build Status](https://travis-ci.com/Netflix-Skunkworks/atlas-system-agent.svg?branch=master)](https://travis-ci.com/Netflix-Skunkworks/atlas-system-agent)
 # Atlas System Agent / Atlas Titus Agent
 
 > :warning: Experimental
