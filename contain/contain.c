@@ -1,3 +1,4 @@
+#ifdef linux
 #define _XOPEN_SOURCE 500
 #define _GNU_SOURCE
 #define _DEFAULT_SOURCE
@@ -353,3 +354,4 @@ int maybe_contain(struct container_handle *c) {
 	fprintf(stderr, "Contained\n");
 	return do_fork();
 }
+#endif

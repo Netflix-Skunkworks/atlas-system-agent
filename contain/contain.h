@@ -1,5 +1,4 @@
-#ifndef _CONTAIN_H
-#define _CONTAIN_H
+#pragma once
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,5 +24,4 @@ inline int maybe_contain(struct container_handle *) {
 #endif
 #ifdef __cplusplus
 }
-#endif
 #endif

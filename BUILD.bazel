@@ -1,0 +1,114 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+config_setting(
+    name = "titusagent",
+    values = {
+        "define": "titusagent=yes",
+    },
+)
+
+cc_library(
+    name = "contain",
+    srcs = ["contain/contain.c"],
+    hdrs = ["contain/contain.h"],
+    linkopts = ["-lcap"],
+)
+
+cc_library(
+    name = "sysagent",
+    srcs = [
+        "lib/internal/cgroup.inc",
+        "lib/internal/disk.inc",
+        "lib/internal/http_client.inc",
+        "lib/internal/proc.inc",
+        "lib/logger.cc",
+        "lib/nvml.cc",
+        "lib/sample-config.cc",
+        "lib/util.cc",
+    ],
+    hdrs = [
+        "lib/aws.h",
+        "lib/cgroup.h",
+        "lib/config.h",
+        "lib/cpufreq.h",
+        "lib/disk.h",
+        "lib/files.h",
+        "lib/gpumetrics.h",
+        "lib/http_client.h",
+        "lib/log_entry.h",
+        "lib/logger.h",
+        "lib/monotonic_timer.h",
+        "lib/ntp.h",
+        "lib/nvml.h",
+        "lib/perfmetrics.h",
+        "lib/proc.h",
+        "lib/util.h",
+    ],
+    defines = select({
+        ":titusagent": ["TITUS_AGENT=on"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@bazel_tools//src/conditions:linux_x86_64": ["-ldl"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@spectator//:spectator",
+        "@com_google_absl//absl/time",
+        "@com_github_fmtlib_fmt//:fmtlib",
+        "@com_github_gabime_spdlog//:spdlog",
+        "@com_github_tencent_rapidjson//:rapidjson",
+        "@curl",
+    ] + select({
+        "@bazel_tools//src/conditions:linux_x86_64": [":contain"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_test(
+    name = "sysagent_test",
+    srcs = glob([
+        "bin/runtests.cc",
+        "lib/*test.cc",
+        "lib/sample_config.cc",
+        "lib/measurement_utils.*",
+    ]),
+    local_defines = select({
+        "@bazel_tools//src/conditions:linux_x86_64": ["BACKWARD_HAS_BFD=1"],
+        "//conditions:default": [],
+        }),
+    data = glob(["testdata/**"]),
+    defines = select({
+        ":titusagent": ["TITUS_AGENT=on"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":sysagent",
+        "@com_github_bombela_backward//:backward",
+        "@com_google_googletest//:gtest",
+    ],
+    linkopts = select({
+                "@bazel_tools//src/conditions:linux_x86_64": ["-lbfd"],
+                "//conditions:default": [],
+            }),
+)
+
+cc_binary(
+    name = "atlas_system_agent",
+    srcs = ["bin/atlas-agent.cc"],
+    defines = select({
+        ":titusagent": ["TITUS_AGENT=on"],
+        "//conditions:default": [],
+    }),
+    local_defines = select({
+        "@bazel_tools//src/conditions:linux_x86_64": ["BACKWARD_HAS_BFD=1"],
+        "//conditions:default": [],
+        }),
+    includes = ["lib"],
+    deps = [":sysagent", "@com_github_bombela_backward//:backward"],
+    linkopts = select({
+            "@bazel_tools//src/conditions:linux_x86_64": ["-lbfd"],
+            "//conditions:default": [],
+        }),
+)

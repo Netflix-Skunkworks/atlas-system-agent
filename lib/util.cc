@@ -1,5 +1,6 @@
 #include "util.h"
 #include "logger.h"
+#include "absl/strings/str_split.h"
 #include <cinttypes>
 #include <sstream>
 #include <unistd.h>
@@ -38,38 +39,11 @@ void parse_kv_from_file(const std::string& prefix, const char* fn,
   char buffer[1024];
   char key[1024];
   int64_t value;
-  while (fgets(buffer, sizeof key, fp) != nullptr) {
+  while (fgets(buffer, sizeof buffer, fp) != nullptr) {
     if (sscanf(buffer, "%s %" PRId64, key, &value) == 2) {
       std::string str_key{key};
       (*stats)[str_key] = value;
     }
-  }
-}
-
-void split(const char* line, const std::function<bool(int)>& is_sep,
-           std::vector<std::string>* fields) noexcept {
-  const char* p = line;
-  const char* end = line + strlen(line);
-  char field[256];
-  constexpr size_t max = sizeof field - 1;
-  size_t i = 0;
-
-  while (p < end && is_sep(*p)) {
-    ++p;
-  }
-
-  while (p < end) {
-    while (!is_sep(*p) && i < max) {
-      field[i] = *p;
-      ++i;
-      ++p;
-    }
-    while (is_sep(*p)) {
-      ++p;
-    }
-    field[i] = '\0';
-    fields->emplace_back(field);
-    i = 0;
   }
 }
 
@@ -180,11 +154,7 @@ std::string read_output_string(const char* cmd, int timeout_millis) {
 
 std::vector<std::string> read_output_lines(const char* cmd, int timeout_millis) {
   // use read whole-string with timeout and then split for simplicity
-  auto output_str = read_output_string(cmd, timeout_millis);
-  std::vector<std::string> lines{};
-  split(
-      output_str.c_str(), [](int ch) { return ch == '\n'; }, &lines);
-  return lines;
+  return absl::StrSplit(read_output_string(cmd, timeout_millis), '\n', absl::SkipEmpty());
 }
 
 inline bool can_execute_full_path(const std::string& program) {
@@ -202,9 +172,7 @@ bool can_execute(const std::string& program) {
     return false;
   }
 
-  auto is_colon = [](int c) { return c == ':'; };
-  std::vector<std::string> dirs{};
-  split(path, is_colon, &dirs);
+  auto dirs = absl::StrSplit(path, ':');
   for (const auto& dir : dirs) {
     auto full_path = fmt::format("{}/{}", dir, program);
     if (can_execute_full_path(full_path)) {
@@ -218,9 +186,7 @@ bool can_execute(const std::string& program) {
 
 spectator::Tags parse_tags(const char* s) {
   spectator::Tags tags{};
-  std::vector<std::string> fields{};
-  split(
-      s, [](int ch) { return ch == ',' || ch == ' '; }, &fields);
+  auto fields = absl::StrSplit(s, absl::ByAnyChar(", "));
   for (const auto& f : fields) {
     auto pos = f.find('=');
     if (pos != std::string::npos) {

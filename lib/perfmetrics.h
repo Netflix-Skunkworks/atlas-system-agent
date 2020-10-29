@@ -1,10 +1,10 @@
 #pragma once
 
-#include <spectator/registry.h>
+#include "spectator/registry.h"
+#include "util.h"
 #include <fmt/format.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include "util.h"
 
 #ifndef __linux__
 enum perf_hw_id {
@@ -206,9 +206,10 @@ class PerfCounter {
   std::vector<perf_count> prev_vals;
 };
 
+template <typename Reg = spectator::Registry>
 class PerfMetrics {
  public:
-  PerfMetrics(spectator::Registry* registry, std::string path_prefix)
+  PerfMetrics(Reg* registry, std::string path_prefix)
       : registry_(registry), path_prefix_(std::move(path_prefix)) {
     static constexpr const char* kEnableEnvVar = "ATLAS_ENABLE_PMU_METRICS";
     auto enabled_var = std::getenv(kEnableEnvVar);
@@ -317,7 +318,7 @@ class PerfMetrics {
 
  private:
   bool disabled_ = true;
-  spectator::Registry* registry_;
+  Reg* registry_;
   std::string path_prefix_;
   std::vector<bool> online_cpus_;
   UnixFile pid_{-1};
@@ -329,17 +330,17 @@ class PerfMetrics {
   PerfCounter branch_misses{PERF_COUNT_HW_BRANCH_MISSES};
 
   // instructions
-  std::shared_ptr<spectator::DistributionSummary> instructions_ds;
+  typename Reg::dist_summary_ptr instructions_ds;
 
   // cycles
-  std::shared_ptr<spectator::DistributionSummary> cycles_ds;
+  typename Reg::dist_summary_ptr cycles_ds;
 
   // cache miss rate
-  std::shared_ptr<spectator::DistributionSummary> cache_ds;
+  typename Reg::dist_summary_ptr cache_ds;
   // branch miss rate
-  std::shared_ptr<spectator::DistributionSummary> branch_ds;
+  typename Reg::dist_summary_ptr branch_ds;
 
-  void update_ds(PerfCounter& a, spectator::DistributionSummary* ds, const char* name) {
+  void update_ds(PerfCounter& a, typename Reg::dist_summary_t* ds, const char* name) {
     auto a_values = a.read_delta();
     // update our distribution summary with values from each CPU
     for (auto v : a_values) {
@@ -348,7 +349,7 @@ class PerfMetrics {
     }
   }
 
-  static void update_rate(PerfCounter& a, PerfCounter& b, spectator::DistributionSummary* ds,
+  static void update_rate(PerfCounter& a, PerfCounter& b, typename Reg::dist_summary_t* ds,
                           const char* name) {
     auto a_values = a.read_delta();
     auto b_values = b.read_delta();

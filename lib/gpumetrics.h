@@ -1,28 +1,26 @@
 #pragma once
 
-#include <spectator/registry.h>
 #include "nvml.h"
+#include "spectator/registry.h"
 
 namespace atlasagent {
 
 namespace detail {
-inline std::shared_ptr<spectator::Gauge> gauge(spectator::Registry* registry, const char* name,
-                                               unsigned gpu, const char* id = nullptr) {
-  char buf[32];
-  snprintf(buf, sizeof buf, "gpu-%u", gpu);
-  auto tags = spectator::Tags{{"gpu", buf}};
+template <typename Reg>
+inline auto gauge(Reg* registry, const char* name, unsigned gpu, const char* id = nullptr) {
+  auto tags = spectator::Tags{{"gpu", fmt::format("gpu-{}", gpu)}};
   if (id != nullptr) {
     tags.add("id", id);
   }
-  return registry->GetGauge(registry->CreateId(name, tags));
+  return registry->GetGauge(name, tags);
 }
 
 }  // namespace detail
 
-template <typename Lib>
+template <typename Reg, typename Lib>
 class GpuMetrics {
  public:
-  GpuMetrics(spectator::Registry* registry, std::unique_ptr<Lib> nvml) noexcept
+  GpuMetrics(Reg* registry, std::unique_ptr<Lib> nvml) noexcept
       : registry_(registry), nvml_(std::move(nvml)) {}
 
   void gpu_metrics() noexcept {
@@ -65,7 +63,7 @@ class GpuMetrics {
   }
 
  private:
-  spectator::Registry* registry_;
+  Reg* registry_;
   std::unique_ptr<Lib> nvml_;
 };
 

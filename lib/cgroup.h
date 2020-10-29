@@ -1,35 +1,40 @@
 #pragma once
 
-#include <spectator/registry.h>
+#include "spectator/registry.h"
 
 namespace atlasagent {
 
+template <typename Reg = spectator::Registry>
 class CGroup {
  public:
-  using time_point = spectator::Registry::clock::time_point;
+  explicit CGroup(Reg* registry, std::string path_prefix = "/sys/fs/cgroup",
+                  absl::Duration update_interval = absl::Seconds(60)) noexcept
+      : registry_(registry),
+        path_prefix_(std::move(path_prefix)),
+        update_interval_{update_interval} {}
 
-  explicit CGroup(spectator::Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
-                  std::chrono::seconds update_interval = std::chrono::seconds{60}) noexcept;
-  void cpu_stats() noexcept;
+  void cpu_stats() noexcept { do_cpu_stats(absl::Now()); }
   void memory_stats() noexcept;
   void network_stats() noexcept;
   void set_prefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
  private:
-  spectator::Registry* registry_;
+  Reg* registry_;
   std::string path_prefix_;
-  std::chrono::seconds update_interval_;
-  spectator::Registry::clock::time_point last_updated_{};
+  absl::Duration update_interval_;
+  absl::Time last_updated_{};
 
   void cpu_processing_time() noexcept;
   void cpu_usage_time() noexcept;
-  void cpu_shares(time_point now) noexcept;
+  void cpu_shares(absl::Time now) noexcept;
   void cpu_throttle() noexcept;
   void kmem_stats() noexcept;
 
  protected:
   // for testing
-  void do_cpu_stats(time_point now) noexcept;
+  void do_cpu_stats(absl::Time now) noexcept;
 };
 
 }  // namespace atlasagent
+
+#include "internal/cgroup.inc"

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <fmt/format.h>
 #include <spdlog/spdlog.h>
+#include "absl/time/time.h"
 
 namespace atlasagent {
 
@@ -22,3 +24,12 @@ inline std::shared_ptr<spdlog::logger> GetLogger(const std::string& name) noexce
 }
 
 }  // namespace atlasagent
+
+template <>
+struct fmt::formatter<absl::Time> {
+  constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) { return ctx.begin(); }
+  template <typename FormatContext>
+  auto format(const absl::Time& t, FormatContext& context) {
+    return fmt::format_to(context.out(), absl::FormatTime(t));
+  }
+};

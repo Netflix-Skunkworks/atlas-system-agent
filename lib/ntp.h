@@ -1,15 +1,22 @@
 #pragma once
 
 #include "util.h"
-#include <spectator/registry.h>
+#include "absl/strings/str_split.h"
+#include "spectator/registry.h"
 #include <sys/timex.h>
 
 namespace atlasagent {
 
-template <typename Clock = std::chrono::system_clock>
+namespace detail {
+struct abseil_clock {
+  static absl::Time now() { return absl::Now(); }
+};
+}  // namespace detail
+
+template <typename Reg = spectator::Registry, typename Clock = detail::abseil_clock>
 class Ntp {
  public:
-  explicit Ntp(spectator::Registry* registry) noexcept
+  explicit Ntp(Reg* registry) noexcept
       : lastSampleAge_{registry->GetGauge("sys.time.lastSampleAge")},
         estimatedError_{registry->GetGauge("sys.time.estimatedError")},
         unsynchronized_{registry->GetGauge("sys.time.unsynchronized")},
@@ -29,13 +36,13 @@ class Ntp {
   }
 
  private:
-  std::shared_ptr<spectator::Gauge> lastSampleAge_;
-  std::shared_ptr<spectator::Gauge> estimatedError_;
-  std::shared_ptr<spectator::Gauge> unsynchronized_;
+  typename Reg::gauge_ptr lastSampleAge_;
+  typename Reg::gauge_ptr estimatedError_;
+  typename Reg::gauge_ptr unsynchronized_;
 
  protected:
   // for testing
-  typename Clock::time_point lastSampleTime_;
+  absl::Time lastSampleTime_;
 
   void ntp_stats(int err, timex* time) {
     if (err == -1) {
@@ -48,22 +55,19 @@ class Ntp {
   }
 
   void chrony_stats(const std::string& tracking, const std::vector<std::string>& sources) noexcept {
-    auto is_comma = [](int c) { return c == ','; };
-    std::vector<std::string> fields;
-    split(tracking.c_str(), is_comma, &fields);
+    std::vector<std::string> fields = absl::StrSplit(tracking, ',');
 
     // get the last rx time for the current server
     std::string current_server = fields.size() > 1 ? fields[1] : "";
     for (const auto& source : sources) {
-      std::vector<std::string> source_fields;
-      split(source.c_str(), is_comma, &source_fields);
+      std::vector<std::string> source_fields = absl::StrSplit(source, ',');
       if (source_fields.size() < 7) {
         continue;
       }
       const auto& server = source_fields[2];
       if (server == current_server) {
         try {
-          auto last_rx = std::chrono::seconds{std::stoll(source_fields[6], nullptr)};
+          auto last_rx = absl::Seconds(std::stoll(source_fields[6], nullptr));
           lastSampleTime_ = Clock::now() - last_rx;
         } catch (const std::invalid_argument& e) {
           atlasagent::Logger()->error("Unable to parse {} as a number: {}", source_fields[6],
@@ -72,10 +76,7 @@ class Ntp {
       }
     }
 
-    auto ageNanos =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - lastSampleTime_);
-    auto seconds = ageNanos.count() / 1e9;
-    lastSampleAge_->Set(seconds);
+    lastSampleAge_->Set(absl::ToDoubleSeconds(Clock::now() - lastSampleTime_));
   }
 };
 }  // namespace atlasagent
