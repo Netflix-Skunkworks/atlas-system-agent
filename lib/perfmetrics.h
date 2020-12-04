@@ -1,6 +1,6 @@
 #pragma once
 
-#include "spectator/registry.h"
+#include "tagging_registry.h"
 #include "util.h"
 #include <fmt/format.h>
 #include <unistd.h>
@@ -206,7 +206,7 @@ class PerfCounter {
   std::vector<perf_count> prev_vals;
 };
 
-template <typename Reg = spectator::Registry>
+template <typename Reg = TaggingRegistry>
 class PerfMetrics {
  public:
   PerfMetrics(Reg* registry, std::string path_prefix)

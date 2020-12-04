@@ -1,0 +1,18 @@
+{
+  "tag_rules": [
+    {
+      "prefix": "disk.io.",
+      "tags": {
+        "tag-key1": "tag-val1",
+        "tag-key2": "tag-val2"
+      }
+    },
+    {
+      "name": "net.iface.bytes",
+      "tags": {
+        "tag-key1": "tag-val1",
+        "tag-key2": "tag-val2"
+      }
+    }
+  ]
+}

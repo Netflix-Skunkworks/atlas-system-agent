@@ -1,8 +1,8 @@
 #pragma once
 
 #include "files.h"
+#include "tagging_registry.h"
 #include "util.h"
-#include "spectator/registry.h"
 #include <sys/stat.h>
 
 namespace atlasagent {
@@ -18,7 +18,7 @@ inline bool is_directory(const std::string& directory) {
 }
 }  // namespace detail
 
-template <typename Reg = spectator::Registry>
+template <typename Reg = TaggingRegistry>
 class CpuFreq {
  public:
   explicit CpuFreq(Reg* registry,
