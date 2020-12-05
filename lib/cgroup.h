@@ -1,10 +1,10 @@
 #pragma once
 
-#include "spectator/registry.h"
+#include "tagging_registry.h"
 
 namespace atlasagent {
 
-template <typename Reg = spectator::Registry>
+template <typename Reg = TaggingRegistry>
 class CGroup {
  public:
   explicit CGroup(Reg* registry, std::string path_prefix = "/sys/fs/cgroup",

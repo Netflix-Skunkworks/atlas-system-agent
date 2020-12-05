@@ -34,9 +34,10 @@ inline std::string_view path_from(std::string_view url) noexcept {
 
 }  // namespace detail
 
+template <typename Reg>
 class LogEntry {
  public:
-  LogEntry(spectator::Registry* registry, const std::string& method, const std::string& url)
+  LogEntry(Reg* registry, const std::string& method, const std::string& url)
       : registry_{registry},
         start_{absl::Now()},
         id_{spectator::Id::of("ipc.client.call", {{"owner", "spectator-cpp"},
@@ -68,7 +69,7 @@ class LogEntry {
   }
 
  private:
-  spectator::Registry* registry_;
+  Reg* registry_;
   absl::Time start_;
   spectator::IdPtr id_;
 

@@ -219,7 +219,8 @@ void Proc<Reg>::parse_ipv6_stats(
       create_id("net.ip.ectPackets", {{"id", "capable"}, {"proto", "v6"}}, net_tags_));
   static auto noEct_ctr = registry_->GetMonotonicCounter(
       create_id("net.ip.ectPackets", {{"id", "notCapable"}, {"proto", "v6"}}, net_tags_));
-  static auto congested_ctr = registry_->GetMonotonicCounter(create_id("net.ip.congestedPackets", {{"proto", "v6"}}, net_tags_));
+  static auto congested_ctr = registry_->GetMonotonicCounter(
+      create_id("net.ip.congestedPackets", {{"proto", "v6"}}, net_tags_));
 
   auto in_receives = snmp_stats.find("Ip6InReceives");
   auto in_discards = snmp_stats.find("Ip6InDiscards");
@@ -760,7 +761,8 @@ void Proc<Reg>::netstat_stats() noexcept {
       create_id("net.ip.ectPackets", {{"id", "capable"}, {"proto", "v4"}}, net_tags_));
   static auto noEct_ctr = registry_->GetMonotonicCounter(
       create_id("net.ip.ectPackets", {{"id", "notCapable"}, {"proto", "v4"}}, net_tags_));
-  static auto congested_ctr = registry_->GetMonotonicCounter(create_id("net.ip.congestedPackets", {{"proto", "v4"}}, net_tags_));
+  static auto congested_ctr = registry_->GetMonotonicCounter(
+      create_id("net.ip.congestedPackets", {{"proto", "v4"}}, net_tags_));
 
   auto fp = open_file(path_prefix_, "net/netstat");
   if (fp == nullptr) {

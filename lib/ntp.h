@@ -1,8 +1,8 @@
 #pragma once
 
+#include "tagging_registry.h"
 #include "util.h"
 #include "absl/strings/str_split.h"
-#include "spectator/registry.h"
 #include <sys/timex.h>
 
 namespace atlasagent {
@@ -13,7 +13,7 @@ struct abseil_clock {
 };
 }  // namespace detail
 
-template <typename Reg = spectator::Registry, typename Clock = detail::abseil_clock>
+template <typename Reg = TaggingRegistry, typename Clock = detail::abseil_clock>
 class Ntp {
  public:
   explicit Ntp(Reg* registry) noexcept

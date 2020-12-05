@@ -1,7 +1,7 @@
 #pragma once
 
 #include "monotonic_timer.h"
-#include "spectator/registry.h"
+#include "tagging_registry.h"
 #include <string>
 #include <sys/types.h>
 #include <unordered_map>
@@ -33,7 +33,7 @@ struct DiskIo {
   u_long weighted_ms_doing_io;
 };
 
-template <typename Reg = spectator::Registry>
+template <typename Reg = TaggingRegistry>
 class Disk {
  public:
   explicit Disk(Reg* registry, std::string path_prefix = "") noexcept

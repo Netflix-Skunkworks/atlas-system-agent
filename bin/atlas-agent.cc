@@ -1,15 +1,18 @@
 #include "config.h"
+#ifdef __linux__
 #include "contain/contain.h"
-#include "lib/aws.h"
-#include "lib/cgroup.h"
-#include "lib/cpufreq.h"
-#include "lib/disk.h"
-#include "lib/gpumetrics.h"
-#include "lib/logger.h"
-#include "lib/ntp.h"
-#include "lib/nvml.h"
-#include "lib/perfmetrics.h"
-#include "lib/proc.h"
+#endif
+#include "aws.h"
+#include "cgroup.h"
+#include "cpufreq.h"
+#include "disk.h"
+#include "gpumetrics.h"
+#include "logger.h"
+#include "ntp.h"
+#include "nvml.h"
+#include "perfmetrics.h"
+#include "proc.h"
+#include "tagger.h"
 #include "backward.hpp"
 #include "spectator/registry.h"
 #include <cinttypes>
@@ -21,17 +24,17 @@ using atlasagent::GetLogger;
 using atlasagent::Logger;
 using atlasagent::Nvml;
 
-using spectator::Registry;
-using Aws=atlasagent::Aws<>;
-using CGroup=atlasagent::CGroup<>;
-using CpuFreq=atlasagent::CpuFreq<>;
-using Disk=atlasagent::Disk<>;
-using GpuMetrics=atlasagent::GpuMetrics<Registry, Nvml>;
-using Ntp=atlasagent::Ntp<>;
-using PerfMetrics=atlasagent::PerfMetrics<>;
-using Proc=atlasagent::Proc<>;
+using atlasagent::TaggingRegistry;
+using Aws = atlasagent::Aws<>;
+using CGroup = atlasagent::CGroup<>;
+using CpuFreq = atlasagent::CpuFreq<>;
+using Disk = atlasagent::Disk<>;
+using GpuMetrics = atlasagent::GpuMetrics<TaggingRegistry, Nvml>;
+using Ntp = atlasagent::Ntp<>;
+using PerfMetrics = atlasagent::PerfMetrics<>;
+using Proc = atlasagent::Proc<>;
 
-std::unique_ptr<GpuMetrics> init_gpu(Registry* registry, std::unique_ptr<Nvml> lib) {
+std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<Nvml> lib) {
   if (lib) {
     try {
       lib->initialize();
@@ -131,7 +134,7 @@ static void init_signals() {
 }
 
 #ifdef TITUS_AGENT
-void collect_titus_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> nvidia_lib,
+void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvidia_lib,
                            spectator::Tags net_tags) {
   using std::chrono::milliseconds;
   using std::chrono::seconds;
@@ -164,8 +167,7 @@ void collect_titus_metrics(spectator::Registry* registry, std::unique_ptr<Nvml> 
   }
 }
 #else
-void collect_system_metrics(spectator::Registry* registry,
-                            std::unique_ptr<atlasagent::Nvml> nvidia_lib,
+void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
                             spectator::Tags net_tags) {
   using std::chrono::seconds;
   using std::chrono::system_clock;
@@ -202,16 +204,20 @@ void collect_system_metrics(spectator::Registry* registry,
 
 struct agent_options {
   spectator::Tags network_tags;
+  std::string cfg_file;
   bool verbose;
 };
 
+static constexpr const char* const kDefaultCfgFile = "/etc/default/atlas-agent.json";
+
 static void usage(const char* progname) {
   fprintf(stderr,
-          "Usage: %s [-v] [-t extra-network-tags]\n"
+          "Usage: %s [-c cfg_file] [-v] [-t extra-network-tags]\n"
+          "\t-c\tUse cfg_file as the configuration file. Default %s\n"
           "\t-v\tBe very verbose\n"
           "\t-t tags\tAdd extra tags to the network metrics.\n"
           "\t\tExpects a string of the form key=val,key2=val2\n",
-          progname);
+          progname, kDefaultCfgFile);
   exit(EXIT_FAILURE);
 }
 
@@ -219,8 +225,11 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
   result->verbose = std::getenv("VERBOSE_AGENT") != nullptr;  // default for backwards compat
 
   int ch;
-  while ((ch = getopt(argc, argv, "vt:")) != -1) {
+  while ((ch = getopt(argc, argv, "c:vt:")) != -1) {
     switch (ch) {
+      case 'c':
+        result->cfg_file = optarg;
+        break;
       case 'v':
         result->verbose = true;
         break;
@@ -231,6 +240,9 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
       default:
         usage(argv[0]);
     }
+  }
+  if (result->cfg_file.empty()) {
+    result->cfg_file = kDefaultCfgFile;
   }
   return optind;
 }
@@ -285,7 +297,12 @@ int main(int argc, char* const argv[]) {
     logger->set_level(spdlog::level::debug);
   }
   atlasagent::HttpClient<>::GlobalInit();
-  spectator::Registry registry{std::move(cfg), spectator_logger};
+  auto maybe_tagger = atlasagent::Tagger::FromConfigFile(options.cfg_file.c_str());
+  if (!maybe_tagger) {
+    logger->warn("Unable to load Tagger from config file {}. Ignoring", options.cfg_file);
+  }
+  spectator::Registry spectator_registry{cfg, spectator_logger};
+  TaggingRegistry registry{&spectator_registry, maybe_tagger.value_or(atlasagent::Tagger::Nop())};
 #ifdef TITUS_AGENT
   collect_titus_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));
 #else

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "spectator/registry.h"
+#include "tagging_registry.h"
 
 namespace atlasagent {
-template <typename Reg = spectator::Registry>
+template <typename Reg = TaggingRegistry>
 class Proc {
  public:
   Proc(Reg* registry, spectator::Tags net_tags, std::string path_prefix = "/proc") noexcept

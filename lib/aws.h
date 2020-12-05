@@ -1,9 +1,9 @@
 #pragma once
 
-#include <rapidjson/document.h>
 #include "http_client.h"
 #include "logger.h"
-#include "spectator/registry.h"
+#include "tagging_registry.h"
+#include <rapidjson/document.h>
 
 namespace atlasagent {
 
@@ -28,7 +28,7 @@ inline absl::Time getDateFrom(const rapidjson::Document& doc, const char* dateSt
 
 }  // namespace detail
 
-template <typename Reg = spectator::Registry>
+template <typename Reg = TaggingRegistry>
 class Aws {
  public:
   explicit Aws(Reg* registry) noexcept
