@@ -34,6 +34,9 @@ fi
 
 # recommend 8GB RAM allocation for docker desktop, to allow the test build with asan to succeed
 cat >start-build <<EOF
+export CC="gcc-10"
+export CXX="g++-10"
+
 echo "-- build tests with address sanitizer enabled"
 bazel --output_user_root=$CACHE build --config=asan sysagent_test $ATLAS_TITUS_AGENT
 

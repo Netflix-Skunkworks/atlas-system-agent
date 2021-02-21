@@ -79,7 +79,7 @@ cc_test(
     local_defines = select({
         "@bazel_tools//src/conditions:linux_x86_64": ["BACKWARD_HAS_BFD=1"],
         "//conditions:default": [],
-        }),
+    }),
     data = glob(["testdata/**"]),
     defines = select({
         ":titusagent": ["TITUS_AGENT=on"],
@@ -91,9 +91,12 @@ cc_test(
         "@com_google_googletest//:gtest",
     ],
     linkopts = select({
-                "@bazel_tools//src/conditions:linux_x86_64": ["-lbfd"],
-                "//conditions:default": [],
-            }),
+        "@bazel_tools//src/conditions:linux_x86_64": [
+            "/usr/lib/x86_64-linux-gnu/libbfd.a",
+            "/usr/lib/x86_64-linux-gnu/libiberty.a",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_binary(
@@ -106,11 +109,18 @@ cc_binary(
     local_defines = select({
         "@bazel_tools//src/conditions:linux_x86_64": ["BACKWARD_HAS_BFD=1"],
         "//conditions:default": [],
-        }),
+    }),
     includes = ["lib"],
-    deps = [":sysagent", "@com_github_bombela_backward//:backward"],
+    deps = [
+        ":sysagent",
+        "@com_github_bombela_backward//:backward"
+    ],
     linkopts = select({
-            "@bazel_tools//src/conditions:linux_x86_64": ["-lbfd"],
-            "//conditions:default": [],
-        }),
+        "@bazel_tools//src/conditions:linux_x86_64": [
+            "/usr/lib/x86_64-linux-gnu/libbfd.a",
+            "/usr/lib/x86_64-linux-gnu/libiberty.a",
+            "/usr/lib/x86_64-linux-gnu/libz.a",
+        ],
+        "//conditions:default": [],
+    }),
 )
