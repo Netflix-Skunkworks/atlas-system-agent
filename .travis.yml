@@ -1,16 +1,17 @@
 language: cpp
 dist: bionic
-script: ./run-build.sh
+script: ./travis-build.sh
 compiler:
   - gcc
+
 env:
   matrix:
-    - TITUS_AGENT=YES
+    - TITUS_AGENT="YES"
     - TITUS_AGENT=""
   global:
     - LANG="en_US.UTF-8"
-    - CC='gcc-10' 
-    - CXX='g++-10'
+    - CC="gcc-10"
+    - CXX="g++-10"
 
 addons:
   apt:
@@ -19,11 +20,12 @@ addons:
         key_url: 'https://bazel.build/bazel-release.pub.gpg'
       - sourceline: 'ppa:ubuntu-toolchain-r/test'
     packages:
-      - libcap-dev
-      - bazel-3.5.0
+      - bazel
       - binutils-dev
-      - libiberty-dev
       - g++-10
+      - libcap-dev
+      - libiberty-dev
+
 cache:
   directories:
   - $HOME/.cache/bazel-a
