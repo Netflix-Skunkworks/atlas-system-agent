@@ -1,9 +1,8 @@
-bazel-*
-build-*
+.cache-*/
+.clwb/
 .idea/
 .vscode/
-.clwb
-logs/
-root/
-.idea
-*.swp
+Dockerfile-e
+bazel-*
+atlas-system-agent
+atlas-titus-agent
