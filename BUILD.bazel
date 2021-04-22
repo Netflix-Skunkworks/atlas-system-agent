@@ -47,7 +47,7 @@ cc_library(
         "lib/util.h",
     ],
     defines = select({
-        ":titusagent": ["TITUS_AGENT=on"],
+        ":titusagent": ["TITUS_SYSTEM_SERVICE=on"],
         "//conditions:default": [],
     }),
     linkopts = select({
@@ -82,7 +82,7 @@ cc_test(
     }),
     data = glob(["testdata/**"]),
     defines = select({
-        ":titusagent": ["TITUS_AGENT=on"],
+        ":titusagent": ["TITUS_SYSTEM_SERVICE=on"],
         "//conditions:default": [],
     }),
     deps = [
@@ -103,7 +103,7 @@ cc_binary(
     name = "atlas_system_agent",
     srcs = ["bin/atlas-agent.cc"],
     defines = select({
-        ":titusagent": ["TITUS_AGENT=on"],
+        ":titusagent": ["TITUS_SYSTEM_SERVICE=on"],
         "//conditions:default": [],
     }),
     local_defines = select({
