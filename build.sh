@@ -23,7 +23,7 @@ fi
 
 # option to activate atlas-titus-agent code paths in the build
 if [[ "$1" == "titus" ]]; then
-  ATLAS_TITUS_AGENT="--define titus_agent=yes"
+  ATLAS_TITUS_AGENT="--define titusagent=yes"
   BINARY="atlas-titus-agent"
   CACHE=".cache-t"
 else
