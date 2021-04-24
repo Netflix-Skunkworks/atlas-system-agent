@@ -144,7 +144,9 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
   CGroup cGroup{registry};
   Proc proc{registry, std::move(net_tags)};
   Disk disk{registry, ""};
+#ifndef TITUS_SYSTEM_SERVICE
   PerfMetrics perf_metrics{registry, ""};
+#endif
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
@@ -154,7 +156,9 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
   std::chrono::nanoseconds time_to_sleep = seconds(60);
   while (runner.wait_for(time_to_sleep)) {
     gather_titus_metrics(&cGroup, &proc, &disk, &aws);
+#ifndef TITUS_SYSTEM_SERVICE
     perf_metrics.collect();
+#endif
     if (gpu) {
       gpu->gpu_metrics();
     }
