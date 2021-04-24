@@ -127,7 +127,7 @@ class PerfCounter {
 
     fds_.assign(online_cpus.size(), -1);
 #ifdef __linux__
-#if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
+#ifdef TITUS_AGENT
     unsigned long flags = PERF_FLAG_PID_CGROUP;
 #else
     unsigned long flags = 0;
@@ -243,7 +243,7 @@ class PerfMetrics {
   }
 
   bool open_perf_counters_if_needed() {
-#if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
+#ifdef TITUS_AGENT
     if (pid_ < 0) {
       auto name = fmt::format("{}/{}", path_prefix_, "sys/fs/cgroup/perf_event");
       pid_.open(name.c_str());
