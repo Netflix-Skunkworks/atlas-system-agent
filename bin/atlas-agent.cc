@@ -49,15 +49,16 @@ std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<
 #if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
 static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
   Logger()->info("Gathering titus metrics");
+  aws->update_stats();
   cGroup->cpu_stats();
   cGroup->memory_stats();
   cGroup->network_stats();
   disk->titus_disk_stats();
-  proc->network_stats();
-  proc->snmp_stats();
   proc->netstat_stats();
+  proc->network_stats();
   proc->process_stats();
-  aws->update_stats();
+  proc->socket_stats();
+  proc->snmp_stats();
 }
 #else
 static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
@@ -66,18 +67,19 @@ static void gather_scaling_metrics(CpuFreq* cpufreq) { cpufreq->Stats(); }
 
 static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ntp* ntp, Aws* aws) {
   Logger()->info("Gathering system metrics");
-  proc->cpu_stats();
-  proc->network_stats();
-  proc->arp_stats();
-  proc->snmp_stats();
-  proc->netstat_stats();
-  proc->loadavg_stats();
-  proc->memory_stats();
-  proc->vmstats();
-  proc->process_stats();
+  aws->update_stats();
   disk->disk_stats();
   ntp->update_stats();
-  aws->update_stats();
+  proc->arp_stats();
+  proc->cpu_stats();
+  proc->loadavg_stats();
+  proc->memory_stats();
+  proc->netstat_stats();
+  proc->network_stats();
+  proc->process_stats();
+  proc->snmp_stats();
+  proc->socket_stats();
+  proc->vmstats();
 }
 #endif
 

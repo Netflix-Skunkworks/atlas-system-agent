@@ -237,6 +237,19 @@ TEST(Proc, ParseNetstat) {
   EXPECT_TRUE(values.empty());
 }
 
+TEST(Proc, ParseSocketStats) {
+  Registry registry;
+  spectator::Tags extra{{"nf.test", "extra"}};
+  Proc proc{&registry, extra, "testdata/resources/proc"};
+  proc.socket_stats();
+
+  auto ms = my_measurements(&registry);
+  auto ms_map = measurements_to_map(ms, "proto");
+  auto pagesize = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+  expect_value(&ms_map, "net.tcp.memory|gauge", 4519.0 * pagesize);
+  EXPECT_TRUE(ms_map.empty());
+}
+
 TEST(Proc, ArpStats) {
   Registry registry;
   spectator::Tags extra{{"nf.test", "extra"}};

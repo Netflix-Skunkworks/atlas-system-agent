@@ -17,6 +17,7 @@ class Proc {
   void peak_cpu_stats() noexcept;
   void memory_stats() noexcept;
   void process_stats() noexcept;
+  void socket_stats() noexcept;
   void vmstats() noexcept;
   [[nodiscard]] bool is_container() const noexcept;
 
