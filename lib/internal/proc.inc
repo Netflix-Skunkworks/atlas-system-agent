@@ -756,6 +756,33 @@ inline int64_t to_int64(const std::string& s) {
 }
 
 template <typename Reg>
+void Proc<Reg>::socket_stats() noexcept {
+  auto pagesize = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+  static auto tcp_memory = registry_->GetGauge("net.tcp.memory");
+
+  auto fp = open_file(path_prefix_, "net/sockstat");
+  if (fp == nullptr) {
+    return;
+  }
+
+  char line[1024];
+  while (fgets(line, sizeof line, fp) != nullptr) {
+    if (starts_with(line, "TCP:")) {
+      std::vector<std::string> values =
+          absl::StrSplit(line, absl::ByAnyChar(" \t\n"), absl::SkipEmpty());
+      auto idx = 0u;
+      for (const auto& value : values) {
+        if (value == "mem") {
+          tcp_memory->Set(to_int64(values[idx+1]) * pagesize);
+        }
+        ++idx;
+      }
+      break;
+    }
+  }
+}
+
+template <typename Reg>
 void Proc<Reg>::netstat_stats() noexcept {
   static auto ect_ctr = registry_->GetMonotonicCounter(
       create_id("net.ip.ectPackets", {{"id", "capable"}, {"proto", "v4"}}, net_tags_));
