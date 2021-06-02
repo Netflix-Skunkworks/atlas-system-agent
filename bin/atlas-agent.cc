@@ -57,7 +57,6 @@ static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aw
   proc->netstat_stats();
   proc->network_stats();
   proc->process_stats();
-  proc->socket_stats();
   proc->snmp_stats();
 }
 #else
