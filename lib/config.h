@@ -8,7 +8,7 @@ static constexpr const char* kNvidiaLib =
 
 #elif defined(__linux__)
 
-    "libnvidia-ml.so";
+    "libnvidia-ml.so.1";
 
 #else
 
