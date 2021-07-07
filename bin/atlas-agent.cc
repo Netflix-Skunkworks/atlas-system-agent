@@ -293,8 +293,8 @@ int main(int argc, char* const argv[]) {
   auto cfg = spectator::Config{"unix:/run/spectatord/spectatord.unix", std::move(common_tags)};
 
 #if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
-  auto titus_host = std::getenv("EC2_INSTANCE_ID");
-  if (titus_host != nullptr) {
+  auto titus_host = std::getenv("TITUS_HOST_EC2_INSTANCE_ID");
+  if (titus_host != nullptr && titus_host[0] != '\0') {
     cfg.common_tags["titus.host"] = titus_host;
   }
 #endif
