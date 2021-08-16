@@ -13,7 +13,7 @@ An agent that reports metrics for EC2 instances or [Titus] containers.
 
 * If you are running Docker Desktop, then allocate 8GB RAM to allow builds to succeed.
 * Set the `BASEOS_IMAGE` environment variable to a reasonable value, such as `ubuntu:bionic`.
-* Run the `atlas-system-agent` build: `./build.sh`
+* Run the `atlas-system-agent` build: `./build.sh` 
 * Run the `atlas-titus-agent` build: `./build.sh titus`
 * Start an interactive shell in the source directory: `./build.sh shell`
 
