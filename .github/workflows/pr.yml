@@ -1,0 +1,48 @@
+name: PR Build
+
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CC: "gcc-10"
+      CXX: "g++-10"
+      LANG: "en_US.UTF-8"
+    strategy:
+      matrix:
+        titus: [no, yes]
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Enable Cache for Bazel
+        uses: actions/cache@v2
+        with:
+          path: |
+            $HOME/.cache/bazel-a
+            $HOME/.cache/bazel-t
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg software-properties-common
+          curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > bazel.gpg
+          sudo mv bazel.gpg /etc/apt/trusted.gpg.d/
+          echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install -y bazel binutils-dev g++-10 libiberty-dev libcap-dev
+
+      - name: Build Atlas System Agent
+        if: ${{ startsWith(matrix.titus, 'no') }}
+        run: |
+          bazel --output_user_root="$HOME"/.cache/bazel-a --batch build --config asan //... --verbose_failures
+
+      - name: Build Atlas Titus Agent
+        if: ${{ startsWith(matrix.titus, 'yes') }}
+        run: |
+          bazel --output_user_root="$HOME"/.cache/bazel-t --batch build --config asan //... --define titus_agent=yes --verbose_failures
+
+      - name: Run Tests
+        run: |
+          bazel-bin/sysagent_test

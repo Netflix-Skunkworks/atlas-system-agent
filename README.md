@@ -1,7 +1,6 @@
-[![Build Status](https://travis-ci.com/Netflix-Skunkworks/atlas-system-agent.svg?branch=master)](https://travis-ci.com/Netflix-Skunkworks/atlas-system-agent)
 # Atlas System Agent / Atlas Titus Agent
 
-> :warning: Experimental
+[![Snapshot](https://github.com/Netflix-Skunkworks/atlas-system-agent/actions/workflows/snapshot.yml/badge.svg)](https://github.com/Netflix-Skunkworks/atlas-system-agent/actions/workflows/snapshot.yml)
 
 An agent that reports metrics for EC2 instances or [Titus] containers.
 
