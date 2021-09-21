@@ -21,6 +21,7 @@ jobs:
           path: |
             $HOME/.cache/bazel-a
             $HOME/.cache/bazel-t
+          key: ${{ runner.os }}-${{ hashFiles('**/dependencies.bzl') }}
 
       - name: Install Dependencies
         run: |
