@@ -15,7 +15,7 @@ jobs:
       LANG: "en_US.UTF-8"
     strategy:
       matrix:
-        titus: [no, yes]
+        agent: [system, titus]
     steps:
       - uses: actions/checkout@v2
 
@@ -39,12 +39,12 @@ jobs:
           sudo apt-get install -y bazel binutils-dev g++-10 libiberty-dev libcap-dev
 
       - name: Build Atlas System Agent
-        if: ${{ startsWith(matrix.titus, 'no') }}
+        if: ${{ startsWith(matrix.agent, 'system') }}
         run: |
           bazel --output_user_root="$HOME"/.cache/bazel-a --batch build --config asan //... --verbose_failures
 
       - name: Build Atlas Titus Agent
-        if: ${{ startsWith(matrix.titus, 'yes') }}
+        if: ${{ startsWith(matrix.agent, 'titus') }}
         run: |
           bazel --output_user_root="$HOME"/.cache/bazel-t --batch build --config asan //... --define titus_agent=yes --verbose_failures
 
