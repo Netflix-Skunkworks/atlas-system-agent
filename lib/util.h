@@ -13,6 +13,8 @@ StdIoFile open_file(const std::string& prefix, const char* name);
 
 int64_t read_num_from_file(const std::string& prefix, const char* fn);
 
+std::vector<int64_t> read_num_vector_from_file(const std::string& prefix, const char* fn);
+
 void parse_kv_from_file(const std::string& prefix, const char* fn,
                         std::unordered_map<std::string, int64_t>* stats);
 

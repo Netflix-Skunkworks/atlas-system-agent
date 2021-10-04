@@ -47,7 +47,9 @@ std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<
 }
 
 #if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
-static void gather_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
+static void gather_peak_titus_metrics(CGroup* cGroup) { cGroup->cpu_peak_stats(); }
+
+static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
   Logger()->info("Gathering titus metrics");
   aws->update_stats();
   cGroup->cpu_stats();
@@ -89,6 +91,7 @@ struct terminator {
   template <class R, class P>
   bool wait_for(std::chrono::duration<R, P> const& time) {
     if (time.count() <= 0) {
+      Logger()->warn("waiting for zero ticks!");
       return true;
     }
     std::unique_lock<std::mutex> lock(m);
@@ -137,69 +140,78 @@ static void init_signals() {
 #if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
 void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvidia_lib,
                            spectator::Tags net_tags) {
-  using std::chrono::milliseconds;
   using std::chrono::seconds;
   using std::chrono::system_clock;
 
   Aws aws{registry};
   CGroup cGroup{registry};
-  Proc proc{registry, std::move(net_tags)};
   Disk disk{registry, ""};
 #ifndef TITUS_SYSTEM_SERVICE
   PerfMetrics perf_metrics{registry, ""};
 #endif
+  Proc proc{registry, std::move(net_tags)};
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
-  // collect all metrics except perf at startup
-  gather_titus_metrics(&cGroup, &proc, &disk, &aws);
-  auto next_run = system_clock::now();
-  std::chrono::nanoseconds time_to_sleep = seconds(60);
-  while (runner.wait_for(time_to_sleep)) {
-    gather_titus_metrics(&cGroup, &proc, &disk, &aws);
+  // the first call to this gather function takes >1 second, so it must
+  // be done before we start calculating times to wait for peak metrics
+  gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
+
+  auto now = system_clock::now();
+  auto next_run = now;
+  auto next_slow_run = now + seconds(60);
+  std::chrono::nanoseconds time_to_sleep;
+
+  do {
+    gather_peak_titus_metrics(&cGroup);
+    if (system_clock::now() >= next_slow_run) {
+      gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
 #ifndef TITUS_SYSTEM_SERVICE
-    perf_metrics.collect();
+      perf_metrics.collect();
 #endif
-    if (gpu) {
-      gpu->gpu_metrics();
+      if (gpu) {
+        gpu->gpu_metrics();
+      }
+      next_slow_run += seconds(60);
     }
-    next_run += seconds(60);
+    next_run += seconds(1);
     time_to_sleep = next_run - system_clock::now();
-    if (time_to_sleep.count() > 0) {
-      Logger()->info("Sleeping {} milliseconds",
-                     std::chrono::duration_cast<milliseconds>(time_to_sleep).count());
-    }
-  }
+  } while (runner.wait_for(time_to_sleep));
 }
 #else
 void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
                             spectator::Tags net_tags) {
   using std::chrono::seconds;
   using std::chrono::system_clock;
-  Proc proc{registry, std::move(net_tags)};
-  Disk disk{registry, ""};
-  Ntp ntp{registry};
+
   Aws aws{registry};
   CpuFreq cpufreq{registry};
+  Disk disk{registry, ""};
+  Ntp ntp{registry};
+  PerfMetrics perf_metrics{registry, ""};
+  Proc proc{registry, std::move(net_tags)};
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
-  PerfMetrics perf_metrics{registry, ""};
-  auto now = system_clock::now();
-  auto next_slow_run = now + seconds(60);
-  auto next_run = now;
-  std::chrono::nanoseconds time_to_sleep;
+  // the first call to this gather function takes >1 second, so it must
+  // be done before we start calculating times to wait for peak metrics
   gather_slow_system_metrics(&proc, &disk, &ntp, &aws);
+
+  auto now = system_clock::now();
+  auto next_run = now;
+  auto next_slow_run = now + seconds(60);
+  std::chrono::nanoseconds time_to_sleep;
+
   do {
     gather_peak_system_metrics(&proc);
     gather_scaling_metrics(&cpufreq);
     if (system_clock::now() >= next_slow_run) {
       gather_slow_system_metrics(&proc, &disk, &ntp, &aws);
       perf_metrics.collect();
-      next_slow_run += seconds(60);
       if (gpu) {
         gpu->gpu_metrics();
       }
+      next_slow_run += seconds(60);
     }
     next_run += seconds(1);
     time_to_sleep = next_run - system_clock::now();

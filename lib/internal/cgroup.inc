@@ -1,7 +1,7 @@
-#include "../logger.h"
 #include "../util.h"
 #include <cstdlib>
 #include <map>
+#include <unistd.h>
 
 namespace atlasagent {
 
@@ -19,6 +19,7 @@ void CGroup<Reg>::network_stats() noexcept {
 
 template <typename Reg>
 void CGroup<Reg>::cpu_shares(absl::Time now) noexcept {
+  static absl::Time last_updated;
   auto shares = read_num_from_file(path_prefix_, "cpu/cpu.shares");
   // attempt to use an environment variable to set the processing capacity
   // falling back to shares if needed
@@ -34,11 +35,11 @@ void CGroup<Reg>::cpu_shares(absl::Time now) noexcept {
     n = shares / 100.0;
   }
   if (n > 0) {
-    if (last_updated_ == absl::UnixEpoch()) {
-      last_updated_ = now - update_interval_;
+    if (last_updated == absl::UnixEpoch()) {
+      last_updated = now - update_interval_;
     }
-    auto delta_t = absl::ToDoubleSeconds(now - last_updated_);
-    last_updated_ = now;
+    auto delta_t = absl::ToDoubleSeconds(now - last_updated);
+    last_updated = now;
     registry_->GetCounter("cgroup.cpu.processingCapacity")->Add(delta_t * n);
   }
   if (shares >= 0) {
@@ -68,22 +69,92 @@ void CGroup<Reg>::cpu_usage_time() noexcept {
 
   std::unordered_map<std::string, int64_t> stats;
   parse_kv_from_file(path_prefix_, "cpuacct/cpuacct.stat", &stats);
-  // the values are reported in hertz (100 per second)
+  // cpustat.acct values are reported in USER_HZ (usually, 100 per second)
   for (const auto& kv : stats) {
     if (kv.first == "user") {
       if (prev_user_usage >= 0) {
-        auto secs = (kv.second - prev_user_usage) / 100.0;
+        auto secs = (kv.second - prev_user_usage) / user_hz_;
         user_usage->Add(secs);
       }
       prev_user_usage = kv.second;
     } else if (kv.first == "system") {
       if (prev_sys_usage >= 0) {
-        auto secs = (kv.second - prev_sys_usage) / 100.0;
+        auto secs = (kv.second - prev_sys_usage) / user_hz_;
         system_usage->Add(secs);
       }
       prev_sys_usage = kv.second;
     }
   }
+}
+
+template <typename Reg>
+void CGroup<Reg>::cpu_utilization(absl::Time now) noexcept {
+  static absl::Time last_updated;
+
+  auto delta_t = absl::ToDoubleSeconds(now - last_updated);
+  last_updated = now;
+
+  static auto num_procs = registry_->GetGauge("sys.cpu.numProcessors");
+
+  auto cfs_quota = read_num_from_file(path_prefix_, "cpuacct/cpu.cfs_quota_us");
+  auto cfs_period = read_num_from_file(path_prefix_, "cpuacct/cpu.cfs_period_us");
+
+  num_procs->Set(cfs_quota / cfs_period);
+
+  static auto cpu_user = registry_->GetGauge("sys.cpu.utilization", {{"id", "user"}});
+  static auto cpu_system = registry_->GetGauge("sys.cpu.utilization", {{"id", "system"}});
+
+  static auto prev_user_time = static_cast<int64_t>(-1);
+  static auto prev_system_time = static_cast<int64_t>(-1);
+
+  auto system_time = read_num_from_file(path_prefix_, "cpuacct/cpuacct.usage_sys");
+  auto user_time = read_num_from_file(path_prefix_, "cpuacct/cpuacct.usage_user");
+  auto avail_cpu_time = (delta_t / cfs_period) * cfs_quota;
+
+  if (prev_system_time >= 0) {
+    auto secs = (system_time - prev_system_time) / NANOS;
+    cpu_system->Set((secs / avail_cpu_time) * 100);
+  }
+  prev_system_time = system_time;
+
+  if (prev_user_time >= 0) {
+    auto secs = (user_time - prev_user_time) / NANOS;
+    cpu_user->Set((secs / avail_cpu_time) * 100);
+  }
+  prev_user_time = user_time;
+}
+
+template <typename Reg>
+void CGroup<Reg>::cpu_peak_utilization(absl::Time now) noexcept {
+  static absl::Time last_updated;
+
+  auto delta_t = absl::ToDoubleSeconds(now - last_updated);
+  last_updated = now;
+
+  auto cfs_quota = read_num_from_file(path_prefix_, "cpuacct/cpu.cfs_quota_us");
+  auto cfs_period = read_num_from_file(path_prefix_, "cpuacct/cpu.cfs_period_us");
+
+  static auto cpu_user = registry_->GetMaxGauge("sys.cpu.peakUtilization", {{"id", "user"}});
+  static auto cpu_system = registry_->GetMaxGauge("sys.cpu.peakUtilization", {{"id", "system"}});
+
+  static auto prev_user_time = static_cast<int64_t>(-1);
+  static auto prev_system_time = static_cast<int64_t>(-1);
+
+  auto system_time = read_num_from_file(path_prefix_, "cpuacct/cpuacct.usage_sys");
+  auto user_time = read_num_from_file(path_prefix_, "cpuacct/cpuacct.usage_user");
+  auto avail_cpu_time = (delta_t / cfs_period) * cfs_quota;
+
+  if (prev_system_time >= 0) {
+    auto secs = (system_time - prev_system_time) / NANOS;
+    cpu_system->Set((secs / avail_cpu_time) * 100);
+  }
+  prev_system_time = system_time;
+
+  if (prev_user_time >= 0) {
+    auto secs = (user_time - prev_user_time) / NANOS;
+    cpu_user->Set((secs / avail_cpu_time) * 100);
+  }
+  prev_user_time = user_time;
 }
 
 template <typename Reg>
@@ -189,9 +260,15 @@ void CGroup<Reg>::cpu_throttle() noexcept {
 template <typename Reg>
 void CGroup<Reg>::do_cpu_stats(absl::Time now) noexcept {
   cpu_processing_time();
-  cpu_usage_time();
   cpu_shares(now);
   cpu_throttle();
+  cpu_usage_time();
+  cpu_utilization(now);
+}
+
+template <typename Reg>
+void CGroup<Reg>::do_cpu_peak_stats(absl::Time now) noexcept {
+  cpu_peak_utilization(now);
 }
 
 }  // namespace atlasagent
