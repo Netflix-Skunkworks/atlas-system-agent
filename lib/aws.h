@@ -9,6 +9,7 @@ namespace atlasagent {
 
 namespace detail {
 
+static constexpr const char* const kDefaultExecutor = "unknown";
 static constexpr const char* const kDefaultMetadataEndpoint = "http://169.254.169.254";
 static constexpr const char* const kCredsPath = "latest/meta-data/iam/security-credentials/";
 static constexpr const char* const kTokenPath = "latest/api/token";
@@ -24,6 +25,11 @@ inline absl::Time getDateFrom(const rapidjson::Document& doc, const char* dateSt
     t = 0;
   }
   return absl::FromTimeT(t);
+}
+
+inline std::string get_netflix_executor() {
+  auto env = std::getenv("NETFLIX_EXECUTOR");
+  return env == nullptr ? kDefaultExecutor : env;
 }
 
 inline std::string get_metadata_endpoint() {
@@ -46,12 +52,19 @@ class Aws {
  public:
   explicit Aws(Reg* registry) noexcept
       : registry_{registry},
+        executor_{detail::get_netflix_executor()},
         token_endpoint_{detail::get_token_endpoint()},
         iam_endpoint_{detail::get_iam_endpoint()},
         http_client_{registry, HttpClientConfig{absl::Seconds(1), absl::Seconds(1)}} {}
 
   void update_stats() noexcept {
     auto logger = Logger();
+
+    if (executor_ != "ec2" && executor_ != "titus") {
+      logger->debug("Skip AWS stats, because NETFLIX_EXECUTOR is not ec2 or titus");
+      return;
+    }
+
     // get a token
     std::vector<std::string> tokenTtl{"X-aws-ec2-metadata-token-ttl-seconds: 60"};
     auto resp = http_client_.Put(token_endpoint_, tokenTtl);
@@ -85,6 +98,7 @@ class Aws {
 
  private:
   Reg* registry_;
+  std::string executor_;
   std::string token_endpoint_;
   std::string iam_endpoint_;
   std::string creds_url_;
