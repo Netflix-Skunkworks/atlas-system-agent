@@ -643,11 +643,11 @@ void Proc<Reg>::peak_cpu_stats() noexcept {
 
 template <typename Reg>
 void Proc<Reg>::cpu_stats() noexcept {
+  static auto num_procs = registry_->GetGauge("sys.cpu.numProcessors");
   static detail::cpu_gauges<Reg, typename Reg::gauge_t> utilizationGauges{
       registry_, "sys.cpu.utilization", [](Reg* r, const char* name, const char* id) {
         return r->GetGauge(name, {{"id", id}});
       }};
-
   static detail::cores_dist_summary coresDistSummary{registry_, "sys.cpu.coreUtilization"};
   static detail::stat_vals prev_vals;
   static std::unordered_map<int, detail::stat_vals> prev_cpu_vals;
@@ -669,10 +669,12 @@ void Proc<Reg>::cpu_stats() noexcept {
   prev_vals = vals;
 
   // get the per-cpu metrics
+  auto cpu_count = 0;
   while (fgets(line, sizeof line, fp) != nullptr) {
     if (strncmp(line, "cpu", 3) != 0) {
       break;
     }
+    cpu_count += 1;
     int cpu_num;
     sscanf(line, "cpu%d ", &cpu_num);
     char* p = line + 4;
@@ -688,6 +690,7 @@ void Proc<Reg>::cpu_stats() noexcept {
     }
     prev_cpu_vals[cpu_num] = per_cpu_vals;
   }
+  num_procs->Set(cpu_count);
 }
 
 template <typename Reg>
