@@ -54,6 +54,7 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
   aws->update_stats();
   cGroup->cpu_stats();
   cGroup->memory_stats();
+  cGroup->memory_stats_std();
   cGroup->network_stats();
   disk->titus_disk_stats();
   proc->netstat_stats();

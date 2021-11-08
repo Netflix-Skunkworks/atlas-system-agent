@@ -163,13 +163,13 @@ TEST(Proc, CpuStats) {
   proc.cpu_stats();
   proc.peak_cpu_stats();
   const auto& ms = my_measurements(&registry);
-  EXPECT_TRUE(ms.empty());
+  EXPECT_EQ(1, ms.size());
 
   proc.set_prefix("testdata/resources/proc2");
   proc.cpu_stats();
   proc.peak_cpu_stats();
   const auto& ms2 = my_measurements(&registry);
-  EXPECT_EQ(16, ms2.size());
+  EXPECT_EQ(17, ms2.size());
 }
 
 TEST(Proc, VmStats) {

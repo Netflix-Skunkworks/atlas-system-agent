@@ -240,6 +240,42 @@ void CGroup<Reg>::memory_stats() noexcept {
 }
 
 template <typename Reg>
+void CGroup<Reg>::memory_stats_std() noexcept {
+  static auto avail_real = registry_->GetGauge("mem.availReal");
+  static auto free_real = registry_->GetGauge("mem.freeReal");
+  static auto total_real = registry_->GetGauge("mem.totalReal");
+  static auto avail_swap = registry_->GetGauge("mem.availSwap");
+  static auto total_swap = registry_->GetGauge("mem.totalSwap");
+  static auto cached = registry_->GetGauge("mem.cached");
+  static auto shared = registry_->GetGauge("mem.shared");
+  static auto total_free = registry_->GetGauge("mem.totalFree");
+
+  auto mem_limit = read_num_from_file(path_prefix_, "memory/memory.limit_in_bytes");
+  auto mem_usage = read_num_from_file(path_prefix_, "memory/memory.usage_in_bytes");
+  auto memsw_limit = read_num_from_file(path_prefix_, "memory/memory.memsw.limit_in_bytes");
+  auto memsw_usage = read_num_from_file(path_prefix_, "memory/memory.memsw.usage_in_bytes");
+
+  std::unordered_map<std::string, int64_t> stats;
+  parse_kv_from_file(path_prefix_, "memory/memory.stat", &stats);
+
+  cached->Set(stats["total_cache"]);
+  shared->Set(stats["total_shmem"]);
+
+  if (mem_limit >= 0 && mem_usage >= 0) {
+    avail_real->Set(mem_limit - mem_usage + stats["total_cache"]);
+    free_real->Set(mem_limit - mem_usage);
+    total_real->Set(mem_limit);
+  }
+  if (memsw_limit >= 0 && mem_limit >= 0) {
+    avail_swap->Set(memsw_limit - mem_limit - stats["total_swap"]);
+    total_swap->Set(memsw_limit - mem_limit);
+  }
+  if (memsw_limit >= 0 && memsw_usage >= 0) {
+    total_free->Set(memsw_limit - memsw_usage);
+  }
+}
+
+template <typename Reg>
 void CGroup<Reg>::cpu_throttle() noexcept {
   static auto nr_throttled = registry_->GetMonotonicCounter("cgroup.cpu.numThrottled");
   static auto throttled_time_ctr = registry_->GetCounter("cgroup.cpu.throttledTime");

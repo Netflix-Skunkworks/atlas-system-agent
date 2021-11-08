@@ -5,8 +5,8 @@
 #include <utility>
 
 namespace {
-
 using Registry = spectator::TestRegistry;
+using atlasagent::Logger;
 
 class CGroupTest : public atlasagent::CGroup<Registry> {
  public:
@@ -82,29 +82,39 @@ TEST(CGroup, ParseMemory) {
   CGroupTest cGroup{&registry, "testdata/resources"};
 
   cGroup.memory_stats();
+  cGroup.memory_stats_std();
   auto initial = my_measurements(&registry);
-  EXPECT_EQ(initial.size(), 12);  // 12 gauges
+  EXPECT_EQ(initial.size(), 20);
 
   cGroup.set_prefix("testdata/resources2");
   cGroup.memory_stats();
+  cGroup.memory_stats_std();
   auto ms = my_measurements(&registry);
   auto values = measurements_to_map(ms, "");
   expect_value(&values, "cgroup.kmem.tcpUsed|gauge", 0);
   expect_value(&values, "cgroup.mem.processUsage|gauge|mapped_file", 3);
-  expect_value(&values, "cgroup.mem.used|gauge", 917504);
+  expect_value(&values, "cgroup.mem.used|gauge", 7841374208);
   expect_value(&values, "cgroup.mem.pageFaults|count|minor", 1000);
   expect_value(&values, "cgroup.mem.pageFaults|count|major", 10);
   expect_value(&values, "cgroup.kmem.limit|gauge", 9223372036854771712.0);
-  expect_value(&values, "cgroup.mem.processUsage|gauge|cache", 951968);
+  expect_value(&values, "cgroup.mem.processUsage|gauge|cache", 11218944);
   expect_value(&values, "cgroup.kmem.used|gauge", 14528144.0);
   expect_value(&values, "cgroup.kmem.maxUsed|gauge", 14598144.0);
-  expect_value(&values, "cgroup.mem.limit|gauge", 9223372036854771712.0);
+  expect_value(&values, "cgroup.mem.limit|gauge", 8589934592);
   expect_value(&values, "cgroup.mem.processUsage|gauge|rss_huge", 2);
   expect_value(&values, "cgroup.mem.processUsage|gauge|rss", 1);
   expect_value(&values, "cgroup.kmem.tcpMaxUsed|gauge", 0);
   expect_value(&values, "cgroup.kmem.tcpLimit|gauge", 9223372036854771712.0);
   expect_value(&values, "cgroup.kmem.failures|count", 4);
   expect_value(&values, "cgroup.mem.failures|count", 2);
+  expect_value(&values, "mem.availReal|gauge", 759779328);
+  expect_value(&values, "mem.availSwap|gauge", 8589934592);
+  expect_value(&values, "mem.cached|gauge", 11218944);
+  expect_value(&values, "mem.freeReal|gauge", 748560384);
+  expect_value(&values, "mem.shared|gauge", 135168);
+  expect_value(&values, "mem.totalFree|gauge", 9338249216);
+  expect_value(&values, "mem.totalReal|gauge", 8589934592);
+  expect_value(&values, "mem.totalSwap|gauge", 8589934592);
   EXPECT_TRUE(values.empty());
 }
 }  // namespace

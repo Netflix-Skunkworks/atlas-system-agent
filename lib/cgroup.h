@@ -16,6 +16,7 @@ class CGroup {
   void cpu_stats() noexcept { do_cpu_stats(absl::Now()); }
   void cpu_peak_stats() noexcept { do_cpu_peak_stats(absl::Now()); }
   void memory_stats() noexcept;
+  void memory_stats_std() noexcept;
   void network_stats() noexcept;
   void set_prefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 

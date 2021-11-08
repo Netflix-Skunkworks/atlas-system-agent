@@ -14,9 +14,10 @@ inactive_file 0
 active_file 0
 unevictable 0
 hierarchical_memory_limit 9223372036854771712
-total_cache 851968
+total_cache 11218944
 total_rss 0
 total_rss_huge 0
+total_shmem 135168
 total_mapped_file 0
 total_dirty 0
 total_writeback 0
