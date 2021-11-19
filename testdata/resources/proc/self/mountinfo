@@ -32,3 +32,13 @@
 97 25 202:0 /tmp /tmp rw,nosuid,nodev,noatime - ext4 /dev/xvda rw,nobarrier,stripe=32582,data=ordered
 99 25 202:0 /var/tmp /var/tmp rw,nosuid,nodev,noexec,noatime - ext4 /dev/xvda rw,nobarrier,stripe=32582,data=ordered
 101 23 0:40 / /run/user/0 rw,nosuid,nodev,noexec,relatime shared:76 - tmpfs tmpfs rw,size=3294612k,mode=700
+750 24 7:0 / /snap/core/10185 ro,nodev,relatime shared:412 - squashfs /dev/loop0 ro
+767 24 7:1 / /snap/core18/1885 ro,nodev,relatime shared:421 - squashfs /dev/loop1 ro
+784 24 7:2 / /snap/lxd/16922 ro,nodev,relatime shared:430 - squashfs /dev/loop2 ro
+801 31 0:26 /snapd/ns /run/snapd/ns rw,nosuid,nodev - tmpfs tmpfs rw,size=3240304k,mode=755,inode64
+824 24 7:3 / /snap/amazon-ssm-agent/2012 ro,nodev,relatime shared:447 - squashfs /dev/loop3 ro
+494 24 7:4 / /snap/core18/2246 ro,nodev,relatime shared:273 - squashfs /dev/loop4 ro
+511 24 7:5 / /snap/core/11993 ro,nodev,relatime shared:281 - squashfs /dev/loop5 ro
+528 24 7:6 / /snap/core20/1242 ro,nodev,relatime shared:289 - squashfs /dev/loop6 ro
+545 24 7:7 / /snap/amazon-ssm-agent/4046 ro,nodev,relatime shared:297 - squashfs /dev/loop7 ro
+562 24 7:8 / /snap/lxd/21835 ro,nodev,relatime shared:305 - squashfs /dev/loop8 ro
