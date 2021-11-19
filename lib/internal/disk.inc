@@ -87,6 +87,9 @@ std::vector<MountPoint> Disk<Reg>::get_mount_points() const noexcept {
   return res;
 }
 
+static constexpr int kLoopDevice = 7;
+static constexpr int kRamDevice = 1;
+
 template <typename Reg>
 std::vector<MountPoint> Disk<Reg>::filter_interesting_mount_points(
     const std::vector<MountPoint>& mount_points) const noexcept {
@@ -94,6 +97,10 @@ std::vector<MountPoint> Disk<Reg>::filter_interesting_mount_points(
   std::unordered_map<uint64_t, const MountPoint*> candidates;
 
   for (const auto& mp : mount_points) {
+    if (mp.device_major == kLoopDevice || mp.device_major == kRamDevice) {
+      continue;
+    }
+
     if (starts_with(mp.mount_point.c_str(), "/sys") ||
         starts_with(mp.mount_point.c_str(), "/run") ||
         starts_with(mp.mount_point.c_str(), "/proc") ||
@@ -206,8 +213,6 @@ inline IdPtr id_for(const char* name, const char* id, const std::string& dev) {
   return spectator::Id::of(name, {{"id", id}, {"dev", dev.c_str()}});
 }
 
-static constexpr int kLoopDevice = 7;
-static constexpr int kRamDevice = 1;
 static constexpr const char* kRead = "read";
 static constexpr const char* kWrite = "write";
 

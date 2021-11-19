@@ -48,7 +48,7 @@ TEST(Disk, MountPoints) {
   Registry registry;
   TestDisk disk(&registry);
   auto mount_points = disk.get_mount_points();
-  EXPECT_EQ(mount_points.size(), 7);
+  EXPECT_EQ(mount_points.size(), 16);
 
   disk.set_prefix("testdata/resources2");
   mount_points = disk.get_mount_points();
@@ -56,6 +56,7 @@ TEST(Disk, MountPoints) {
     Logger()->info("{}", mp);
   }
 }
+
 
 TEST(Disk, id) {
   using atlasagent::get_id_from_mountpoint;
