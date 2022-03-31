@@ -1,6 +1,7 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def nflx_atlas_sysagent():
+    # this commit is on the spectatord branch in the spectator-cpp repo
     http_archive(
         name = "spectator",
         urls = ["https://github.com/Netflix/spectator-cpp/archive/8771e291239201e385087c66df2527d9bd060800.zip"],
