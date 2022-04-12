@@ -87,6 +87,7 @@ std::vector<MountPoint> Disk<Reg>::get_mount_points() const noexcept {
   return res;
 }
 
+static constexpr int kMultipleDevice = 9;
 static constexpr int kLoopDevice = 7;
 static constexpr int kRamDevice = 1;
 
@@ -225,6 +226,13 @@ void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
       continue;  // ignore loop and ram devices
     }
 
+    registry_->GetMonotonicCounter(id_for("disk.io.bytes", kRead, st.device))->Set(st.rsect * 512);
+    registry_->GetMonotonicCounter(id_for("disk.io.bytes", kWrite, st.device))->Set(st.wsect * 512);
+
+    if (st.major == kMultipleDevice) {
+      continue;  // ignore multiple devices for disk.io.ops and disk.percentBusy - they do not provide timing stats
+    }
+
     auto mono_read_id = id_for("disk.io.ops", kRead, st.device);
     auto mono_write_id = id_for("disk.io.ops", kWrite, st.device);
     auto busy_gauge_id = spectator::Id::of("disk.percentBusy", {{"dev", st.device}});
@@ -233,6 +241,7 @@ void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
     std::shared_ptr<MonotonicTimer<Reg>> write_timer;
 
     auto it = monotonic_timers_.find(mono_read_id);
+
     if (it != monotonic_timers_.end()) {
       read_timer = it->second;
       write_timer = monotonic_timers_[mono_write_id];
@@ -258,9 +267,8 @@ void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
         registry_->GetGauge(busy_gauge_id)->Set(100.0 * delta_time_doing_io / delta_millis);
       }
     }
+
     last_ms_doing_io[st.device] = st.ms_doing_io;
-    registry_->GetMonotonicCounter(id_for("disk.io.bytes", kRead, st.device))->Set(st.rsect * 512);
-    registry_->GetMonotonicCounter(id_for("disk.io.bytes", kWrite, st.device))->Set(st.wsect * 512);
   }
 }
 
