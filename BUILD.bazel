@@ -52,6 +52,7 @@ cc_library(
     }),
     linkopts = select({
         "@bazel_tools//src/conditions:linux_x86_64": ["-ldl"],
+        "@bazel_tools//src/conditions:linux_aarch64": ["-ldl"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -64,6 +65,7 @@ cc_library(
         "@curl",
     ] + select({
         "@bazel_tools//src/conditions:linux_x86_64": [":contain"],
+        "@bazel_tools//src/conditions:linux_aarch64": [":contain"],
         "//conditions:default": [],
     }),
 )
@@ -78,6 +80,7 @@ cc_test(
     ]),
     local_defines = select({
         "@bazel_tools//src/conditions:linux_x86_64": ["BACKWARD_HAS_BFD=1"],
+        "@bazel_tools//src/conditions:linux_aarch64": ["BACKWARD_HAS_BFD=1"],
         "//conditions:default": [],
     }),
     data = glob(["testdata/**"]),
@@ -95,6 +98,10 @@ cc_test(
             "/usr/lib/x86_64-linux-gnu/libbfd.a",
             "/usr/lib/x86_64-linux-gnu/libiberty.a",
         ],
+        "@bazel_tools//src/conditions:linux_aarch64": [
+            "/usr/lib/aarch64-linux-gnu/libbfd.a",
+            "/usr/lib/aarch64-linux-gnu/libiberty.a",
+        ],
         "//conditions:default": [],
     }),
 )
@@ -108,6 +115,7 @@ cc_binary(
     }),
     local_defines = select({
         "@bazel_tools//src/conditions:linux_x86_64": ["BACKWARD_HAS_BFD=1"],
+        "@bazel_tools//src/conditions:linux_aarch64": ["BACKWARD_HAS_BFD=1"],
         "//conditions:default": [],
     }),
     includes = ["lib"],
@@ -120,6 +128,11 @@ cc_binary(
             "/usr/lib/x86_64-linux-gnu/libbfd.a",
             "/usr/lib/x86_64-linux-gnu/libiberty.a",
             "/usr/lib/x86_64-linux-gnu/libz.a",
+        ],
+        "@bazel_tools//src/conditions:linux_aarch64": [
+            "/usr/lib/aarch64-linux-gnu/libbfd.a",
+            "/usr/lib/aarch64-linux-gnu/libiberty.a",
+            "/usr/lib/aarch64-linux-gnu/libz.a",
         ],
         "//conditions:default": [],
     }),
