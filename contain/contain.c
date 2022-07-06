@@ -242,7 +242,7 @@ bool maybe_reexec(char* const* argv) {
 	snprintf(user_uid_env, sizeof(user_uid_env), "USER_UID=%d", st.st_uid);
 	snprintf(user_gid_env, sizeof(user_gid_env), "USER_GID=%d", st.st_gid);
 
-	/* 2. Make it into an ENVP */
+	/* 2. Make it into an ENVP, saving space for four additional values */
 	memset(envp, 0, sizeof(envp));
 	i = 0;
 	do {
@@ -251,7 +251,10 @@ bool maybe_reexec(char* const* argv) {
 			offset += strlen(&env[offset]) + 1;
 		} else
 			offset++;
-	} while (offset < env_length && i < ARRAY_SIZE(envp) - 1);
+	} while (offset < env_length && i < (ARRAY_SIZE(envp) - 5));
+
+	if (i >= (ARRAY_SIZE(envp) - 5))
+		fprintf(stderr, "Not capturing all environment variables.\n");
 
 	envp[i++] = LD_LIBRARY_PATH;
 	envp[i++] = LD_BIND_NOW1;
