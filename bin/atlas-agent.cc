@@ -1,4 +1,3 @@
-#include "config.h"
 #ifdef __linux__
 #include "contain/contain.h"
 #endif
@@ -15,7 +14,6 @@
 #include "tagger.h"
 #include "backward.hpp"
 #include "spectator/registry.h"
-#include <cinttypes>
 #include <condition_variable>
 #include <csignal>
 #include <getopt.h>
@@ -46,7 +44,7 @@ std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<
   return std::unique_ptr<GpuMetrics>();
 }
 
-#if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
+#if defined(TITUS_SYSTEM_SERVICE)
 static void gather_peak_titus_metrics(CGroup* cGroup) { cGroup->cpu_peak_stats(); }
 
 static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
@@ -138,7 +136,7 @@ static void init_signals() {
   sigaction(SIGTERM, &sa, nullptr);
 }
 
-#if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
+#if defined(TITUS_SYSTEM_SERVICE)
 void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvidia_lib,
                            spectator::Tags net_tags) {
   using std::chrono::seconds;
@@ -268,13 +266,6 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
 int main(int argc, char* const argv[]) {
   agent_options options{};
 
-#ifdef TITUS_AGENT
-  container_handle c;
-  if (maybe_reexec(argv)) {
-    return 1;
-  }
-#endif
-
   auto idx = parse_options(argc, argv, &options);
   assert(idx >= 0);
   argc -= idx;
@@ -288,13 +279,7 @@ int main(int argc, char* const argv[]) {
     fprintf(stderr, "Will not collect GPU metrics: %s\n", e.what());
   }
 
-#ifdef TITUS_AGENT
-  if (maybe_contain(&c) != 0) {
-    return 1;
-  }
-#endif
-
-#if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
+#if defined(TITUS_SYSTEM_SERVICE)
   const char* process = argc > 1 ? argv[1] : "atlas-titus-agent";
 #else
   const char* process = argc > 1 ? argv[1] : "atlas-system-agent";
@@ -305,7 +290,7 @@ int main(int argc, char* const argv[]) {
   std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", process}};
   auto cfg = spectator::Config{"unix:/run/spectatord/spectatord.unix", std::move(common_tags)};
 
-#if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
+#if defined(TITUS_SYSTEM_SERVICE)
   auto titus_host = std::getenv("TITUS_HOST_EC2_INSTANCE_ID");
   if (titus_host != nullptr && titus_host[0] != '\0') {
     cfg.common_tags["titus.host"] = titus_host;
@@ -325,7 +310,7 @@ int main(int argc, char* const argv[]) {
   }
   spectator::Registry spectator_registry{cfg, spectator_logger};
   TaggingRegistry registry{&spectator_registry, maybe_tagger.value_or(atlasagent::Tagger::Nop())};
-#if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
+#if defined(TITUS_SYSTEM_SERVICE)
   collect_titus_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));
 #else
   collect_system_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));

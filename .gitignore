@@ -1,8 +1,7 @@
-.cache-*/
-.clwb/
+**/*.inc
+.DS_Store
 .idea/
-.vscode/
-Dockerfile-e
-bazel-*
-atlas-system-agent
-atlas-titus-agent
+cmake-build-debug/
+cmake-build/
+lib/spectator/
+venv/

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <thread>
 
 #include <curl/curl.h>
 

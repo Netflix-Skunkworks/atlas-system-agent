@@ -16,6 +16,7 @@ enum perf_hw_id {
   PERF_COUNT_HW_BRANCH_MISSES,
 };
 #else
+#include <linux/unistd.h>
 #include <linux/perf_event.h>
 #include <linux/hw_breakpoint.h>
 inline int perf_event_open(struct perf_event_attr* hw_event, pid_t pid, int cpu, int group_fd,
@@ -91,32 +92,11 @@ class PerfCounter {
     pea->inherit = 1;
   }
 
-#ifdef TITUS_AGENT
-  int perf_open(int cpu, unsigned long flags) {
-    auto uid = geteuid();
-    if (seteuid(0)) {
-      return -1;
-    }
-
-    perf_event_attr pea;
-    setup_perf_event(&pea);
-    auto ret = perf_event_open(&pea, pid_, cpu, -1, flags);
-    auto tmperrno = errno;
-    /* If this call fails, the system is a potentially unsecure state, and we should bail */
-    if (seteuid(uid)) {
-      abort();
-    }
-
-    errno = tmperrno;
-    return ret;
-  }
-#else
   int perf_open(int cpu, unsigned long flags) {
     perf_event_attr pea;
     setup_perf_event(&pea);
     return perf_event_open(&pea, pid_, cpu, -1, flags);
   }
-#endif  // TITUS_AGENT
 #endif  // __linux__
 
   void set_pid(int pid) { pid_ = pid; }
@@ -127,11 +107,7 @@ class PerfCounter {
 
     fds_.assign(online_cpus.size(), -1);
 #ifdef __linux__
-#ifdef TITUS_AGENT
-    unsigned long flags = PERF_FLAG_PID_CGROUP;
-#else
     unsigned long flags = 0;
-#endif
     for (auto i = 0u; i < online_cpus.size(); ++i) {
       if (online_cpus[i]) {
         fds_[i] = perf_open(i, flags);
@@ -243,23 +219,6 @@ class PerfMetrics {
   }
 
   bool open_perf_counters_if_needed() {
-#ifdef TITUS_AGENT
-    if (pid_ < 0) {
-      auto name = fmt::format("{}/{}", path_prefix_, "sys/fs/cgroup/perf_event");
-      pid_.open(name.c_str());
-      if (pid_ < 0) {
-        Logger()->warn("Unable to start collection of perf counters for cgroup");
-        return false;
-      }
-      Logger()->info("Opened cgroup file");
-      cycles.set_pid(pid_);
-      instructions.set_pid(pid_);
-      cache_refs.set_pid(pid_);
-      cache_misses.set_pid(pid_);
-      branch_insts.set_pid(pid_);
-      branch_misses.set_pid(pid_);
-    }
-#endif
     auto new_online_cpus = get_online_cpus();
     if (new_online_cpus == online_cpus_) {
       Logger()->trace("Online CPUs have not changed. No need to reopen perf events.");

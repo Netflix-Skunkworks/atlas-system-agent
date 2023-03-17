@@ -1,66 +1,51 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-ATLAS_SYSTEM_AGENT_IMAGE="atlas-system-agent/builder:latest"
-ATLAS_SYSTEM_AGENT_IMAGE_ID=$(docker images --quiet $ATLAS_SYSTEM_AGENT_IMAGE)
+BUILD_DIR=cmake-build
 
-if [[ -z "$ATLAS_SYSTEM_AGENT_IMAGE_ID" ]]; then
-  if [[ -z "$BASEOS_IMAGE" ]]; then
-    echo "set BASEOS_IMAGE to a reasonable value, such as ubuntu:bionic" && exit 1
+BLUE="\033[0;34m"
+NC="\033[0m"
+
+if [[ "$1" == "clean" ]]; then
+  echo -e "${BLUE}==== clean ====${NC}"
+  rm -rf $BUILD_DIR
+  rm -rf lib/spectator
+fi
+
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+  export CC=gcc-11
+  export CXX=g++-11
+fi
+
+if [[ ! -d $BUILD_DIR ]]; then
+  if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    echo -e "${BLUE}==== configure default profile ====${NC}"
+    conan profile new default --detect
+    conan profile update settings.compiler.libcxx=libstdc++11 default
   fi
 
-  sed -i -e "s,BASEOS_IMAGE,$BASEOS_IMAGE,g" Dockerfile
-  docker build --tag $ATLAS_SYSTEM_AGENT_IMAGE . || exit 1
-  git checkout Dockerfile
+  echo -e "${BLUE}==== install required dependencies ====${NC}"
+  conan install . --build=missing --install-folder $BUILD_DIR
+
+  echo -e "${BLUE}==== install source dependencies ====${NC}"
+  conan source .
+fi
+
+pushd $BUILD_DIR || exit 1
+
+echo -e "${BLUE}==== generate build files ====${NC}"
+# Choose: Debug, Release, RelWithDebInfo and MinSizeRel
+if [[ "$TITUS_SYSTEM_SERVICE" == "ON" ]]; then
+  cmake -DCMAKE_BUILD_TYPE=Debug -DTITUS_SYSTEM_SERVICE=ON .. || exit 1
 else
-  echo "using image $ATLAS_SYSTEM_AGENT_IMAGE $ATLAS_SYSTEM_AGENT_IMAGE_ID"
+  cmake -DCMAKE_BUILD_TYPE=Debug -DTITUS_SYSTEM_SERVICE=OFF .. || exit 1
 fi
 
-# option to start an interactive shell in the source directory
-if [[ "$1" == "shell" ]]; then
-  docker run --rm --interactive --tty --mount type=bind,source="$(pwd)",target=/src --workdir /src $ATLAS_SYSTEM_AGENT_IMAGE /bin/bash
-  exit 0
+echo -e "${BLUE}==== build ====${NC}"
+cmake --build . || exit 1
+
+if [[ "$1" != "skiptest" ]]; then
+  echo -e "${BLUE}==== test ====${NC}"
+  GTEST_COLOR=1 ctest --verbose
 fi
 
-# option to activate atlas-titus-agent code paths in the build
-if [[ "$1" == "titus" ]]; then
-  ATLAS_TITUS_AGENT="--define titusagent=yes"
-  BINARY="atlas-titus-agent"
-  CACHE=".cache-t"
-else
-  ATLAS_TITUS_AGENT=""
-  BINARY="atlas-system-agent"
-  CACHE=".cache-a"
-fi
-
-# recommend 8GB RAM allocation for docker desktop, to allow the test build with asan to succeed
-cat >start-build <<EOF
-export CC="gcc-10"
-export CXX="g++-10"
-
-echo "-- build tests with address sanitizer enabled"
-bazel --output_user_root=$CACHE build --config=asan sysagent_test $ATLAS_TITUS_AGENT
-
-echo "-- run tests"
-bazel-bin/sysagent_test
-
-echo "-- build optimized daemon"
-bazel --output_user_root=$CACHE build --compilation_mode=opt atlas_system_agent $ATLAS_TITUS_AGENT
-
-echo "-- check shared library dependencies"
-ldd bazel-bin/atlas_system_agent || true
-
-echo "-- copy binary to local filesystem"
-rm -f $BINARY
-cp -p bazel-bin/atlas_system_agent $BINARY
-EOF
-
-chmod 755 start-build
-
-docker run --rm --tty --mount type=bind,source="$(pwd)",target=/src $ATLAS_SYSTEM_AGENT_IMAGE /bin/bash -c "cd src && ./start-build"
-
-rm start-build
-
-# adjust symlinks to point to the local .cache directory
-for link in bazel-*; do
-  ln -nsf "$(readlink "$link" |sed -e "s:^/src/::g")" "$link"
-done
+popd || exit 1

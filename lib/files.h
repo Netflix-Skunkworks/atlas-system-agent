@@ -3,6 +3,8 @@
 #include "logger.h"
 #include <cstdio>
 #include <dirent.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 namespace atlasagent {
 class StdIoFile {
