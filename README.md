@@ -1,6 +1,6 @@
 # Atlas System Agent / Atlas Titus Agent
 
-[![Snapshot](https://github.com/Netflix-Skunkworks/atlas-system-agent/actions/workflows/snapshot.yml/badge.svg)](https://github.com/Netflix-Skunkworks/atlas-system-agent/actions/workflows/snapshot.yml)
+[![Build](https://github.com/Netflix-Skunkworks/atlas-system-agent/actions/workflows/build.yml/badge.svg)](https://github.com/Netflix-Skunkworks/atlas-system-agent/actions/workflows/build.yml)
 
 An agent that reports metrics for EC2 instances or [Titus] containers.
 
@@ -8,32 +8,16 @@ An agent that reports metrics for EC2 instances or [Titus] containers.
 
 ## Local Development
 
-### Builds
+Due to the nature of what this agent is, it does not compile cleanly on MacOS. It is best to build on a Linux
+machine:
 
-* If you are running Docker Desktop, then allocate 8GB RAM to allow builds to succeed.
-* Set the `BASEOS_IMAGE` environment variable to a reasonable value, such as `ubuntu:bionic`.
-* Run the `atlas-system-agent` build: `./build.sh`
-* Run the `atlas-titus-agent` build: `./build.sh titus`
-* Start an interactive shell in the source directory: `./build.sh shell`
+```shell
+./setup-venv.sh
+source venv/bin/activate
+./build.sh  # [clean|skiptest]
+```
 
-### CLion
-
-* Use JetBrains Toolbox to install version 2020.1.3 (latest is >= 2020.3.1).
-* The older version of CLion is required to gain access to the [Bazel plugin] released by Google.
-* You can build the Bazel plugin from source, to get the latest, which may fix more issues.
-    ```
-    git clone https://github.com/bazelbuild/intellij.git
-    git checkout v2021.01.05
-    bazel build //clwb:clwb_bazel_zip --define=ij_product=clion-beta
-    bazel-bin/clwb/clwb_bazel.zip
-    ```
-* When loading a new project, use the `Import Bazel Project from the BUILD file` feature.
-* If you need to remove the latest version of CLion and install an older one, disable JetBrains
-settings sync and clear out all CLion locally cached data.
-    ```
-    rm -rf ~/Library/Application Support/CLion
-    rm -rf ~/Library/Application Support/JetBrains/CLion*
-    rm -rf $WORKSPACE/.idea
-    ```
-
-[Bazel plugin]: https://plugins.jetbrains.com/plugin/9554-bazel/versions
+* CLion version 2022.1.3 required until the Conan plugin is updated
+* CLion > Preferences > Plugins > Marketplace > Conan > Install
+* CLion > Preferences > Build, Execution, Deploy > Conan > Conan Executable: $PROJECT_HOME/venv/bin/conan
+* CLion > Bottom Bar: Conan > Left Button: Match Profile > CMake Profile: Debug, Conan Profile: default

@@ -40,7 +40,7 @@ template <typename Reg>
 std::vector<MountPoint> Disk<Reg>::get_mount_points() const noexcept {
   auto unwanted_filesystems = get_nodev_filesystems(path_prefix_);
   unwanted_filesystems.erase("tmpfs");
-#if defined(TITUS_AGENT) || defined(TITUS_SYSTEM_SERVICE)
+#if defined(TITUS_SYSTEM_SERVICE)
   // for titus we generate metrics for overlay fs
   // see overlay_stats()
   unwanted_filesystems.erase("overlay");
