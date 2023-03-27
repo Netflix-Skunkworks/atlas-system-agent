@@ -22,6 +22,7 @@ add_library(sysagent
     "config.h"
     "cpufreq.h"
     "disk.h"
+    "ethtool.h"
     "files.h"
     "gpumetrics.h"
     "http_client.h"

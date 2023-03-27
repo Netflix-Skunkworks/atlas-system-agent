@@ -16,16 +16,6 @@ using spectator::Id;
 using spectator::IdPtr;
 using spectator::Tags;
 
-inline IdPtr id_for(const char* name, const char* iface, const char* idStr,
-                    const spectator::Tags& extra) noexcept {
-  Tags tags{extra};
-  tags.add("iface", iface);
-  if (idStr != nullptr) {
-    tags.add("id", idStr);
-  }
-  return Id::of(name, tags);
-}
-
 template <typename Reg>
 void Proc<Reg>::handle_line(FILE* fp) noexcept {
   char iface[4096];

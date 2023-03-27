@@ -32,4 +32,15 @@ bool can_execute(const std::string& program);
 // parse a string of the form key=val,key2=val2 into spectator Tags
 spectator::Tags parse_tags(const char* s);
 
+// construct a spectator id with extra tags - intended for use with network interface metrics
+inline spectator::IdPtr id_for(const char* name, const char* iface, const char* idStr,
+                    const spectator::Tags& extra) noexcept {
+  spectator::Tags tags{extra};
+  tags.add("iface", iface);
+  if (idStr != nullptr) {
+    tags.add("id", idStr);
+  }
+  return spectator::Id::of(name, tags);
+}
+
 }  // namespace atlasagent
