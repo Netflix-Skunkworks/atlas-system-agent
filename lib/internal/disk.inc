@@ -102,10 +102,11 @@ std::vector<MountPoint> Disk<Reg>::filter_interesting_mount_points(
       continue;
     }
 
-    if (starts_with(mp.mount_point.c_str(), "/sys") ||
-        starts_with(mp.mount_point.c_str(), "/run") ||
+    if (starts_with(mp.mount_point.c_str(), "/dev") ||
+        starts_with(mp.mount_point.c_str(), "/mnt/docker") ||
         starts_with(mp.mount_point.c_str(), "/proc") ||
-        starts_with(mp.mount_point.c_str(), "/dev")) {
+        starts_with(mp.mount_point.c_str(), "/run") ||
+        starts_with(mp.mount_point.c_str(), "/sys")) {
       continue;
     }
 
