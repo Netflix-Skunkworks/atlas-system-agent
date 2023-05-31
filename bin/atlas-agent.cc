@@ -36,7 +36,7 @@ using Ntp = atlasagent::Ntp<>;
 using PerfMetrics = atlasagent::PerfMetrics<>;
 using Proc = atlasagent::Proc<>;
 
-#ifdef __linux__
+#if defined(__linux__) && defined(CGROUP2_SUPER_MAGIC)
 bool is_cgroup_version2() {
   struct statfs buf;
 
