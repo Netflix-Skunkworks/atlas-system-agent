@@ -1,5 +1,7 @@
 #ifdef __linux__
 #include "contain/contain.h"
+#include <linux/magic.h>
+#include <sys/vfs.h>
 #endif
 #include "aws.h"
 #include "cgroup.h"
@@ -34,6 +36,26 @@ using Ntp = atlasagent::Ntp<>;
 using PerfMetrics = atlasagent::PerfMetrics<>;
 using Proc = atlasagent::Proc<>;
 
+#ifdef __linux__
+bool is_cgroup_version2() {
+  struct statfs buf;
+
+  if (statfs("/sys/fs/cgroup", &buf) == -1) {
+    return false;
+  } else {
+    if (buf.f_type == CGROUP2_SUPER_MAGIC) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+}
+#else
+bool is_cgroup_version2() {
+  return false;
+}
+#endif
+
 std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<Nvml> lib) {
   if (lib) {
     try {
@@ -47,14 +69,23 @@ std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<
 }
 
 #if defined(TITUS_SYSTEM_SERVICE)
-static void gather_peak_titus_metrics(CGroup* cGroup) { cGroup->cpu_peak_stats(); }
+static void gather_peak_titus_metrics(CGroup* cGroup) {
+  static bool is_cgroup2 = is_cgroup_version2();
+  cGroup->cpu_peak_stats(is_cgroup2);
+}
 
 static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
+  static bool is_cgroup2 = is_cgroup_version2();
   Logger()->info("Gathering titus metrics");
   aws->update_stats();
-  cGroup->cpu_stats();
-  cGroup->memory_stats();
-  cGroup->memory_stats_std();
+  cGroup->cpu_stats(is_cgroup2);
+  if (is_cgroup2) {
+    cGroup->memory_stats_v2();
+    cGroup->memory_stats_std_v2();
+  } else {
+    cGroup->memory_stats_v1();
+    cGroup->memory_stats_std_v1();
+  }
   cGroup->network_stats();
   disk->titus_disk_stats();
   proc->netstat_stats();
