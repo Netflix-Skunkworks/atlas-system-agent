@@ -5,33 +5,35 @@ from conans import ConanFile
 from conans.tools import download, unzip, check_sha256
 
 
-class SpectatorDConan(ConanFile):
+class AtlasSystemAgentConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     requires = (
-        "abseil/20210324.2",
-        "asio/1.18.1",  # for spectator-cpp
+        "abseil/20230125.3",
+        "asio/1.28.1",
         "backward-cpp/1.6",
-        "c-ares/1.15.0",
-        "fmt/7.1.3",
-        "gtest/1.10.0",
-        "libcurl/7.87.0",
-        "openssl/1.1.1t",
-        "rapidjson/1.1.0",
-        "spdlog/1.8.5",
-        "zlib/1.2.13"
+        "fmt/10.1.1",
+        "gtest/1.14.0",
+        "libcurl/8.2.1",
+        "openssl/3.1.3",
+        "rapidjson/cci.20230929",
+        "spdlog/1.12.0",
+        "zlib/1.3"
     )
     generators = "cmake"
     default_options = {}
 
+    def configure(self):
+        self.options["libcurl"].with_c_ares = True
+
     @staticmethod
     def get_spectator_cpp():
         dir_name = "spectator-cpp"
-        commit = "518797fee3593c0a6a155076dae2dc6f87ef0d43"
+        commit = "b3b93d6d86aa763a2ee409c52cca41be98cda140"
         if os.path.isdir(dir_name):
             shutil.rmtree(dir_name)
         zip_name = f"spectator-cpp-{commit}.zip"
         download(f"https://github.com/Netflix/spectator-cpp/archive/{commit}.zip", zip_name)
-        check_sha256(zip_name, "f2a5d3438a072dfe505a195fdd77bee70867beb61650c0fd36a828982c218c0d")
+        check_sha256(zip_name, "b76d56722bc2e6a3fafe1950019755a7c236f17469af74e71a673168c6d2c88c")
         unzip(zip_name)
         shutil.move(f"spectator-cpp-{commit}/spectator", "lib/spectator")
         shutil.rmtree(f"spectator-cpp-{commit}")

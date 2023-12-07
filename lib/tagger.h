@@ -131,7 +131,7 @@ class Tagger {
     return id;
   }
 
-  auto GetId(std::string_view name, spectator::Tags tags = {}) const -> spectator::IdPtr {
+  auto GetId(absl::string_view name, spectator::Tags tags = {}) const -> spectator::IdPtr {
     return GetId(spectator::Id::of(name, std::move(tags)));
   }
 
@@ -153,9 +153,10 @@ struct fmt::formatter<atlasagent::TagRuleOp> {
 
 template <>
 struct fmt::formatter<atlasagent::Tagger::Rule> {
-  constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) { return ctx.begin(); }
+  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+
   template <typename FormatContext>
-  auto format(const atlasagent::Tagger::Rule& rule, FormatContext& context) {
+  constexpr auto format(const atlasagent::Tagger::Rule& rule, FormatContext& context) const {
     return fmt::format_to(context.out(), "rule({} -> {}, tags={})", rule.Op(), rule.Match(),
                           rule.Tags());
   }
@@ -163,9 +164,10 @@ struct fmt::formatter<atlasagent::Tagger::Rule> {
 
 template <>
 struct fmt::formatter<atlasagent::Tagger> {
-  constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) { return ctx.begin(); }
+  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+
   template <typename FormatContext>
-  auto format(const atlasagent::Tagger& tagger, FormatContext& context) {
+  constexpr auto format(const atlasagent::Tagger& tagger, FormatContext& context) const {
     return fmt::format_to(context.out(), "tagger(rules={})", tagger.GetRules());
   }
 };
