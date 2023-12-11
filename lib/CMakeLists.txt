@@ -39,7 +39,7 @@ add_library(sysagent
     "nvml.h"
     "perfmetrics.h"
     "proc.h"
-    "sample-config.cc"
+    "sample_config.cc"
     "tagger.h"
     "tagging_registry.h"
     "util.cc"

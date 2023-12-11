@@ -7,7 +7,7 @@ namespace atlasagent {
 
 namespace detail {
 
-inline std::string_view path_from(std::string_view url) noexcept {
+inline absl::string_view path_from(absl::string_view url) noexcept {
   if (url.empty()) {
     return "/";
   }
@@ -29,7 +29,7 @@ inline std::string_view path_from(std::string_view url) noexcept {
   }
 
   auto query_begin = std::find(path_begin, url.end(), '?');
-  return std::string_view{path_begin, static_cast<size_t>(query_begin - path_begin)};
+  return absl::string_view{path_begin, static_cast<size_t>(query_begin - path_begin)};
 }
 
 }  // namespace detail

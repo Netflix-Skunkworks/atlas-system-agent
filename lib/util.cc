@@ -194,7 +194,7 @@ bool can_execute(const std::string& program) {
     return false;
   }
 
-  auto dirs = absl::StrSplit(path, ':');
+  std::vector<std::string> dirs = absl::StrSplit(path, ':');
   for (const auto& dir : dirs) {
     auto full_path = fmt::format("{}/{}", dir, program);
     if (can_execute_full_path(full_path)) {
