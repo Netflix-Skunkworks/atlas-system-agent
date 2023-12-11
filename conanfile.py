@@ -13,8 +13,8 @@ class AtlasSystemAgentConan(ConanFile):
         "backward-cpp/1.6",
         "fmt/10.1.1",
         "gtest/1.14.0",
-        "libcurl/8.2.1",
-        "openssl/3.1.3",
+        "libcurl/8.4.0",
+        "openssl/3.2.0",
         "rapidjson/cci.20230929",
         "spdlog/1.12.0",
         "zlib/1.3"
