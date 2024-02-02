@@ -1,7 +1,7 @@
 **/*.inc
 .DS_Store
 .idea/
-cmake-build-debug/
+cmake-build-debug
 cmake-build/
 lib/spectator/
 spectator-cpp-*.zip
