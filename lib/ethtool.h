@@ -89,6 +89,19 @@ class Ethtool {
         continue;
       }
 
+      found = stat_line.find("conntrack_allowance_available:");
+      if (found != std::string::npos) {
+        auto metric = registry_->GetGauge(id_for("net.perf.conntrackAllowanceAvailable", iface, nullptr, net_tags_));
+        std::vector<std::string> stat_fields = absl::StrSplit(stat_line, ':');
+        try {
+          auto number = std::stoll(stat_fields[1]);
+          metric->Set(number);
+        } catch (const std::invalid_argument& e) {
+          atlasagent::Logger()->error("Unable to parse {} as a number: {}", stat_fields[1], e.what());
+        }
+        continue;
+      }
+
       found = stat_line.find("linklocal_allowance_exceeded:");
       if (found != std::string::npos) {
         auto metric = registry_->GetMonotonicCounter(id_for("net.perf.linklocalAllowanceExceeded", iface, nullptr, net_tags_));
