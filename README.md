@@ -8,19 +8,22 @@ An agent that reports metrics for EC2 instances or [Titus] containers.
 
 ## Local Development
 
-Due to the nature of what this agent is, it does not compile cleanly on MacOS. It is best to build on a Linux
-machine:
+This agent was designed for Linux systems, and as a result, it does not compile cleanly on macOS. It
+is best to build on a Linux machine:
 
 ```shell
+# setup python venv and activate, to gain access to conan cli
 ./setup-venv.sh
 source venv/bin/activate
-./build.sh  # [clean|skiptest]
+
+# link clion default build directory to our build directory
+ln -s cmake-build cmake-build-debug
+
+./build.sh  # [clean|clean --force|skiptest]
 ```
 
-* CLion version 2022.1.3 required until the Conan plugin is updated
 * CLion > Preferences > Plugins > Marketplace > Conan > Install
 * CLion > Preferences > Build, Execution, Deploy > Conan > Conan Executable: $PROJECT_HOME/venv/bin/conan
-* CLion > Bottom Bar: Conan > Left Button: Match Profile > CMake Profile: Debug, Conan Profile: default
 
 ## Debugging
 
