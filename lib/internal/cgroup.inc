@@ -34,6 +34,8 @@ void CGroup<Reg>::cpu_shares_v1(absl::Time now) noexcept {
     n = strtod(num_cpu, nullptr);
     if (n <= 0) {
       Logger()->info("Unable to fetch processing capacity from env var. [{}]", num_cpu);
+    } else {
+      registry_->GetGauge("titus.cpu.requested")->Set(n);
     }
   }
 
@@ -69,6 +71,8 @@ void CGroup<Reg>::cpu_shares_v2(absl::Time now) noexcept {
     n = strtod(num_cpu, nullptr);
     if (n <= 0) {
       Logger()->info("Unable to fetch processing capacity from env var. [{}]", num_cpu);
+    } else {
+      registry_->GetGauge("titus.cpu.requested")->Set(n);
     }
   }
 
