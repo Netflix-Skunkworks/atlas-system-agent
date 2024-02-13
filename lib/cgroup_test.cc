@@ -47,6 +47,8 @@ TEST(CGroup, ParseCpuV1) {
   bool is_cgroup2{false};
 
   auto now = absl::Now();
+  // pick 1 here, so as not to disturb the existing cpu metrics
+  setenv("TITUS_NUM_CPU", "1", 1);
   cGroup.cpu_stats(now, is_cgroup2);
   cGroup.cpu_peak_stats(now, is_cgroup2);
   auto initial = my_measurements(&registry);
@@ -54,8 +56,7 @@ TEST(CGroup, ParseCpuV1) {
   expect_value(&initial_map, "cgroup.cpu.processingCapacity|count", 30.0);
   expect_value(&initial_map, "cgroup.cpu.shares|gauge", 1024);
   expect_value(&initial_map, "sys.cpu.numProcessors|gauge", 1);
-  EXPECT_EQ(initial_map.size(), 0);
-  EXPECT_TRUE(initial_map.empty());
+  EXPECT_EQ(initial_map.size(), 1);
 
   cGroup.set_prefix("testdata/resources2");
   cGroup.cpu_stats(now + absl::Seconds(5), is_cgroup2);
@@ -75,6 +76,7 @@ TEST(CGroup, ParseCpuV1) {
   expect_value(&map, "sys.cpu.peakUtilization|max|user", 20);
   expect_value(&map, "sys.cpu.utilization|gauge|system", 2.1999999999999997);
   expect_value(&map, "sys.cpu.utilization|gauge|user", 20);
+  expect_value(&map, "titus.cpu.requested|gauge", 1);
   EXPECT_TRUE(map.empty());
 }
 
@@ -84,6 +86,8 @@ TEST(CGroup, ParseCpuV2) {
   bool is_cgroup2{true};
 
   auto now = absl::Now();
+  // pick 1 here, so as not to disturb the existing cpu metrics
+  setenv("TITUS_NUM_CPU", "1", 1);
   cGroup.cpu_stats(now, is_cgroup2);
   cGroup.cpu_peak_stats(now, is_cgroup2);
   auto initial = my_measurements(&registry);
@@ -91,8 +95,7 @@ TEST(CGroup, ParseCpuV2) {
   expect_value(&initial_map, "cgroup.cpu.processingCapacity|count", 30.0);
   expect_value(&initial_map, "cgroup.cpu.weight|gauge", 100);
   expect_value(&initial_map, "sys.cpu.numProcessors|gauge", 1);
-  EXPECT_EQ(initial_map.size(), 0);
-  EXPECT_TRUE(initial_map.empty());
+  EXPECT_EQ(initial_map.size(), 1);
 
   cGroup.set_prefix("testdata/resources2");
   cGroup.cpu_stats(now + absl::Seconds(5), is_cgroup2);
@@ -112,6 +115,7 @@ TEST(CGroup, ParseCpuV2) {
   expect_value(&map, "sys.cpu.peakUtilization|max|user", 1200);
   expect_value(&map, "sys.cpu.utilization|gauge|system", 2400);
   expect_value(&map, "sys.cpu.utilization|gauge|user", 1200);
+  expect_value(&map, "titus.cpu.requested|gauge", 1);
   EXPECT_TRUE(map.empty());
 }
 
