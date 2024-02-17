@@ -10,9 +10,9 @@ using atlasagent::Ethtool;
 using Registry = spectator::TestRegistry;
 using spectator::Tags;
 
-class CT : public Ethtool<Registry> {
+class EthtoolTest : public Ethtool<Registry> {
  public:
-  explicit CT(Registry* registry) : Ethtool{registry, Tags{}} {}
+  explicit EthtoolTest(Registry* registry) : Ethtool{registry, Tags{}} {}
 
   void stats(const std::vector<std::string>& nic_stats, const char* iface) noexcept {
     Ethtool::ethtool_stats(nic_stats, iface);
@@ -25,7 +25,7 @@ class CT : public Ethtool<Registry> {
 
 TEST(Ethtool, Stats) {
   Registry registry;
-  CT ethtool{&registry};
+  EthtoolTest ethtool{&registry};
 
   std::vector<std::string> first_sample = {
       "NIC statistics:\n",
@@ -76,7 +76,7 @@ TEST(Ethtool, Stats) {
 
 TEST(Ethtool, StatsEmpty) {
   Registry registry;
-  CT ethtool{&registry};
+  EthtoolTest ethtool{&registry};
 
   ethtool.stats({}, "");
   auto ms = registry.Measurements();
@@ -89,7 +89,7 @@ TEST(Ethtool, StatsEmpty) {
 
 TEST(Ethtool, EnumerateInterfaces) {
   Registry registry;
-  CT ethtool{&registry};
+  EthtoolTest ethtool{&registry};
 
   std::vector<std::string> ip_links = {
       "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000\n",
