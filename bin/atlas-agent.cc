@@ -13,6 +13,7 @@
 #include "ntp.h"
 #include "nvml.h"
 #include "perfmetrics.h"
+#include "pressure_stall.h"
 #include "proc.h"
 #include "tagger.h"
 #include "backward.hpp"
@@ -34,6 +35,7 @@ using Ethtool = atlasagent::Ethtool<>;
 using GpuMetrics = atlasagent::GpuMetrics<TaggingRegistry, Nvml>;
 using Ntp = atlasagent::Ntp<>;
 using PerfMetrics = atlasagent::PerfMetrics<>;
+using PressureStall = atlasagent::PressureStall<>;
 using Proc = atlasagent::Proc<>;
 
 #if defined(__linux__) && defined(CGROUP2_SUPER_MAGIC)
@@ -98,12 +100,14 @@ static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
 
 static void gather_scaling_metrics(CpuFreq* cpufreq) { cpufreq->Stats(); }
 
-static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool, Ntp* ntp, Aws* aws) {
+static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool, Ntp* ntp,
+                                       PressureStall* pressureStall, Aws* aws) {
   Logger()->info("Gathering system metrics");
   aws->update_stats();
   disk->disk_stats();
   ethtool->update_stats();
   ntp->update_stats();
+  pressureStall->update_stats();
   proc->arp_stats();
   proc->cpu_stats();
   proc->loadavg_stats();
@@ -223,13 +227,14 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
   Ethtool ethtool{registry, net_tags};
   Ntp ntp{registry};
   PerfMetrics perf_metrics{registry, ""};
+  PressureStall pressureStall{registry};
   Proc proc{registry, net_tags};
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
   // the first call to this gather function takes >1 second, so it must
   // be done before we start calculating times to wait for peak metrics
-  gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &aws);
+  gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
 
   auto now = system_clock::now();
   auto next_run = now;
@@ -240,7 +245,7 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
     gather_peak_system_metrics(&proc);
     gather_scaling_metrics(&cpufreq);
     if (system_clock::now() >= next_slow_run) {
-      gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &aws);
+      gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
       perf_metrics.collect();
       if (gpu) {
         gpu->gpu_metrics();

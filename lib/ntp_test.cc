@@ -15,9 +15,9 @@ struct TestClock {
   }
 };
 
-class CT : public Ntp<Registry, TestClock> {
+class NtpTest : public Ntp<Registry, TestClock> {
  public:
-  explicit CT(Registry* registry) : Ntp{registry} {}
+  explicit NtpTest(Registry* registry) : Ntp{registry} {}
   void stats(const std::string& tracking, const std::vector<std::string>& sources) noexcept {
     Ntp::chrony_stats(tracking, sources);
   }
@@ -25,13 +25,13 @@ class CT : public Ntp<Registry, TestClock> {
   [[nodiscard]] absl::Time lastSample() const { return lastSampleTime_; }
 };
 
-double get_default_sample_age(const CT& ntp) {
+double get_default_sample_age(const NtpTest& ntp) {
   return absl::ToDoubleSeconds(TestClock::now() - ntp.lastSample());
 }
 
 TEST(Ntp, Stats) {
   Registry registry;
-  CT ntp{&registry};
+  NtpTest ntp{&registry};
 
   std::string tracking =
       "A9FEA97B,169.254.169.123,4,1553630752.756016394,0.000042,-0.000048721,"
@@ -51,7 +51,7 @@ TEST(Ntp, Stats) {
 
 TEST(Ntp, StatsEmpty) {
   Registry registry;
-  CT ntp{&registry};
+  NtpTest ntp{&registry};
   ntp.stats("", {});
 
   auto ms = registry.Measurements();
@@ -60,7 +60,7 @@ TEST(Ntp, StatsEmpty) {
 
 TEST(Ntp, StatsInvalid) {
   Registry registry;
-  CT ntp{&registry};
+  NtpTest ntp{&registry};
 
   std::string tracking =
       "A9FEA97B,1.2.3.4,4,1.1,foo,-0.021,1,-2,-0.022,0.079,0.0005,0.0001,775.8,Normal\n";
@@ -83,7 +83,7 @@ TEST(Ntp, StatsInvalid) {
 // (maybe a race between the commands ntpc tracking; ntpc sources)
 TEST(Ntp, NoSources) {
   Registry registry;
-  CT ntp{&registry};
+  NtpTest ntp{&registry};
 
   std::string tracking =
       "A9FEA97B,1.2.3.4,4,1.1,10,-0.021,1,-2,-0.022,0.079,0.0005,0.0001,775.8,Normal\n";
@@ -103,7 +103,7 @@ TEST(Ntp, NoSources) {
 
 TEST(Ntp, adjtime) {
   Registry registry;
-  CT ntp{&registry};
+  NtpTest ntp{&registry};
 
   struct timex t {};
   t.esterror = 100000;
@@ -118,7 +118,7 @@ TEST(Ntp, adjtime) {
 
 TEST(Ntp, adjtime_err) {
   Registry registry;
-  CT ntp{&registry};
+  NtpTest ntp{&registry};
 
   struct timex t {};
   t.esterror = 200000;

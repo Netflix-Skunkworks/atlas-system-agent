@@ -20,6 +20,7 @@ class CGroup {
   void memory_stats_std_v1() noexcept;
   void memory_stats_std_v2() noexcept;
   void network_stats() noexcept;
+  void pressure_stall() noexcept;
   void set_prefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
  private:

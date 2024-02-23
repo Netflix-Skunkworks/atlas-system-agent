@@ -41,6 +41,28 @@ TEST(CGroup, Net) {
   EXPECT_EQ(map["cgroup.net.bandwidthBytes|gauge"], megabits2bytes(128));
 }
 
+TEST(CGroup, PressureStall) {
+  Registry registry;
+  CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
+
+  cGroup.pressure_stall();
+  auto initial = my_measurements(&registry);
+  auto initial_map = measurements_to_map(initial, "");
+  EXPECT_EQ(initial_map.size(), 0);
+
+  cGroup.set_prefix("testdata/resources2");
+  cGroup.pressure_stall();
+  const auto& ms = my_measurements(&registry);
+  measurement_map map = measurements_to_map(ms, "");
+  expect_value(&map, "sys.pressure.some|count|cpu", 1);
+  expect_value(&map, "sys.pressure.some|count|io", 1);
+  expect_value(&map, "sys.pressure.some|count|memory", 1);
+  expect_value(&map, "sys.pressure.full|count|cpu", 0.5);
+  expect_value(&map, "sys.pressure.full|count|io", 0.5);
+  expect_value(&map, "sys.pressure.full|count|memory", 0.5);
+  EXPECT_TRUE(map.empty());
+}
+
 TEST(CGroup, ParseCpuV1) {
   Registry registry;
   CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};

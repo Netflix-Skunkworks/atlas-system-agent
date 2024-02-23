@@ -11,6 +11,8 @@ namespace atlasagent {
 
 StdIoFile open_file(const std::string& prefix, const char* name);
 
+std::vector<std::vector<std::string>> read_lines_fields(const std::string& prefix, const char* fn);
+
 int64_t read_num_from_file(const std::string& prefix, const char* fn);
 
 std::vector<int64_t> read_num_vector_from_file(const std::string& prefix, const char* fn);

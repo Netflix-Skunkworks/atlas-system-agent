@@ -17,6 +17,24 @@ StdIoFile open_file(const std::string& prefix, const char* name) {
   return StdIoFile(resolved_path.c_str());
 }
 
+std::vector<std::vector<std::string>> read_lines_fields(const std::string& prefix, const char* fn) {
+  std::vector<std::vector<std::string>> result;
+  std::string fp = fmt::format("{}/{}", prefix, fn);
+  std::ifstream in(fp);
+
+  if (!in) {
+    Logger()->warn("Unable to open {}", fp);
+    return result;
+  }
+
+  std::string line;
+  while (std::getline(in, line)) {
+    result.push_back(absl::StrSplit(line, ' ', absl::SkipEmpty()));
+  }
+
+  return result;
+}
+
 int64_t read_num_from_file(const std::string& prefix, const char* fn) {
   auto fp = open_file(prefix, fn);
   if (fp == nullptr) {

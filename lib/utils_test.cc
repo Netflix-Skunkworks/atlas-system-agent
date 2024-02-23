@@ -2,6 +2,16 @@
 #include <gtest/gtest.h>
 
 namespace {
+
+using atlasagent::Logger;
+
+TEST(Utils, ReadLinesFields) {
+  auto lines = atlasagent::read_lines_fields("testdata/resources/proc", "stat");
+  auto expected = std::vector<std::string>{"ctxt", "290595647"};
+  EXPECT_EQ(lines.size(), 10);
+  EXPECT_EQ(lines[4], expected);
+}
+
 TEST(Utils, ReadOutputString) {
   auto s = atlasagent::read_output_string("echo hello world");
   EXPECT_EQ(s, "hello world\n");

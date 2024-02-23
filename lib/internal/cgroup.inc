@@ -5,6 +5,12 @@
 
 namespace atlasagent {
 
+using spectator::Id;
+using spectator::Tags;
+
+constexpr auto MICROS = 1000 * 1000.0;
+constexpr auto NANOS = 1000 * 1000 * 1000.0;
+
 template <typename Reg>
 void CGroup<Reg>::network_stats() noexcept {
   auto megabits = std::getenv("TITUS_NUM_NETWORK_BANDWIDTH");
@@ -15,6 +21,43 @@ void CGroup<Reg>::network_stats() noexcept {
       auto bytes = n * 125000.0;  // 1 megabit = 1,000,000 bits / 8 = 125,000 bytes
       registry_->GetGauge("cgroup.net.bandwidthBytes")->Set(bytes);
     }
+  }
+}
+
+template <typename Reg>
+void CGroup<Reg>::pressure_stall() noexcept {
+  auto lines = read_lines_fields(path_prefix_, "cpu.pressure");
+
+  if (lines.size() == 2) {
+    auto some = registry_->GetMonotonicCounter(Id::of("sys.pressure.some", Tags{{"id", "cpu"}}));
+    auto usecs = std::strtoul(lines[0][4].substr(6).c_str(), nullptr, 10);
+    some->Set(usecs / MICROS);
+
+    auto full = registry_->GetMonotonicCounter(Id::of("sys.pressure.full", Tags{{"id", "cpu"}}));
+    usecs = std::strtoul(lines[1][4].substr(6).c_str(), nullptr, 10);
+    full->Set(usecs / MICROS);
+  }
+
+  lines = read_lines_fields(path_prefix_, "io.pressure");
+  if (lines.size() == 2) {
+    auto some = registry_->GetMonotonicCounter(Id::of("sys.pressure.some", Tags{{"id", "io"}}));
+    auto usecs = std::strtoul(lines[0][4].substr(6).c_str(), nullptr, 10);
+    some->Set(usecs / MICROS);
+
+    auto full = registry_->GetMonotonicCounter(Id::of("sys.pressure.full", Tags{{"id", "io"}}));
+    usecs = std::strtoul(lines[1][4].substr(6).c_str(), nullptr, 10);
+    full->Set(usecs / MICROS);
+  }
+
+  lines = read_lines_fields(path_prefix_, "memory.pressure");
+  if (lines.size() == 2) {
+    auto some = registry_->GetMonotonicCounter(Id::of("sys.pressure.some", Tags{{"id", "memory"}}));
+    auto usecs = std::strtoul(lines[0][4].substr(6).c_str(), nullptr, 10);
+    some->Set(usecs / MICROS);
+
+    auto full = registry_->GetMonotonicCounter(Id::of("sys.pressure.full", Tags{{"id", "memory"}}));
+    usecs = std::strtoul(lines[1][4].substr(6).c_str(), nullptr, 10);
+    full->Set(usecs / MICROS);
   }
 }
 
@@ -92,9 +135,6 @@ void CGroup<Reg>::cpu_shares_v2(absl::Time now) noexcept {
     registry_->GetCounter("cgroup.cpu.processingCapacity")->Add(delta_t * n);
   }
 }
-
-constexpr auto MICROS = 1000 * 1000.0;
-constexpr auto NANOS = 1000 * 1000 * 1000.0;
 
 template <typename Reg>
 void CGroup<Reg>::cpu_processing_time_v1() noexcept {
