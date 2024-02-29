@@ -15,9 +15,7 @@ class CGroup {
 
   void cpu_stats(bool is_cgroup2) noexcept { do_cpu_stats(absl::Now(), is_cgroup2); }
   void cpu_peak_stats(bool is_cgroup2) noexcept { do_cpu_peak_stats(absl::Now(), is_cgroup2); }
-  void memory_stats_v1() noexcept;
   void memory_stats_v2() noexcept;
-  void memory_stats_std_v1() noexcept;
   void memory_stats_std_v2() noexcept;
   void network_stats() noexcept;
   void pressure_stall() noexcept;
@@ -29,19 +27,12 @@ class CGroup {
   absl::Duration update_interval_;
   double user_hz_{sysconf(_SC_CLK_TCK) * 1.0};
 
-  void cpu_processing_time_v1() noexcept;
   void cpu_processing_time_v2() noexcept;
-  void cpu_shares_v1(absl::Time now) noexcept;
   void cpu_shares_v2(absl::Time now) noexcept;
-  void cpu_throttle_v1() noexcept;
   void cpu_throttle_v2() noexcept;
-  void cpu_usage_time_v1() noexcept;
   void cpu_usage_time_v2() noexcept;
-  void cpu_utilization_v1(absl::Time now) noexcept;
   void cpu_utilization_v2(absl::Time now) noexcept;
-  void cpu_peak_utilization_v1(absl::Time now) noexcept;
   void cpu_peak_utilization_v2(absl::Time now) noexcept;
-  void kmem_stats_v1() noexcept;
 
  protected:
   // for testing

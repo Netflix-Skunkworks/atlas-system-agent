@@ -84,9 +84,6 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
   if (is_cgroup2) {
     cGroup->memory_stats_v2();
     cGroup->memory_stats_std_v2();
-  } else {
-    cGroup->memory_stats_v1();
-    cGroup->memory_stats_std_v1();
   }
   cGroup->network_stats();
   disk->titus_disk_stats();
