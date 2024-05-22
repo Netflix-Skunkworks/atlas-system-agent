@@ -14,8 +14,8 @@ class CGroupTest : public atlasagent::CGroup<Registry> {
                       absl::Duration update_interval = absl::Seconds(60)) noexcept
       : CGroup(registry, std::move(path_prefix), update_interval) {}
 
-  void cpu_stats(absl::Time now, bool is_cgroup2) { CGroup::do_cpu_stats(now, is_cgroup2); }
-  void cpu_peak_stats(absl::Time now, bool is_cgroup2) { CGroup::do_cpu_peak_stats(now, is_cgroup2); }
+  void cpu_stats(absl::Time now) { CGroup::do_cpu_stats(now); }
+  void cpu_peak_stats(absl::Time now) { CGroup::do_cpu_peak_stats(now); }
 };
 
 inline long megabits2bytes(int mbits) { return mbits * 125000; }
@@ -66,23 +66,22 @@ TEST(CGroup, PressureStall) {
 TEST(CGroup, ParseCpuV2) {
   Registry registry;
   CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
-  bool is_cgroup2{true};
 
   auto now = absl::Now();
   // pick 1 here, so as not to disturb the existing cpu metrics
   setenv("TITUS_NUM_CPU", "1", 1);
-  cGroup.cpu_stats(now, is_cgroup2);
-  cGroup.cpu_peak_stats(now, is_cgroup2);
+  cGroup.cpu_stats(now);
+  cGroup.cpu_peak_stats(now);
   auto initial = my_measurements(&registry);
   auto initial_map = measurements_to_map(initial, "");
-  expect_value(&initial_map, "cgroup.cpu.processingCapacity|count", 30.0);
+  expect_value(&initial_map, "cgroup.cpu.processingCapacity|count", 30);
   expect_value(&initial_map, "cgroup.cpu.weight|gauge", 100);
   expect_value(&initial_map, "sys.cpu.numProcessors|gauge", 1);
   EXPECT_EQ(initial_map.size(), 1);
 
   cGroup.set_prefix("testdata/resources2");
-  cGroup.cpu_stats(now + absl::Seconds(5), is_cgroup2);
-  cGroup.cpu_peak_stats(now + absl::Seconds(5), is_cgroup2);
+  cGroup.cpu_stats(now + absl::Seconds(5));
+  cGroup.cpu_peak_stats(now + absl::Seconds(5));
 
   const auto& ms = my_measurements(&registry);
   measurement_map map = measurements_to_map(ms, "proto");
@@ -105,7 +104,6 @@ TEST(CGroup, ParseCpuV2) {
 TEST(CGroup, ParseMemoryV2) {
   Registry registry;
   CGroupTest cGroup{&registry, "testdata/resources"};
-  bool is_cgroup2{true};
 
   cGroup.memory_stats_v2();
   cGroup.memory_stats_std_v2();

@@ -1,6 +1,5 @@
 #ifdef __linux__
 #include "contain/contain.h"
-#include <linux/magic.h>
 #include <sys/vfs.h>
 #endif
 #include "aws.h"
@@ -38,26 +37,6 @@ using PerfMetrics = atlasagent::PerfMetrics<>;
 using PressureStall = atlasagent::PressureStall<>;
 using Proc = atlasagent::Proc<>;
 
-#if defined(__linux__) && defined(CGROUP2_SUPER_MAGIC)
-bool is_cgroup_version2() {
-  struct statfs buf;
-
-  if (statfs("/sys/fs/cgroup", &buf) == -1) {
-    return false;
-  } else {
-    if (buf.f_type == CGROUP2_SUPER_MAGIC) {
-      return true;
-    } else {
-      return false;
-    }
-  }
-}
-#else
-bool is_cgroup_version2() {
-  return false;
-}
-#endif
-
 std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<Nvml> lib) {
   if (lib) {
     try {
@@ -72,19 +51,15 @@ std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<
 
 #if defined(TITUS_SYSTEM_SERVICE)
 static void gather_peak_titus_metrics(CGroup* cGroup) {
-  static bool is_cgroup2 = is_cgroup_version2();
-  cGroup->cpu_peak_stats(is_cgroup2);
+  cGroup->cpu_peak_stats();
 }
 
 static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
-  static bool is_cgroup2 = is_cgroup_version2();
-  Logger()->info("Gathering titus metrics");
+  Logger()->debug("Gather Titus system metrics");
   aws->update_stats();
-  cGroup->cpu_stats(is_cgroup2);
-  if (is_cgroup2) {
-    cGroup->memory_stats_v2();
-    cGroup->memory_stats_std_v2();
-  }
+  cGroup->cpu_stats();
+  cGroup->memory_stats_v2();
+  cGroup->memory_stats_std_v2();
   cGroup->network_stats();
   disk->titus_disk_stats();
   proc->netstat_stats();
@@ -99,7 +74,7 @@ static void gather_scaling_metrics(CpuFreq* cpufreq) { cpufreq->Stats(); }
 
 static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool, Ntp* ntp,
                                        PressureStall* pressureStall, Aws* aws) {
-  Logger()->info("Gathering system metrics");
+  Logger()->debug("Gather EC2 system metrics");
   aws->update_stats();
   disk->disk_stats();
   ethtool->update_stats();
@@ -180,9 +155,7 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
   Aws aws{registry};
   CGroup cGroup{registry};
   Disk disk{registry, ""};
-#ifndef TITUS_SYSTEM_SERVICE
   PerfMetrics perf_metrics{registry, ""};
-#endif
   Proc proc{registry, std::move(net_tags)};
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
@@ -200,9 +173,7 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
     gather_peak_titus_metrics(&cGroup);
     if (system_clock::now() >= next_slow_run) {
       gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
-#ifndef TITUS_SYSTEM_SERVICE
       perf_metrics.collect();
-#endif
       if (gpu) {
         gpu->gpu_metrics();
       }
@@ -308,14 +279,6 @@ int main(int argc, char* const argv[]) {
   argc -= idx;
   argv += idx;
 
-  std::unique_ptr<Nvml> nvidia_lib;
-  try {
-    nvidia_lib = std::make_unique<Nvml>();
-    fprintf(stderr, "Will attempt to collect GPU metrics\n");
-  } catch (atlasagent::NvmlException& e) {
-    fprintf(stderr, "Will not collect GPU metrics: %s\n", e.what());
-  }
-
 #if defined(TITUS_SYSTEM_SERVICE)
   const char* process = argc > 1 ? argv[1] : "atlas-titus-agent";
 #else
@@ -340,6 +303,15 @@ int main(int argc, char* const argv[]) {
     spectator_logger->set_level(spdlog::level::debug);
     logger->set_level(spdlog::level::debug);
   }
+
+  std::unique_ptr<Nvml> nvidia_lib;
+  try {
+    nvidia_lib = std::make_unique<Nvml>();
+    logger->info("Will attempt to collect GPU metrics");
+  } catch (atlasagent::NvmlException& e) {
+    logger->info("Will not collect GPU metrics: %s", e.what());
+  }
+
   atlasagent::HttpClient<>::GlobalInit();
   auto maybe_tagger = atlasagent::Tagger::FromConfigFile(options.cfg_file.c_str());
   if (!maybe_tagger) {
@@ -348,8 +320,10 @@ int main(int argc, char* const argv[]) {
   spectator::Registry spectator_registry{cfg, spectator_logger};
   TaggingRegistry registry{&spectator_registry, maybe_tagger.value_or(atlasagent::Tagger::Nop())};
 #if defined(TITUS_SYSTEM_SERVICE)
+  Logger()->info("Start gathering Titus system metrics");
   collect_titus_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));
 #else
+  Logger()->info("Start gathering EC2 system metrics");
   collect_system_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));
 #endif
   logger->info("Shutting down spectator registry");
