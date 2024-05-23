@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 
-PYTHON3=$(which python3)
+MAYBE_PYTHON=$(find /apps -maxdepth 1 -type l -name "python*")
 
-if [[ -z $PYTHON3 ]]; then
-    echo "python3 is not available - please install"
-    exit 1
+if [[ -n "$MAYBE_PYTHON" ]]; then
+  echo "using $MAYBE_PYTHON..."
+  PYTHON3="$MAYBE_PYTHON/bin/python3"
+else
+  PYTHON3="python3"
 fi
 
-python3 -m venv venv
-
+# create and activate virtualenv
+$PYTHON3 -m venv venv
 source venv/bin/activate
 
 if [[ -f requirements.txt ]]; then
-    pip3 install --upgrade pip wheel
-    pip3 install --requirement requirements.txt
+    # use the virtualenv python
+    python -m pip install --upgrade pip wheel
+    python -m pip install --requirement requirements.txt
 fi

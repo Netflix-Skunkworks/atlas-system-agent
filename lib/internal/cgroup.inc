@@ -9,7 +9,6 @@ using spectator::Id;
 using spectator::Tags;
 
 constexpr auto MICROS = 1000 * 1000.0;
-constexpr auto NANOS = 1000 * 1000 * 1000.0;
 
 template <typename Reg>
 void CGroup<Reg>::network_stats() noexcept {
@@ -62,60 +61,35 @@ void CGroup<Reg>::pressure_stall() noexcept {
 }
 
 template <typename Reg>
-void CGroup<Reg>::cpu_shares_v2(absl::Time now) noexcept {
-  static absl::Time last_updated;
-
-  auto weight = read_num_from_file(path_prefix_, "cpu.weight");
-  if (weight >= 0) {
-    registry_->GetGauge("cgroup.cpu.weight")->Set(weight);
-  }
-
-  // use an environment variable to set the processing capacity
-  auto num_cpu = std::getenv("TITUS_NUM_CPU");
-  auto n = 0.0;
-  if (num_cpu != nullptr) {
-    n = strtod(num_cpu, nullptr);
-    if (n <= 0) {
-      Logger()->info("Unable to fetch processing capacity from env var. [{}]", num_cpu);
-    } else {
-      registry_->GetGauge("titus.cpu.requested")->Set(n);
-    }
-  }
-
-  if (n <= 0) {
-    auto vec = read_num_vector_from_file(path_prefix_, "cpu.max");
-    auto cfs_quota = vec[0];
-    auto cfs_period = vec[1];
-    n = cfs_quota / cfs_period;
-  }
-
-  if (n > 0) {
-    if (last_updated == absl::UnixEpoch()) {
-      last_updated = now - update_interval_;
-    }
-    auto delta_t = absl::ToDoubleSeconds(now - last_updated);
-    last_updated = now;
-    registry_->GetCounter("cgroup.cpu.processingCapacity")->Add(delta_t * n);
-  }
-}
-
-template <typename Reg>
-void CGroup<Reg>::cpu_processing_time_v2() noexcept {
+void CGroup<Reg>::cpu_throttle_v2() noexcept {
   std::unordered_map<std::string, int64_t> stats;
   parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
 
-  static auto counter = registry_->GetCounter("cgroup.cpu.processingTime");
-  static int64_t prev = 0;
-  if (prev != 0) {
-    counter->Add((stats["usage_usec"] - prev) / MICROS);
+  static auto throttled_time = registry_->GetCounter("cgroup.cpu.throttledTime");
+  static auto prev_throttled_time = static_cast<int64_t>(-1);
+  auto cur_throttled_time = stats["throttled_usec"];
+  if (prev_throttled_time >= 0) {
+    auto seconds = (cur_throttled_time - prev_throttled_time) / MICROS;
+    throttled_time->Add(seconds);
   }
-  prev = stats["usage_usec"];
+  prev_throttled_time = cur_throttled_time;
+
+  static auto nr_throttled = registry_->GetMonotonicCounter("cgroup.cpu.numThrottled");
+  nr_throttled->Set(stats["nr_throttled"]);
 }
 
 template <typename Reg>
-void CGroup<Reg>::cpu_usage_time_v2() noexcept {
+void CGroup<Reg>::cpu_time_v2() noexcept {
   std::unordered_map<std::string, int64_t> stats;
   parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
+
+  static auto proc_time = registry_->GetCounter("cgroup.cpu.processingTime");
+  static auto prev_proc_time = static_cast<int64_t>(-1);
+  if (prev_proc_time >= 0) {
+    auto secs = (stats["usage_usec"] - prev_proc_time) / MICROS;
+    proc_time->Add(secs);
+  }
+  prev_proc_time = stats["usage_usec"];
 
   static auto system_usage = registry_->GetCounter("cgroup.cpu.usageTime", {{"id", "system"}});
   static auto prev_sys_usage = static_cast<int64_t>(-1);
@@ -137,15 +111,31 @@ void CGroup<Reg>::cpu_usage_time_v2() noexcept {
 template <typename Reg>
 void CGroup<Reg>::cpu_utilization_v2(absl::Time now) noexcept {
   static absl::Time last_updated;
+  if (last_updated == absl::UnixEpoch()) {
+    last_updated = now - update_interval_;
+  }
   auto delta_t = absl::ToDoubleSeconds(now - last_updated);
   last_updated = now;
 
-  static auto num_procs = registry_->GetGauge("sys.cpu.numProcessors");
-  auto vec = read_num_vector_from_file(path_prefix_, "cpu.max");
-  auto cfs_quota = vec[0];
-  auto cfs_period = vec[1];
+  auto weight = read_num_from_file(path_prefix_, "cpu.weight");
+  if (weight >= 0) {
+    registry_->GetGauge("cgroup.cpu.weight")->Set(weight);
+  }
+
+  auto env_num_cpu = std::getenv("TITUS_NUM_CPU");
+  auto num_cpu = 0.0;
+  if (env_num_cpu != nullptr) {
+    num_cpu = strtod(env_num_cpu, nullptr);
+  }
+
+  registry_->GetCounter("cgroup.cpu.processingCapacity")->Add(delta_t * num_cpu);
+  registry_->GetGauge("sys.cpu.numProcessors")->Set(num_cpu);
+  registry_->GetGauge("titus.cpu.requested")->Set(num_cpu);
+
+  auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
+  auto cfs_period = cpu_max[1];
+  auto cfs_quota = cfs_period * num_cpu;
   auto avail_cpu_time = (delta_t / cfs_period) * cfs_quota;
-  num_procs->Set(cfs_quota / cfs_period);
 
   std::unordered_map<std::string, int64_t> stats;
   parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
@@ -173,9 +163,15 @@ void CGroup<Reg>::cpu_peak_utilization_v2(absl::Time now) noexcept {
   auto delta_t = absl::ToDoubleSeconds(now - last_updated);
   last_updated = now;
 
-  auto vec = read_num_vector_from_file(path_prefix_, "cpu.max");
-  auto cfs_quota = vec[0];
-  auto cfs_period = vec[1];
+  auto env_num_cpu = std::getenv("TITUS_NUM_CPU");
+  auto num_cpu = 0.0;
+  if (env_num_cpu != nullptr) {
+    num_cpu = strtod(env_num_cpu, nullptr);
+  }
+
+  auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
+  auto cfs_period = cpu_max[1];
+  auto cfs_quota = cfs_period * num_cpu;
   auto avail_cpu_time = (delta_t / cfs_period) * cfs_quota;
 
   std::unordered_map<std::string, int64_t> stats;
@@ -283,39 +279,15 @@ void CGroup<Reg>::memory_stats_std_v2() noexcept {
 }
 
 template <typename Reg>
-void CGroup<Reg>::cpu_throttle_v2() noexcept {
-  std::unordered_map<std::string, int64_t> stats;
-  parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
-
-  static auto throttled_time = registry_->GetCounter("cgroup.cpu.throttledTime");
-  static auto prev_throttled_time = static_cast<int64_t>(-1);
-  auto cur_throttled_time = stats["throttled_usec"];
-  if (prev_throttled_time >= 0) {
-    auto seconds = (cur_throttled_time - prev_throttled_time) / MICROS;
-    throttled_time->Add(seconds);
-  }
-  prev_throttled_time = cur_throttled_time;
-
-  static auto nr_throttled = registry_->GetMonotonicCounter("cgroup.cpu.numThrottled");
-  nr_throttled->Set(stats["nr_throttled"]);
+void CGroup<Reg>::do_cpu_stats(absl::Time now) noexcept {
+  cpu_throttle_v2();
+  cpu_time_v2();
+  cpu_utilization_v2(now);
 }
 
 template <typename Reg>
-void CGroup<Reg>::do_cpu_stats(absl::Time now, bool is_cgroup2) noexcept {
-  if (is_cgroup2) {
-    cpu_processing_time_v2();
-    cpu_shares_v2(now);
-    cpu_throttle_v2();
-    cpu_usage_time_v2();
-    cpu_utilization_v2(now);
-  }
-}
-
-template <typename Reg>
-void CGroup<Reg>::do_cpu_peak_stats(absl::Time now, bool is_cgroup2) noexcept {
-  if (is_cgroup2) {
-    cpu_peak_utilization_v2(now);
-  }
+void CGroup<Reg>::do_cpu_peak_stats(absl::Time now) noexcept {
+  cpu_peak_utilization_v2(now);
 }
 
 }  // namespace atlasagent
