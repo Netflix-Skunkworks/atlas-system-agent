@@ -109,9 +109,28 @@ void CGroup<Reg>::cpu_time_v2() noexcept {
 }
 
 template <typename Reg>
+double CGroup<Reg>::get_avail_cpu_time(double delta_t, double num_cpu) noexcept {
+  auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
+  auto cfs_period = cpu_max[1];
+  auto cfs_quota = cfs_period * num_cpu;
+  return (delta_t / cfs_period) * cfs_quota;
+}
+
+template <typename Reg>
+double CGroup<Reg>::get_num_cpu() noexcept {
+  auto env_num_cpu = std::getenv("TITUS_NUM_CPU");
+  auto num_cpu = 0.0;
+  if (env_num_cpu != nullptr) {
+    num_cpu = strtod(env_num_cpu, nullptr);
+  }
+  return num_cpu;
+}
+
+template <typename Reg>
 void CGroup<Reg>::cpu_utilization_v2(absl::Time now) noexcept {
   static absl::Time last_updated;
   if (last_updated == absl::UnixEpoch()) {
+    // ensure cgroup.cpu.processingCapacity has a consistent value after one sample
     last_updated = now - update_interval_;
   }
   auto delta_t = absl::ToDoubleSeconds(now - last_updated);
@@ -122,20 +141,12 @@ void CGroup<Reg>::cpu_utilization_v2(absl::Time now) noexcept {
     registry_->GetGauge("cgroup.cpu.weight")->Set(weight);
   }
 
-  auto env_num_cpu = std::getenv("TITUS_NUM_CPU");
-  auto num_cpu = 0.0;
-  if (env_num_cpu != nullptr) {
-    num_cpu = strtod(env_num_cpu, nullptr);
-  }
+  auto num_cpu = get_num_cpu();
+  auto avail_cpu_time = get_avail_cpu_time(delta_t, num_cpu);
 
   registry_->GetCounter("cgroup.cpu.processingCapacity")->Add(delta_t * num_cpu);
   registry_->GetGauge("sys.cpu.numProcessors")->Set(num_cpu);
   registry_->GetGauge("titus.cpu.requested")->Set(num_cpu);
-
-  auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
-  auto cfs_period = cpu_max[1];
-  auto cfs_quota = cfs_period * num_cpu;
-  auto avail_cpu_time = (delta_t / cfs_period) * cfs_quota;
 
   std::unordered_map<std::string, int64_t> stats;
   parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
@@ -163,16 +174,8 @@ void CGroup<Reg>::cpu_peak_utilization_v2(absl::Time now) noexcept {
   auto delta_t = absl::ToDoubleSeconds(now - last_updated);
   last_updated = now;
 
-  auto env_num_cpu = std::getenv("TITUS_NUM_CPU");
-  auto num_cpu = 0.0;
-  if (env_num_cpu != nullptr) {
-    num_cpu = strtod(env_num_cpu, nullptr);
-  }
-
-  auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
-  auto cfs_period = cpu_max[1];
-  auto cfs_quota = cfs_period * num_cpu;
-  auto avail_cpu_time = (delta_t / cfs_period) * cfs_quota;
+  auto num_cpu = get_num_cpu();
+  auto avail_cpu_time = get_avail_cpu_time(delta_t, num_cpu);
 
   std::unordered_map<std::string, int64_t> stats;
   parse_kv_from_file(path_prefix_, "cpu.stat", &stats);

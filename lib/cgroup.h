@@ -30,6 +30,8 @@ class CGroup {
   void cpu_time_v2() noexcept;
   void cpu_utilization_v2(absl::Time now) noexcept;
   void cpu_peak_utilization_v2(absl::Time now) noexcept;
+  double get_avail_cpu_time(double delta_t, double num_cpu) noexcept;
+  double get_num_cpu() noexcept;
 
  protected:
   // for testing
