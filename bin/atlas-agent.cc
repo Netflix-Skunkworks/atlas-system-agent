@@ -309,7 +309,7 @@ int main(int argc, char* const argv[]) {
     nvidia_lib = std::make_unique<Nvml>();
     logger->info("Will attempt to collect GPU metrics");
   } catch (atlasagent::NvmlException& e) {
-    logger->info("Will not collect GPU metrics: %s", e.what());
+    logger->info("Will not collect GPU metrics: {}", e.what());
   }
 
   atlasagent::HttpClient<>::GlobalInit();
