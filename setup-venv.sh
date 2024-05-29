@@ -4,10 +4,10 @@ MAYBE_PYTHON=$(find /apps -maxdepth 1 -type l -name "python*")
 
 if [[ -n "$MAYBE_PYTHON" ]]; then
   PYTHON3="$MAYBE_PYTHON/bin/python3"
-  echo "using $MAYBE_PYTHON/bin/python3 ($(PYTHON3 -V))"
+  echo "using $PYTHON3 ($($PYTHON3 -V))"
 else
   PYTHON3="python3"
-  echo "using $(which python3) ($(PYTHON3 -V))"
+  echo "using $(which $PYTHON3) ($($PYTHON3 -V))"
 fi
 
 # create and activate virtualenv

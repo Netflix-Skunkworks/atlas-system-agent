@@ -51,7 +51,9 @@ class Ntp {
     }
 
     unsynchronized_->Set(err == TIME_ERROR);
-    estimatedError_->Set(time->esterror / 1e6);
+    if (err != TIME_ERROR) {
+      estimatedError_->Set(time->esterror / 1e6);
+    }
   }
 
   void chrony_stats(const std::string& tracking, const std::vector<std::string>& sources) noexcept {

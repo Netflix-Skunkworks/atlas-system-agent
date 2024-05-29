@@ -126,8 +126,7 @@ TEST(Ntp, adjtime_err) {
 
   auto ms = registry.Measurements();
   auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {{"sys.time.unsynchronized|gauge", 1},
-                                                      {"sys.time.estimatedError|gauge", 0.2}};
+  std::unordered_map<std::string, double> expected = {{"sys.time.unsynchronized|gauge", 1}};
   EXPECT_EQ(map, expected);
 }
 }  // namespace
