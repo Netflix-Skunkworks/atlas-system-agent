@@ -106,7 +106,9 @@ std::vector<MountPoint> Disk<Reg>::filter_interesting_mount_points(
         starts_with(mp.mount_point.c_str(), "/mnt/docker") ||
         starts_with(mp.mount_point.c_str(), "/proc") ||
         starts_with(mp.mount_point.c_str(), "/run") ||
-        starts_with(mp.mount_point.c_str(), "/sys")) {
+        starts_with(mp.mount_point.c_str(), "/sys") ||
+        starts_with(mp.mount_point.c_str(), "/tmp/buildkit") ||
+        starts_with(mp.mount_point.c_str(), "/var/lib")) {
       continue;
     }
 
