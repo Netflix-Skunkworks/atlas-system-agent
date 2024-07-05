@@ -110,8 +110,12 @@ void CGroup<Reg>::cpu_time_v2() noexcept {
 
 template <typename Reg>
 double CGroup<Reg>::get_avail_cpu_time(double delta_t, double num_cpu) noexcept {
-  auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
-  auto cfs_period = cpu_max[1];
+  auto avail_cpu_time = 0.0;
+  auto cpu_max = read_num_array_from_file<2>(path_prefix_, "cpu.max");
+  if (!cpu_max) {
+    return avail_cpu_time;
+  }
+  auto cfs_period = (*cpu_max)[1];
   auto cfs_quota = cfs_period * num_cpu;
   return (delta_t / cfs_period) * cfs_quota;
 }

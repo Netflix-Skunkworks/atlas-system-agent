@@ -2,11 +2,12 @@
 #include "logger.h"
 #include "absl/strings/str_split.h"
 #include <cinttypes>
-#include <sstream>
-#include <unistd.h>
-#include <signal.h>
-#include <sys/wait.h>
 #include <fstream>
+#include <optional>
+#include <signal.h>
+#include <sstream>
+#include <sys/wait.h>
+#include <unistd.h>
 
 extern char** environ;
 
@@ -46,27 +47,6 @@ int64_t read_num_from_file(const std::string& prefix, const char* fn) {
     n = -1;
   }
   return n;
-}
-
-std::vector<int64_t> read_num_vector_from_file(const std::string& prefix, const char* fn) {
-  std::vector<int64_t> num_vector;
-  std::string fp = fmt::format("{}/{}", prefix, fn);
-  std::ifstream in(fp);
-
-  if (!in) {
-    Logger()->warn("Unable to open {}", fp);
-    return num_vector;
-  }
-
-  std::string line;
-  std::getline(in, line);
-  std::vector<std::string> fields = absl::StrSplit(line, ' ', absl::SkipEmpty());
-
-  for (const auto& field : fields) {
-    num_vector.push_back(std::strtoul(field.c_str(), nullptr, 10));
-  }
-
-  return num_vector;
 }
 
 void parse_kv_from_file(const std::string& prefix, const char* fn,

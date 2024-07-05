@@ -14,16 +14,18 @@ TEST(Utils, ReadLinesFields) {
 
 TEST(Utils, ReadNumVectorFromFile) {
   // numbers are read successfully
-  auto vector = atlasagent::read_num_vector_from_file("testdata/resources", "num_vector.1");
-  auto expected = std::vector<int64_t>{100000, 100000};
-  EXPECT_EQ(vector.size(), 2);
-  EXPECT_EQ(vector, expected);
+  auto arr = atlasagent::read_num_array_from_file<2>("testdata/resources", "num_vector.1");
+  auto expected = std::array<int64_t,2>{100000, 100000};
+  EXPECT_TRUE(arr);
+  EXPECT_EQ(arr->size(), 2);
+  EXPECT_EQ(*arr, expected);
 
   // text values become zeroes
-  vector = atlasagent::read_num_vector_from_file("testdata/resources", "num_vector.2");
-  expected = std::vector<int64_t>{0, 100000};
-  EXPECT_EQ(vector.size(), 2);
-  EXPECT_EQ(vector, expected);
+  arr = atlasagent::read_num_array_from_file<2>("testdata/resources", "num_vector.2");
+  expected = {0, 100000};
+  EXPECT_TRUE(arr);
+  EXPECT_EQ(arr->size(), 2);
+  EXPECT_EQ(*arr, expected);
 }
 
 TEST(Utils, ReadOutputString) {
