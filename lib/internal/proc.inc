@@ -555,6 +555,15 @@ inline void set_if_present(const std::unordered_map<std::string, int64_t>& stats
 }
 
 template <typename Reg>
+void Proc<Reg>::uptime_stats() noexcept {
+  static auto sys_uptime = registry_->GetGauge("sys.uptime");
+  // uptime values are in seconds, reported as doubles, but given how large they will be over
+  // time, the 10ths of a second will not matter for the purpose of producing this metric
+  auto uptime_seconds = read_num_vector_from_file(path_prefix_, "uptime");
+  sys_uptime->Set(uptime_seconds[0]);
+}
+
+template <typename Reg>
 void Proc<Reg>::vmstats() noexcept {
   static auto processes = registry_->GetMonotonicCounter("vmstat.procs.count");
   static auto procs_running = registry_->GetGauge("vmstat.procs", {{"id", "running"}});

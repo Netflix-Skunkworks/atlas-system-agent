@@ -66,6 +66,7 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
   proc->network_stats();
   proc->process_stats();
   proc->snmp_stats();
+  proc->uptime_stats();
 }
 #else
 static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
@@ -89,6 +90,7 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool,
   proc->process_stats();
   proc->snmp_stats();
   proc->socket_stats();
+  proc->uptime_stats();
   proc->vmstats();
 }
 #endif

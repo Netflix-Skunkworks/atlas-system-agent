@@ -172,6 +172,17 @@ TEST(Proc, CpuStats) {
   EXPECT_EQ(17, ms2.size());
 }
 
+TEST(Proc, UptimeStats) {
+  Registry registry;
+  spectator::Tags extra{{"nf.test", "extra"}};
+  Proc proc{&registry, extra, "testdata/resources/proc"};
+  proc.uptime_stats();
+  auto ms = my_measurements(&registry);
+  auto ms_map = measurements_to_map(ms, "proto");
+  expect_value(&ms_map, "sys.uptime|gauge", 517407);
+  EXPECT_TRUE(ms_map.empty());
+}
+
 TEST(Proc, VmStats) {
   Registry registry;
   spectator::Tags extra{{"nf.test", "extra"}};

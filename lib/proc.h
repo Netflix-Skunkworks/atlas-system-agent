@@ -18,6 +18,7 @@ class Proc {
   void memory_stats() noexcept;
   void process_stats() noexcept;
   void socket_stats() noexcept;
+  void uptime_stats() noexcept;
   void vmstats() noexcept;
   [[nodiscard]] bool is_container() const noexcept;
 
