@@ -19,6 +19,7 @@
 #include "spectator/registry.h"
 #include <condition_variable>
 #include <csignal>
+#include <fmt/chrono.h>
 #include <getopt.h>
 
 using atlasagent::GetLogger;
@@ -55,7 +56,6 @@ static void gather_peak_titus_metrics(CGroup* cGroup) {
 }
 
 static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
-  Logger()->debug("Gather Titus system metrics");
   aws->update_stats();
   cGroup->cpu_stats();
   cGroup->memory_stats_v2();
@@ -75,7 +75,6 @@ static void gather_scaling_metrics(CpuFreq* cpufreq) { cpufreq->Stats(); }
 
 static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool, Ntp* ntp,
                                        PressureStall* pressureStall, Aws* aws) {
-  Logger()->debug("Gather EC2 system metrics");
   aws->update_stats();
   disk->disk_stats();
   ethtool->update_stats();
@@ -148,9 +147,34 @@ static void init_signals() {
   sigaction(SIGTERM, &sa, nullptr);
 }
 
+long initial_polling_delay() {
+  auto now = std::chrono::system_clock::now();
+  auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
+  auto epoch = now_ms.time_since_epoch();
+
+  long step_size = 60000;  // 60 seconds, atlas step size
+  long offset = 10000;     // 10 seconds, twice the spectatord publish interval
+
+  // previous boundary, by integer arithmetic
+  long step_boundary = epoch.count() / step_size * step_size;
+  long delay = epoch.count() - step_boundary;
+
+  Logger()->debug("epoch={} step_boundary={} delay={}", epoch.count(), step_boundary, delay);
+
+  if (delay < offset) {
+    return offset;
+  } else if (delay > step_size - offset) {
+    return 2 * offset;
+  } else {
+    return 0;
+  }
+}
+
 #if defined(TITUS_SYSTEM_SERVICE)
 void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvidia_lib,
                            spectator::Tags net_tags) {
+  using std::chrono::duration_cast;
+  using std::chrono::milliseconds;
   using std::chrono::seconds;
   using std::chrono::system_clock;
 
@@ -162,9 +186,17 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
-  // the first call to this gather function takes >1 second, so it must
-  // be done before we start calculating times to wait for peak metrics
+  // initial polling delay, to prevent publishing too close to a minute boundary
+  auto delay = initial_polling_delay();
+  Logger()->info("Initial polling delay is {}ms", delay);
+  if (delay > 0) {
+    runner.wait_for(milliseconds(delay));
+  }
+
+  // the first call to this gather function takes ~100ms, so it must be
+  // done before we start calculating times to wait for peak metrics
   gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
+  Logger()->info("Published slow Titus metrics (first iteration)");
 
   auto now = system_clock::now();
   auto next_run = now;
@@ -172,15 +204,20 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
   std::chrono::nanoseconds time_to_sleep;
 
   do {
+    auto start = system_clock::now();
     gather_peak_titus_metrics(&cGroup);
-    if (system_clock::now() >= next_slow_run) {
+
+    if (start >= next_slow_run) {
       gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
       perf_metrics.collect();
       if (gpu) {
         gpu->gpu_metrics();
       }
+      auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
+      Logger()->info("Published Titus metrics (delay={})", elapsed);
       next_slow_run += seconds(60);
     }
+
     next_run += seconds(1);
     time_to_sleep = next_run - system_clock::now();
   } while (runner.wait_for(time_to_sleep));
@@ -188,6 +225,8 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
 #else
 void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
                             spectator::Tags net_tags) {
+  using std::chrono::duration_cast;
+  using std::chrono::milliseconds;
   using std::chrono::seconds;
   using std::chrono::system_clock;
 
@@ -202,9 +241,17 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
-  // the first call to this gather function takes >1 second, so it must
-  // be done before we start calculating times to wait for peak metrics
+  // initial polling delay, to prevent publishing too close to a minute boundary
+  auto delay = initial_polling_delay();
+  Logger()->info("Initial polling delay is {}ms", delay);
+  if (delay > 0) {
+    runner.wait_for(milliseconds(delay));
+  }
+
+  // the first call to this gather function takes ~100ms, so it must be
+  // done before we start calculating times to wait for peak metrics
   gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
+  Logger()->info("Published slow system metrics (first iteration)");
 
   auto now = system_clock::now();
   auto next_run = now;
@@ -212,16 +259,21 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
   std::chrono::nanoseconds time_to_sleep;
 
   do {
+    auto start = system_clock::now();
     gather_peak_system_metrics(&proc);
     gather_scaling_metrics(&cpufreq);
-    if (system_clock::now() >= next_slow_run) {
+
+    if (start >= next_slow_run) {
       gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
       perf_metrics.collect();
       if (gpu) {
         gpu->gpu_metrics();
       }
+      auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
+      Logger()->info("Published system metrics (delay={})", elapsed);
       next_slow_run += seconds(60);
     }
+
     next_run += seconds(1);
     time_to_sleep = next_run - system_clock::now();
   } while (runner.wait_for(time_to_sleep));
