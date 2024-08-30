@@ -21,6 +21,7 @@
 #include <csignal>
 #include <fmt/chrono.h>
 #include <getopt.h>
+#include <random>
 
 using atlasagent::GetLogger;
 using atlasagent::Logger;
@@ -148,23 +149,25 @@ static void init_signals() {
 }
 
 long initial_polling_delay() {
+  std::random_device rdev;
+  std::mt19937 generator(rdev());
+
+  // calculate previous step boundary using integer arithmetic, to determine start second
   auto now = std::chrono::system_clock::now();
-  auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(now);
-  auto epoch = now_ms.time_since_epoch();
+  auto now_epoch = now.time_since_epoch();
+  auto epoch = std::chrono::duration_cast<std::chrono::seconds>(now_epoch);
+  long step_boundary = epoch.count() / 60 * 60;
+  long start_second = epoch.count() - step_boundary;
 
-  long step_size = 60000;  // 60 seconds, atlas step size
-  long offset = 10000;     // 10 seconds, twice the spectatord publish interval
+  Logger()->debug("epoch={} step_boundary={} start_second={}", epoch.count(), step_boundary, start_second);
 
-  // previous boundary, by integer arithmetic
-  long step_boundary = epoch.count() / step_size * step_size;
-  long delay = epoch.count() - step_boundary;
-
-  Logger()->debug("epoch={} step_boundary={} delay={}", epoch.count(), step_boundary, delay);
-
-  if (delay < offset) {
-    return offset;
-  } else if (delay > step_size - offset) {
-    return 2 * offset;
+  if (start_second < 10) {
+    std::uniform_int_distribution<long> start_delay_dist(10 - start_second, 50 - start_second);
+    return start_delay_dist(generator);
+  } else if (start_second > 50) {
+    auto next_min = 60 - start_second;
+    std::uniform_int_distribution<long> start_delay_dist(10, 50);
+    return next_min + start_delay_dist(generator);
   } else {
     return 0;
   }
@@ -188,9 +191,9 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
 
   // initial polling delay, to prevent publishing too close to a minute boundary
   auto delay = initial_polling_delay();
-  Logger()->info("Initial polling delay is {}ms", delay);
+  Logger()->info("Initial polling delay is {}s", delay);
   if (delay > 0) {
-    runner.wait_for(milliseconds(delay));
+    runner.wait_for(seconds(delay));
   }
 
   // the first call to this gather function takes ~100ms, so it must be
@@ -243,9 +246,9 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
 
   // initial polling delay, to prevent publishing too close to a minute boundary
   auto delay = initial_polling_delay();
-  Logger()->info("Initial polling delay is {}ms", delay);
+  Logger()->info("Initial polling delay is {}s", delay);
   if (delay > 0) {
-    runner.wait_for(milliseconds(delay));
+    runner.wait_for(seconds(delay));
   }
 
   // the first call to this gather function takes ~100ms, so it must be
