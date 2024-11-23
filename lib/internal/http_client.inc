@@ -26,7 +26,7 @@ class CurlHeaders {
 
 namespace detail {
 
-constexpr const char* const kUserAgent = "spectator-cpp/1.0";
+constexpr const char* const kUserAgent = "atlas-system-agent/1.0";
 inline size_t curl_ignore_output_fun(char* /*unused*/, size_t size, size_t nmemb,
                                      void* /*unused*/) {
   return size * nmemb;

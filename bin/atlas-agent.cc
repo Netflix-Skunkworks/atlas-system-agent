@@ -1,22 +1,18 @@
 #ifdef __linux__
-#include "contain/contain.h"
+#include "../contain/contain.h"
 #include <sys/vfs.h>
 #endif
-#include "aws.h"
-#include "cgroup.h"
-#include "cpufreq.h"
-#include "disk.h"
-#include "ethtool.h"
-#include "gpumetrics.h"
-#include "logger.h"
-#include "ntp.h"
-#include "nvml.h"
-#include "perfmetrics.h"
-#include "pressure_stall.h"
-#include "proc.h"
-#include "tagger.h"
+#include "../lib/aws.h"
+#include "../lib/cgroup.h"
+#include "../lib/cpufreq.h"
+#include "../lib/disk.h"
+#include "../lib/ethtool.h"
+#include "../lib/gpumetrics.h"
+#include "../lib/ntp.h"
+#include "../lib/perfmetrics.h"
+#include "../lib/pressure_stall.h"
+#include "../lib/proc.h"
 #include "backward.hpp"
-#include "spectator/registry.h"
 #include <condition_variable>
 #include <csignal>
 #include <fmt/chrono.h>
@@ -48,7 +44,7 @@ std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<
       fprintf(stderr, "Will not collect GPU metrics: %s\n", e.what());
     }
   }
-  return std::unique_ptr<GpuMetrics>();
+  return {};
 }
 
 #if defined(TITUS_SYSTEM_SERVICE)
@@ -96,7 +92,7 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool,
 #endif
 
 struct terminator {
-  terminator() noexcept {}
+  terminator() noexcept = default;
 
   // returns false if killed:
   template <class R, class P>
@@ -140,7 +136,7 @@ static void handle_signal(int signal) {
 }
 
 static void init_signals() {
-  struct sigaction sa;
+  struct sigaction sa{};
   sa.sa_handler = &handle_signal;
   sa.sa_flags = SA_RESETHAND;  // remove the handler after the first signal
   sigfillset(&sa.sa_mask);
@@ -227,7 +223,7 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
 }
 #else
 void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                            spectator::Tags net_tags) {
+                            const spectator::Tags& net_tags) {
   using std::chrono::duration_cast;
   using std::chrono::milliseconds;
   using std::chrono::seconds;
@@ -378,10 +374,10 @@ int main(int argc, char* const argv[]) {
   TaggingRegistry registry{&spectator_registry, maybe_tagger.value_or(atlasagent::Tagger::Nop())};
 #if defined(TITUS_SYSTEM_SERVICE)
   Logger()->info("Start gathering Titus system metrics");
-  collect_titus_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));
+  collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags);
 #else
   Logger()->info("Start gathering EC2 system metrics");
-  collect_system_metrics(&registry, std::move(nvidia_lib), std::move(options.network_tags));
+  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags);
 #endif
   logger->info("Shutting down spectator registry");
   atlasagent::HttpClient<>::GlobalShutdown();

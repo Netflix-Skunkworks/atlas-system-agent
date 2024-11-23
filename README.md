@@ -6,9 +6,9 @@ An agent that reports metrics for EC2 instances or [Titus] containers.
 
 [Titus]: https://github.com/Netflix/titus/
 
-## Local Development
+## Local & IDE Configuration
 
-This agent was designed for Linux systems, and as a result, it does not compile cleanly on macOS. It
+This agent was designed for Linux systems, and as a result, it does not compile cleanly on MacOS. It
 is best to build on a Linux machine:
 
 ```shell
@@ -16,14 +16,20 @@ is best to build on a Linux machine:
 ./setup-venv.sh
 source venv/bin/activate
 
-# link clion default build directory to our build directory
-ln -s cmake-build cmake-build-debug
-
-./build.sh  # [clean|clean --force|skiptest]
+./build.sh  # [clean|clean --confirm|skiptest]
 ```
 
-* CLion > Preferences > Plugins > Marketplace > Conan > Install
-* CLion > Preferences > Build, Execution, Deploy > Conan > Conan Executable: $PROJECT_HOME/venv/bin/conan
+* Install the Conan plugin for CLion.
+  * CLion > Settings > Plugins > Marketplace > Conan > Install
+* Configure the Conan plugin.
+  * The easiest way to configure CLion to work with Conan is to build the project first from the command line.
+    * This will establish the `$PROJECT_HOME/CMakeUserPresets.json` file, which will allow you to choose the custom
+    CMake configuration created by Conan when creating a new CMake project. Using this custom profile will ensure
+    that sources are properly indexed and explorable.
+  * Open the project. The wizard will show three CMake profiles.
+    * Disable the default Cmake `Debug` profile.
+    * Enable the CMake `conan-debug` profile.
+  * CLion > View > Tool Windows > Conan > (gear) > Conan Executable: `$PROJECT_HOME/venv/bin/conan`
 
 ## Debugging
 

@@ -89,15 +89,15 @@ class Tagger {
     Rule(TagRuleOp op, std::string_view match, spectator::Tags tags)
         : op_{op}, match_{match}, tags_{std::move(tags)} {}
 
-    auto Op() const -> TagRuleOp { return op_; }
-    auto Match() const -> const std::string& { return match_; }
-    auto Tags() const -> const spectator::Tags& { return tags_; }
+    [[nodiscard]] auto Op() const -> TagRuleOp { return op_; }
+    [[nodiscard]] auto Match() const -> const std::string& { return match_; }
+    [[nodiscard]] auto Tags() const -> const spectator::Tags& { return tags_; }
 
     auto operator==(const Rule& that) const -> bool {
       return op_ == that.op_ && match_ == that.match_ && tags_ == that.tags_;
     }
 
-    auto Matches(const spectator::Id& id) const -> bool {
+    [[nodiscard]] auto Matches(const spectator::Id& id) const -> bool {
       if (op_ == TagRuleOp::Name) {
         return id.Name() == match_;
       }
@@ -118,11 +118,11 @@ class Tagger {
   Tagger& operator=(const Tagger&) = default;
   ~Tagger() = default;
 
-  auto GetRules() const -> const std::vector<Rule>& { return rules_; }
+  [[nodiscard]] auto GetRules() const -> const std::vector<Rule>& { return rules_; }
 
   auto operator==(const Tagger& that) const -> bool { return that.GetRules() == rules_; }
 
-  auto GetId(spectator::IdPtr id) const -> spectator::IdPtr {
+  [[nodiscard]] auto GetId(spectator::IdPtr id) const -> spectator::IdPtr {
     for (const auto& rule : rules_) {
       if (rule.Matches(*id)) {
         return id->WithTags(rule.Tags());
@@ -131,7 +131,7 @@ class Tagger {
     return id;
   }
 
-  auto GetId(absl::string_view name, spectator::Tags tags = {}) const -> spectator::IdPtr {
+  [[nodiscard]] auto GetId(absl::string_view name, spectator::Tags tags = {}) const -> spectator::IdPtr {
     return GetId(spectator::Id::of(name, std::move(tags)));
   }
 
@@ -141,33 +141,20 @@ class Tagger {
 }  // namespace atlasagent
 
 // for debugging
-template <>
-struct fmt::formatter<atlasagent::TagRuleOp> {
-  constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) { return ctx.begin(); }
-  template <typename FormatContext>
-  auto format(const atlasagent::TagRuleOp& op, FormatContext& context) {
-    return fmt::format_to(context.out(), "op={}",
-                          op == atlasagent::TagRuleOp::Name ? "name" : "prefix");
+template <> struct fmt::formatter<atlasagent::TagRuleOp>: formatter<std::string_view> {
+  static auto format(const atlasagent::TagRuleOp& op, format_context& ctx) -> format_context::iterator {
+    return fmt::format_to(ctx.out(), "op={}", op == atlasagent::TagRuleOp::Name ? "name" : "prefix");
   }
 };
 
-template <>
-struct fmt::formatter<atlasagent::Tagger::Rule> {
-  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
-
-  template <typename FormatContext>
-  constexpr auto format(const atlasagent::Tagger::Rule& rule, FormatContext& context) const {
-    return fmt::format_to(context.out(), "rule({} -> {}, tags={})", rule.Op(), rule.Match(),
-                          rule.Tags());
+template <> struct fmt::formatter<atlasagent::Tagger::Rule>: formatter<std::string_view> {
+  static auto format(const atlasagent::Tagger::Rule& rule, format_context& ctx) -> format_context::iterator {
+    return fmt::format_to(ctx.out(), "rule({} -> {}, tags={})", rule.Op(), rule.Match(), rule.Tags());
   }
 };
 
-template <>
-struct fmt::formatter<atlasagent::Tagger> {
-  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
-
-  template <typename FormatContext>
-  constexpr auto format(const atlasagent::Tagger& tagger, FormatContext& context) const {
-    return fmt::format_to(context.out(), "tagger(rules={})", tagger.GetRules());
+template <> struct fmt::formatter<atlasagent::Tagger>: formatter<std::string_view> {
+  static auto format(const atlasagent::Tagger& tagger, format_context& ctx) -> format_context::iterator {
+    return fmt::format_to(ctx.out(), "tagger(rules={})", tagger.GetRules());
   }
 };

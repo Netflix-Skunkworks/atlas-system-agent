@@ -1,8 +1,9 @@
 **/*.inc
 .DS_Store
 .idea/
-cmake-build-debug
+CMakeUserPresets.json
+cmake-build-debug/
 cmake-build/
 lib/spectator/
-spectator-cpp-*.zip
+lib/tools/
 venv/

@@ -1,43 +1,60 @@
 import os
 import shutil
 
-from conans import ConanFile
-from conans.tools import download, unzip, check_sha256
+from conan import ConanFile
+from conan.tools.files import download, unzip, check_sha256
 
 
 class AtlasSystemAgentConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     requires = (
-        "abseil/20230125.3",
-        "asio/1.28.1",
+        "abseil/20240116.2",
+        "asio/1.32.0",
         "backward-cpp/1.6",
-        "fmt/10.1.1",
-        "gtest/1.14.0",
-        "libcurl/8.4.0",
-        "openssl/3.2.0",
+        "fmt/11.0.2",
+        "gtest/1.15.0",
+        "libcurl/8.10.1",
+        "openssl/3.3.2",
         "rapidjson/cci.20230929",
-        "spdlog/1.12.0",
-        "zlib/1.3"
+        "spdlog/1.15.0",
+        "zlib/1.3.1",
     )
-    generators = "cmake"
-    default_options = {}
+    tool_requires = ()
+    generators = "CMakeDeps", "CMakeToolchain"
 
     def configure(self):
         self.options["libcurl"].with_c_ares = True
+        self.options["libcurl"].with_ssl = "openssl"
 
     @staticmethod
-    def get_spectator_cpp():
-        dir_name = "spectator-cpp"
-        commit = "b3b93d6d86aa763a2ee409c52cca41be98cda140"
-        if os.path.isdir(dir_name):
-            shutil.rmtree(dir_name)
-        zip_name = f"spectator-cpp-{commit}.zip"
-        download(f"https://github.com/Netflix/spectator-cpp/archive/{commit}.zip", zip_name)
-        check_sha256(zip_name, "b76d56722bc2e6a3fafe1950019755a7c236f17469af74e71a673168c6d2c88c")
-        unzip(zip_name)
-        shutil.move(f"spectator-cpp-{commit}/spectator", "lib/spectator")
-        shutil.rmtree(f"spectator-cpp-{commit}")
+    def maybe_remove_dir(path: str):
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+
+    @staticmethod
+    def maybe_remove_file(path: str):
+        if os.path.isfile(path):
+            os.unlink(path)
+
+    def get_spectator_cpp(self):
+        repo = "Netflix/spectator-cpp"
+        commit = "5761837faf6911a5c8fe04646cb05649b68a8ae3"
+        zip_name = repo.replace("Netflix/", "") + f"-{commit}.zip"
+
+        self.maybe_remove_file(zip_name)
+        download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_name)
+        check_sha256(self, zip_name, "04cac036a9a1ad08ab381408578153c108b4e553db3bfb4148cf4a8fcbd7ba3a")
+
+        dir_name = repo.replace("Netflix/", "")
+        self.maybe_remove_dir(dir_name)
+        unzip(self, zip_name, destination=dir_name, strip_root=True)
+        self.maybe_remove_dir("lib/spectator")
+        shutil.move(f"{dir_name}/spectator", "lib/spectator")
+        self.maybe_remove_dir("lib/tools")
+        shutil.move(f"{dir_name}/tools", "lib/tools")
+
         os.unlink(zip_name)
+        shutil.rmtree(dir_name)
 
     def source(self):
         self.get_spectator_cpp()
