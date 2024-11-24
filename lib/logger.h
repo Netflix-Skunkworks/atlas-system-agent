@@ -25,11 +25,8 @@ inline std::shared_ptr<spdlog::logger> GetLogger(const std::string& name) noexce
 
 }  // namespace atlasagent
 
-template <>
-struct fmt::formatter<absl::Time> {
-  constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) { return ctx.begin(); }
-  template <typename FormatContext>
-  auto format(const absl::Time& t, FormatContext& context) {
-    return fmt::format_to(context.out(), absl::FormatTime(t));
+template <> struct fmt::formatter<absl::Time>: formatter<std::string_view> {
+  static auto format(const absl::Time& t, format_context& ctx) -> format_context::iterator {
+    return fmt::format_to(ctx.out(), absl::FormatTime(t));
   }
 };

@@ -1,5 +1,5 @@
-#include "lib/nvml.h"
-#include "lib/logger.h"
+#include "../lib/logger.h"
+#include "../lib/nvml.h"
 #include <iostream>
 
 using atlasagent::Logger;
@@ -28,11 +28,11 @@ int main() {
         if (nvml.get_name(handle, &name)) {
           logger->info("  Name={}", name);
         }
-        atlasagent::NvmlMemory memory;
+        atlasagent::NvmlMemory memory{};
         if (nvml.get_memory_info(handle, &memory)) {
           logger->info("  Mem total={}, free={}, used={}", memory.total, memory.free, memory.used);
         }
-        atlasagent::NvmlUtilization utilization;
+        atlasagent::NvmlUtilization utilization{};
         if (nvml.get_utilization_rates(handle, &utilization)) {
           logger->info("  gpu={} memory={}", utilization.gpu, utilization.memory);
         }
@@ -51,6 +51,6 @@ int main() {
       }
     }
   } catch (const atlasagent::NvmlException& exception) {
-    Logger()->error("Caught NvmlException {}", exception.what());
+    logger->error("Caught NvmlException {}", exception.what());
   }
 }

@@ -11,9 +11,26 @@ add_library(spectator
     "spectator/registry.h"
     "spectator/stateful_meters.h"
     "spectator/stateless_meters.h"
+    "spectator/valid_chars.inc"
 )
-target_include_directories(spectator PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(spectator ${CONAN_LIBS})
+target_link_libraries(spectator
+    abseil::abseil
+    asio::asio
+    Backward::Backward
+    fmt::fmt
+    spdlog::spdlog
+)
+
+#-- generator tools
+add_executable(gen_valid_chars "tools/gen_valid_chars.cc")
+
+#-- file generators, must exist where the outputs are referenced
+add_custom_command(
+    OUTPUT "spectator/valid_chars.inc"
+    COMMAND "${CMAKE_BINARY_DIR}/bin/gen_valid_chars" > "${CMAKE_SOURCE_DIR}/lib/spectator/valid_chars.inc"
+    DEPENDS gen_valid_chars
+)
+
 
 #-- sysagent library
 add_library(sysagent
@@ -46,5 +63,12 @@ add_library(sysagent
     "util.cc"
     "util.h"
 )
-target_include_directories(sysagent PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(sysagent contain spectator ${CONAN_LIBS})
+target_link_libraries(sysagent
+    contain
+    spectator
+    abseil::abseil
+    CURL::libcurl
+    fmt::fmt
+    rapidjson
+    spdlog::spdlog
+)

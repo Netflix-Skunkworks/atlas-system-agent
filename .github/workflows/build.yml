@@ -10,81 +10,49 @@ jobs:
   build:
     if: ${{ github.repository == 'Netflix-Skunkworks/atlas-system-agent' }}
     runs-on: ubuntu-latest
-    env:
-      BUILD_DIR: "cmake-build"
-      BUILD_TYPE: "Debug"
-      CC: "gcc-11"
-      CXX: "g++-11"
-      LANG: "en_US.UTF-8"
     strategy:
       matrix:
         agent: [system, titus]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Conan+Cmake Cache
-        uses: actions/cache@v4
+      - name: Restore Conan Cache
+        id: conan-cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: |
-            ~/.conan
-            ~/work/atlas-system-agent/atlas-system-agent/cmake-build
-          key: ${{ runner.os }}-conan-cmake
+            /home/runner/.conan2
+            /home/runner/work/atlas-system-agent/atlas-system-agent/cmake-build
+            /home/runner/work/atlas-system-agent/atlas-system-agent/lib/spectator
+            /home/runner/work/atlas-system-agent/atlas-system-agent/lib/tools
+          key: ${{ runner.os }}-conan
 
       - name: Install System Dependencies
         run: |
           sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          sudo apt-get update && sudo apt-get install -y binutils-dev g++-11 libcap-dev libiberty-dev
-
-          echo "==== cmake ===="
-          cmake -version
-
-          echo "==== python ===="
-          python3 -V
-
-          echo "==== conan ===="
-          pip install -r requirements.txt
-          conan --version
-          if [[ ! -f ~/.conan/profiles/default ]]; then conan profile new default --detect; fi
-          conan profile update settings.compiler.libcxx=libstdc++11 default
-
-      - name: Install Project Dependencies
-        run: |
-          if [[ "$BUILD_TYPE" == "Debug" ]]; then
-            conan install . --build --install-folder $BUILD_DIR --profile ./sanitized
-          else
-            conan install . --build=missing --install-folder $BUILD_DIR
-          fi
-
-      - name: Install Source Dependencies
-        run: |
-          conan source .
+          sudo apt-get update && sudo apt-get install -y binutils-dev g++-13 libcap-dev libiberty-dev
 
       - name: Build atlas-system-agent
         if: ${{ startsWith(matrix.agent, 'system') }}
         run: |
-          cd $BUILD_DIR
-          cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DTITUS_SYSTEM_SERVICE=OFF ..
-          cmake --build .
-          echo "==== ldd ===="
-          ldd bin/atlas_system_agent || true
-
-      - name: Test atlas-system-agent
-        if: ${{ startsWith(matrix.agent, 'system') }}
-        run: |
-          cd $BUILD_DIR
-          GTEST_COLOR=1 ctest --verbose
+          ./setup-venv.sh
+          source venv/bin/activate
+          TITUS_SYSTEM_SERVICE=OFF ./build.sh
 
       - name: Build atlas-titus-agent
         if: ${{ startsWith(matrix.agent, 'titus') }}
         run: |
-          cd $BUILD_DIR
-          cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DTITUS_SYSTEM_SERVICE=ON ..
-          cmake --build .
-          echo "==== ldd ===="
-          ldd bin/atlas_system_agent || true
+          ./setup-venv.sh
+          source venv/bin/activate
+          TITUS_SYSTEM_SERVICE=ON ./build.sh
 
-      - name: Test atlas-titus-agent
-        if: ${{ startsWith(matrix.agent, 'titus') }}
-        run: |
-          cd $BUILD_DIR
-          GTEST_COLOR=1 ctest --verbose
+      - name: Save Conan Cache
+        id: conan-cache-save
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /home/runner/.conan2
+            /home/runner/work/atlas-system-agent/atlas-system-agent/cmake-build
+            /home/runner/work/atlas-system-agent/atlas-system-agent/lib/spectator
+            /home/runner/work/atlas-system-agent/atlas-system-agent/lib/tools
+          key: ${{ steps.conan-cache-restore.outputs.cache-primary-key }}

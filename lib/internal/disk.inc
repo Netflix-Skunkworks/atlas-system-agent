@@ -1,10 +1,11 @@
 #include "../util.h"
 #include "absl/strings/str_split.h"
+#include <fmt/format.h>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <sys/statvfs.h>
 #include <unordered_set>
-#include <iostream>
 
 namespace atlasagent {
 
@@ -323,12 +324,9 @@ void Disk<Reg>::set_prefix(const std::string& new_prefix) noexcept {
 }  // namespace atlasagent
 
 // for debugging
-template <>
-struct fmt::formatter<atlasagent::MountPoint> {
-  constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) { return ctx.begin(); }
-  template <typename FormatContext>
-  auto format(const atlasagent::MountPoint& mp, FormatContext& context) {
-    return fmt::format_to(context.out(), "MP{{dev#={}:{},mp={},dev={},type={}}}", mp.device_major,
+template <> struct fmt::formatter<atlasagent::MountPoint>: formatter<std::string_view> {
+  static auto format(const atlasagent::MountPoint& mp, format_context& ctx) -> format_context::iterator {
+    return fmt::format_to(ctx.out(), "MP{{dev#={}:{},mp={},dev={},type={}}}", mp.device_major,
                           mp.device_minor, mp.mount_point, mp.device, mp.fs_type);
   }
 };
