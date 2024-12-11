@@ -54,6 +54,8 @@ add_test(
 #-- atlas_system_agent executable
 add_executable(atlas_system_agent "bin/atlas-agent.cc")
 target_link_libraries(atlas_system_agent sysagent)
+# required to allow running on older systems, such as bionic
+target_link_options(atlas_system_agent PRIVATE "-static-libstdc++")
 
 #-- test_nvml executable
 add_executable(test_nvml "bin/test_nvml.cc")
