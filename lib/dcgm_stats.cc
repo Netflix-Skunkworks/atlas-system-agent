@@ -1,4 +1,5 @@
-#include "DCGM.h"
+#include "dcgm_stats.h"
+
 #include <optional>
 
 int list_field_values(unsigned int gpuId, dcgmFieldValue_v1 *values, int numValues, void *userdata)

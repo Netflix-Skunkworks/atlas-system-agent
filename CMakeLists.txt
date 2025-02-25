@@ -22,6 +22,10 @@ find_package(RapidJSON REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(ZLIB REQUIRED)
 
+set(CMAKE_PREFIX_PATH "/usr/share/cmake/DCGM/DCGMConfig.cmake")
+find_package(DCGM 4.0.0 REQUIRED)
+
+
 option(TITUS_SYSTEM_SERVICE "Titus System Service" OFF)
 if(TITUS_SYSTEM_SERVICE)
     message(STATUS "building atlas-titus-agent")

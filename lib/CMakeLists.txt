@@ -73,4 +73,5 @@ target_link_libraries(sysagent
     fmt::fmt
     rapidjson
     spdlog::spdlog
+    DCGM::dcgm
 )

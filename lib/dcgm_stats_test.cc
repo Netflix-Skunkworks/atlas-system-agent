@@ -1,8 +1,10 @@
-#include "DCGM.h"
+#include "dcgm_stats.h"
 #include <sstream>
 #include <iostream>
 #include <optional>
 #include <iostream>
+#include <gtest/gtest.h>
+
 
 void PrintValues(const std::map<int, std::vector<dcgmFieldValue_v1>> &field_val_map)
 {
@@ -94,9 +96,7 @@ TEST(CpuFreq, Stats)
     if (ErrorCode::SUCCESS != ec)
     {
         PrintErrorCode(ec);
-        return -1;
     }
 
-    PrintValues(field_value_map);
-    return 0;  
+    PrintValues(field_value_map);  
 }
