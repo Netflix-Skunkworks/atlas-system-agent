@@ -48,6 +48,7 @@ add_executable(sysagent_test ${sysagent_test_source_files})
 target_link_libraries(sysagent_test
     sysagent
     gtest::gtest
+    DCGM::dcgm
 )
 add_test(
     NAME sysagent_test
@@ -64,3 +65,7 @@ target_link_options(atlas_system_agent PRIVATE "-static-libstdc++")
 #-- test_nvml executable
 add_executable(test_nvml "bin/test_nvml.cc")
 target_link_libraries(test_nvml sysagent)
+
+add_executable(dcgm_stats_main "lib/dcgm_stats_main.cc")
+target_sources(dcgm_stats_main PRIVATE "lib/dcgm_stats_main.cc" "lib/dcgm_stats.cc")
+target_link_libraries(dcgm_stats_main PRIVATE DCGM::dcgm)

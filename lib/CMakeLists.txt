@@ -38,8 +38,6 @@ add_library(sysagent
     "cgroup.h"
     "config.h"
     "cpufreq.h"
-    "dcgm_stats.h"
-    "dcgm_stats.cc"
     "disk.h"
     "ethtool.h"
     "files.h"
@@ -73,5 +71,4 @@ target_link_libraries(sysagent
     fmt::fmt
     rapidjson
     spdlog::spdlog
-    DCGM::dcgm
 )

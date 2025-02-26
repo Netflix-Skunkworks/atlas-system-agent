@@ -10,7 +10,7 @@ fi
 
 if [[ -z "$BUILD_TYPE" ]]; then
   # Choose: Debug, Release, RelWithDebInfo and MinSizeRel. Use Debug for asan checking locally.
-  BUILD_TYPE="Debug"
+  BUILD_TYPE="Release"
 fi
 
 BLUE="\033[0;34m"

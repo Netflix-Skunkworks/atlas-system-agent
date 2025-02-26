@@ -3,100 +3,93 @@
 #include <iostream>
 #include <optional>
 #include <iostream>
+#include "util.h"
+
 #include <gtest/gtest.h>
 
+struct DataLine {
+    std::string fieldName;
+    int fieldId;
+    double value;
+    std::string valueInterpretation;
 
-void PrintValues(const std::map<int, std::vector<dcgmFieldValue_v1>> &field_val_map)
+    // Constructor to initialize the struct
+    DataLine(std::string name, int id, double val, std::string interpretation)
+        : fieldName(name), fieldId(id), value(val), valueInterpretation(interpretation) {}
+};
+
+
+
+void ParseLines(std::vector<std::string> &lines, std::map<int, std::vector<DataLine>> &dataMap)
 {
-    // Iterate over each GPU in the map and print the field values
-    for (const auto &gpuPair : field_val_map)
+    // Loop through each line in your input
+    for (const auto& line : lines) 
     {
-        unsigned int gpuId = gpuPair.first;
-        const std::vector<dcgmFieldValue_v1> &fieldValues = gpuPair.second;
-
-        std::cout << "GPU " << gpuId << " field values:" << std::endl;
-
-        // Iterate over each field value for this GPU and print it
-        for (const auto &fieldValue : fieldValues)
+        // Check if the line starts with "Data:"
+        if (line.substr(0, 5) != "Data:") 
         {
-            dcgm_field_meta_p fieldMeta = DcgmFieldGetById(fieldValue.fieldId);
-            std::string fieldName = (fieldMeta ? fieldMeta->tag : "Unknown");
-
-            std::cout << "Name: " << fieldName << std::endl;
-            std::cout << "Field ID => " << fieldValue.fieldId << std::endl;
-            std::cout << "Value => ";
-
-            switch (fieldMeta ? fieldMeta->fieldType : DCGM_FI_UNKNOWN)
-            {
-            case DCGM_FT_DOUBLE:
-                std::cout << fieldValue.value.dbl;
-                break;
-            case DCGM_FT_INT64:
-                std::cout << fieldValue.value.i64;
-                break;
-            case DCGM_FT_STRING:
-                std::cout << fieldValue.value.str;
-                break;
-            case DCGM_FT_TIMESTAMP:
-                std::cout << fieldValue.value.i64;
-                break;
-            case DCGM_FT_BINARY:
-                // Handle binary data if required
-                std::cout << "(binary data)";
-                break;
-            default:
-                std::cout << "Unknown field type.";
-                break;
-            }
-
-            std::cout << std::endl; // Add a newline after each field value
+            std::cout << "Skipping invalid line: " << line << std::endl;
+            continue; // Skip the line if it doesn't start with "Data:"
         }
 
-        std::cout << std::endl; // Add a newline after each GPU's field values
+        // Remove the "Data:" prefix for further processing
+        std::string dataPart = line.substr(5); // Everything after "Data:"
+        
+        // Example: Split the line by comma (assuming CSV format)
+        size_t pos = 0;
+        std::string token;
+        std::vector<std::string> tokens;
+
+        while ((pos = dataPart.find(',')) != std::string::npos) 
+        {
+            token = dataPart.substr(0, pos);
+            tokens.push_back(token);
+            dataPart.erase(0, pos + 1);
+        }
+        tokens.push_back(dataPart);  // The last token
+
+        // Extract the fields from the tokens
+        int gpuId = std::stoi(tokens[0]);
+        std::string fieldName = tokens[1];
+        int fieldId = std::stoi(tokens[2]);
+        double value = std::stod(tokens[3]);
+        std::string valueInterpretation = tokens[4];
+
+        // Create a DataLine object from the extracted data
+        DataLine dataLine(fieldName, fieldId, value, valueInterpretation);
+
+        // Insert the DataLine into the map under the correct gpuId
+        dataMap[gpuId].push_back(dataLine);
     }
 }
 
-void PrintErrorCode(ErrorCode code)
+void PrintDataMap(std::map<int, std::vector<DataLine>> &dataMap)
 {
-    switch (code)
-    {
-    case ErrorCode::SUCCESS:
-        std::cout << "Operation succeeded!" << std::endl;
-        break;
-    case ErrorCode::INITIALIZATION_FAILED:
-        std::cout << "Error initializing DCGM engine. Return: "; //<< errorString(result) << std::endl;
-        break;
-    case ErrorCode::EMBEDDED_MODE_FAILED_TO_START:
-        std::cout << "Error starting embedded DCGM engine. Return: "; // << errorString(result) << std::endl;
-        break;
-    case ErrorCode::FAILED_TO_GATHER_NUMBER_OF_DEVICES:
-        std::cout << "Error fetching devices. Return: "; //<< errorString(result) << std::endl;
-        break;
-    case ErrorCode::NO_DEVICES_TO_PROFILE:
-        std::cout << "Device count on machine is 0. No devices to profile" << std::endl;
-        break;
-    case ErrorCode::FAILED_TO_CREATE_FIELD_GROUP:
-        std::cout << "Failed to create a field group" << std::endl;
-        break;
-    case ErrorCode::FAILED_TO_WATCH_FIELDS:
-        std::cout << "Error setting watches. Result: " << std::endl;
-        break;
-    default:
-        std::cout << "Unknown error code.\n";
-        break;
+    // Print the result (for debugging or verification)
+    for (const auto& [gpuId, dataLines] : dataMap) {
+        std::cout << "GPU ID: " << gpuId << std::endl;
+        for (const auto& dataLine : dataLines) {
+            std::cout << "  Field: " << dataLine.fieldName
+                      << ", Field ID: " << dataLine.fieldId
+                      << ", Value: " << dataLine.value
+                      << ", Interpretation: " << dataLine.valueInterpretation << std::endl;
+        }
     }
 }
 
-
-TEST(CpuFreq, Stats) 
+TEST(EverettB, EverettB) 
 {
-    GpuMetricsDCGM gpuMetrics{};
-    std::map<int, std::vector<dcgmFieldValue_v1>> field_value_map{};
-    ErrorCode ec = gpuMetrics.Driver(field_value_map);
-    if (ErrorCode::SUCCESS != ec)
-    {
-        PrintErrorCode(ec);
-    }
+    
+    // Path to the binary in your CMake build folder
+    const char* binaryPath = "cmake-build/bin/dcgm_stats_main";
 
-    PrintValues(field_value_map);  
+    auto lines = atlasagent::read_output_lines(binaryPath, 50000);
+
+    std::map<int, std::vector<DataLine>> dataMap;
+
+    ParseLines(lines, dataMap);
+
+    std::cout << "Everett Checkoutput Below Here:" << std::endl;
+    PrintDataMap(dataMap);
+
 }
