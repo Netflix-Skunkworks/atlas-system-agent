@@ -1,7 +1,8 @@
 
 #include "dcgm_executor.h"
 #include "dcgm_fields.h"
-
+#include <iostream>
+#include <fstream>
 template <class Reg>
 void DCGMExecutor<Reg>::ParseLines(std::vector<std::string> &lines, std::map<int, std::vector<DataLine>> &dataMap)
 {
@@ -49,6 +50,16 @@ void DCGMExecutor<Reg>::ParseLines(std::vector<std::string> &lines, std::map<int
 template <class Reg>
 void DCGMExecutor<Reg>::PrintDataMap(std::map<int, std::vector<DataLine>> &dataMap)
 {
+
+    // Create an ofstream to open the file for output
+    std::ofstream outFile("/opt/output.txt");
+
+    // Save the original standard output stream (optional)
+    std::streambuf* orig_cout_stream = std::cout.rdbuf();
+
+    // Redirect std::cout to the file
+    std::cout.rdbuf(outFile.rdbuf());
+
     // Print the result (for debugging or verification)
     for (const auto& [gpuId, dataLines] : dataMap)
     {
@@ -61,6 +72,8 @@ void DCGMExecutor<Reg>::PrintDataMap(std::map<int, std::vector<DataLine>> &dataM
                       << ", Interpretation: " << dataLine.valueInterpretation << std::endl;
         }
     }
+    // Restore the original std::cout
+    std::cout.rdbuf(orig_cout_stream);
 }
 
 template <class Reg>
@@ -75,55 +88,44 @@ void DCGMExecutor<Reg>::UpdateMetrics(std::map<int, std::vector<DataLine>> &data
             switch (dataLine.fieldId)
             {
             case DCGM_FI_DEV_POWER_USAGE:
-                detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
+                detail::gauge(registry_, "gpu.dcgm.powerUsage", gpuId)->Set(dataLine.value);
                 break;
             case DCGM_FI_DEV_GPU_TEMP:
-                detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
+                detail::gauge(registry_, "gpu.dcgm.deviceTemp", gpuId)->Set(dataLine.value);
                 break;
             case DCGM_FI_PROF_SM_ACTIVE:
-                detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
+                detail::gauge(registry_, "gpu.dcgm.sm", gpuId)->Set(dataLine.value);
                 break;
             case DCGM_FI_PROF_SM_OCCUPANCY:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.sm", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_PIPE_TENSOR_ACTIVE:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.tensorCoresUtilization", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_DRAM_ACTIVE:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.memoryBandwidthUtilization", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_PIPE_FP32_ACTIVE:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.pipeUtilization", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_PIPE_FP16_ACTIVE:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.pipeUtilization", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_PCIE_TX_BYTES:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.pcie.bytes", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_PCIE_RX_BYTES:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.pcie.bytes", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_NVLINK_RX_BYTES:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.nvlink.bytes", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_NVLINK_TX_BYTES:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.nvlink.bytes", gpuId)->Set(dataLine.value);
+                break;
             case DCGM_FI_PROF_GR_ENGINE_ACTIVE:
-            detail::gauge(registry_, "gpu.usedMemory", gpuId)->Set(dataLine.value);
-    
-            break;
+                detail::gauge(registry_, "gpu.dcgm.graphicsEngineActivity", gpuId)->Set(dataLine.value);
+                break;
             default:
                 std::cout << "Error Unknown field type.";
                 break;
@@ -147,7 +149,6 @@ bool DCGMExecutor<Reg>::DCGMMetrics()
     {
         return false;
     }
-
 
     return true;
 }
