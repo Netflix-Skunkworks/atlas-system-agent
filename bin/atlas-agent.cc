@@ -16,8 +16,12 @@
 #include <condition_variable>
 #include <csignal>
 #include <fmt/chrono.h>
+#include <filesystem>
+
 #include <getopt.h>
 #include <random>
+
+#include "../lib/dcgm_executor.h"
 
 using atlasagent::GetLogger;
 using atlasagent::Logger;
@@ -239,6 +243,22 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
   Proc proc{registry, net_tags};
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
+  
+  std::optional<DCGMExecutor<TaggingRegistry>> gpuDCGm{std::nullopt};
+
+  unsigned int dcgmFailureCount = 0;
+  try
+  {
+    if(true == std::filesystem::exists(DCGMExecutorConstants::UbuntuDCGMSharedLibPath))
+    {
+      gpuDCGm.emplace(registry);
+    }
+  }
+  catch (const std::exception& e) 
+  {
+    std::cerr << e.what() << std::endl;
+  }
+  
 
   // initial polling delay, to prevent publishing too close to a minute boundary
   auto delay = initial_polling_delay();
@@ -268,6 +288,18 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
       if (gpu) {
         gpu->gpu_metrics();
       }
+      if (true == gpuDCGm.has_value() && dcgmFailureCount < DCGMExecutorConstants::ConsecutiveFailureThreshold)
+      {
+        if (false == gpuDCGm.value().DCGMMetrics())
+        {
+          dcgmFailureCount += 1;
+        }
+        else
+        {
+          dcgmFailureCount = 0;
+        }
+      }
+
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
       Logger()->info("Published system metrics (delay={})", elapsed);
       next_slow_run += seconds(60);
