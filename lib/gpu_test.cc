@@ -109,16 +109,16 @@ TEST(Gpu, Metrics) {
   EXPECT_EQ(17, ms.size());
   auto values = measurements_to_map(ms, "gpu");
   expect_value(&values, "gpu.count|gauge", 2);
-  expect_value(&values, "gpu.usedMemory|gauge|gpu-0", 2900);
-  expect_value(&values, "gpu.freeMemory|gauge|gpu-0", 100);
-  expect_value(&values, "gpu.totalMemory|gauge|gpu-0", 3000);
-  expect_value(&values, "gpu.usedMemory|gauge|gpu-1", 2000);
-  expect_value(&values, "gpu.freeMemory|gauge|gpu-1", 1000);
-  expect_value(&values, "gpu.totalMemory|gauge|gpu-1", 3000);
-  expect_value(&values, "gpu.utilization|gauge|gpu-0", 0);
-  expect_value(&values, "gpu.utilization|gauge|gpu-1", 100);
-  expect_value(&values, "gpu.memoryActivity|gauge|gpu-0", 0);
-  expect_value(&values, "gpu.memoryActivity|gauge|gpu-1", 25);
+  expect_value(&values, "gpu.usedMemory|gauge|0", 2900);
+  expect_value(&values, "gpu.freeMemory|gauge|0", 100);
+  expect_value(&values, "gpu.totalMemory|gauge|0", 3000);
+  expect_value(&values, "gpu.usedMemory|gauge|1", 2000);
+  expect_value(&values, "gpu.freeMemory|gauge|1", 1000);
+  expect_value(&values, "gpu.totalMemory|gauge|1", 3000);
+  expect_value(&values, "gpu.utilization|gauge|0", 0);
+  expect_value(&values, "gpu.utilization|gauge|1", 100);
+  expect_value(&values, "gpu.memoryActivity|gauge|0", 0);
+  expect_value(&values, "gpu.memoryActivity|gauge|1", 25);
 
   expect_dist_summary(ms, "gpu.temperature", 72 + 42, 2, 72, 72 * 72.0 + 42 * 42);
 }

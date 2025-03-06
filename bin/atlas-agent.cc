@@ -5,6 +5,7 @@
 #include "../lib/aws.h"
 #include "../lib/cgroup.h"
 #include "../lib/cpufreq.h"
+#include "../lib/dcgm_stats.h"
 #include "../lib/disk.h"
 #include "../lib/ethtool.h"
 #include "../lib/gpumetrics.h"
@@ -12,6 +13,7 @@
 #include "../lib/perfmetrics.h"
 #include "../lib/pressure_stall.h"
 #include "../lib/proc.h"
+#include "../lib/util.h"
 #include "backward.hpp"
 #include <condition_variable>
 #include <csignal>
@@ -48,9 +50,7 @@ std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<
 }
 
 #if defined(TITUS_SYSTEM_SERVICE)
-static void gather_peak_titus_metrics(CGroup* cGroup) {
-  cGroup->cpu_peak_stats();
-}
+static void gather_peak_titus_metrics(CGroup* cGroup) { cGroup->cpu_peak_stats(); }
 
 static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws) {
   aws->update_stats();
@@ -136,7 +136,7 @@ static void handle_signal(int signal) {
 }
 
 static void init_signals() {
-  struct sigaction sa{};
+  struct sigaction sa {};
   sa.sa_handler = &handle_signal;
   sa.sa_flags = SA_RESETHAND;  // remove the handler after the first signal
   sigfillset(&sa.sa_mask);
@@ -155,7 +155,8 @@ long initial_polling_delay() {
   long step_boundary = epoch.count() / 60 * 60;
   long start_second = epoch.count() - step_boundary;
 
-  Logger()->debug("epoch={} step_boundary={} start_second={}", epoch.count(), step_boundary, start_second);
+  Logger()->debug("epoch={} step_boundary={} start_second={}", epoch.count(), step_boundary,
+                  start_second);
 
   if (start_second < 10) {
     std::uniform_int_distribution<long> start_delay_dist(10 - start_second, 50 - start_second);
@@ -240,6 +241,18 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
+  std::optional<GpuMetricsDCGM<TaggingRegistry> > gpuDCGM{std::nullopt};
+  if (atlasagent::is_file_present(DCGMConstants::dcgmiPath)) {
+    gpuDCGM.emplace(registry);
+  }
+
+  if (gpuDCGM.has_value()) {
+    std::string serviceStatus = atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
+    Logger()->info("DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service state: {}.", serviceStatus);
+  } else {
+    Logger()->info("DCGMI binary not present. Agent will not collect DCGM metrics.");
+  }
+
   // initial polling delay, to prevent publishing too close to a minute boundary
   auto delay = initial_polling_delay();
   Logger()->info("Initial polling delay is {}s", delay);
@@ -268,6 +281,13 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
       if (gpu) {
         gpu->gpu_metrics();
       }
+
+      if (gpuDCGM.has_value() && atlasagent::is_service_running(DCGMConstants::ServiceName)) {
+        if (gpuDCGM.value().gather_metrics() == false) {
+          Logger()->error("Failed to gather DCGM metrics");
+        }
+      }
+
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
       Logger()->info("Published system metrics (delay={})", elapsed);
       next_slow_run += seconds(60);

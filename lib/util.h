@@ -7,6 +7,10 @@
 #include "files.h"
 #include "spectator/id.h"
 
+struct UtilConstants {
+  static constexpr auto ServiceActiveCmd{"systemctl is-active --quiet"};
+};
+
 namespace atlasagent {
 
 StdIoFile open_file(const std::string& prefix, const char* name);
@@ -36,7 +40,7 @@ spectator::Tags parse_tags(const char* s);
 
 // construct a spectator id with extra tags - intended for use with network interface metrics
 inline spectator::IdPtr id_for(const char* name, const char* iface, const char* idStr,
-                    const spectator::Tags& extra) noexcept {
+                               const spectator::Tags& extra) noexcept {
   spectator::Tags tags{extra};
   tags.add("iface", iface);
   if (idStr != nullptr) {
@@ -44,5 +48,9 @@ inline spectator::IdPtr id_for(const char* name, const char* iface, const char* 
   }
   return spectator::Id::of(name, tags);
 }
+
+bool is_service_running(const char* serviceName);
+
+bool is_file_present(const char* fileName);
 
 }  // namespace atlasagent
