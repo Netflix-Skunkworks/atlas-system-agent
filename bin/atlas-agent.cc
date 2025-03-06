@@ -269,7 +269,7 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
         gpu->gpu_metrics();
       }
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
-      Logger()->info("Published system metrics (delay={})", elapsed);
+      Logger()->debug("Published system metrics (delay={})", elapsed);
       next_slow_run += seconds(60);
     }
 
