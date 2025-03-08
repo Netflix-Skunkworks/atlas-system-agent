@@ -7,8 +7,8 @@ namespace atlasagent {
 
 namespace detail {
 template <typename Reg>
-inline auto gauge(Reg* registry, const char* name, unsigned gpu, const char* id = nullptr) {
-  auto tags = spectator::Tags{{"gpu", fmt::format("gpu-{}", gpu)}};
+inline auto gauge(Reg* registry, const char* name, unsigned int gpu, const char* id = nullptr) {
+  auto tags = spectator::Tags{{"gpu", fmt::format("{}", gpu)}};
   if (id != nullptr) {
     tags.add("id", id);
   }

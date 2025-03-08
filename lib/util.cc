@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "absl/strings/str_split.h"
 #include <cinttypes>
+#include <filesystem>
 #include <sstream>
 #include <unistd.h>
 #include <signal.h>
@@ -238,6 +239,20 @@ spectator::Tags parse_tags(const char* s) {
     }
   }
   return tags;
+}
+
+bool is_service_running(const char* serviceName) {
+  std::string command =
+      std::string(UtilConstants::ServiceActiveCmd) + " " + std::string(serviceName);
+  int returnCode = system(command.c_str());
+  return returnCode == 0;
+}
+
+bool is_file_present(const char* fileName) try {
+  return std::filesystem::exists(fileName) == true;
+} catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception thrown in is_file_present: {}", e.what());
+  return false;
 }
 
 }  // namespace atlasagent

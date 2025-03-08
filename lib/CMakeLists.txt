@@ -38,6 +38,8 @@ add_library(sysagent
     "cgroup.h"
     "config.h"
     "cpufreq.h"
+    "dcgm_stats.h"
+    "dcgm_stats.cc"
     "disk.h"
     "ethtool.h"
     "files.h"
