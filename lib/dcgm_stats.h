@@ -25,8 +25,8 @@ struct DCGMConstants {
   /* DCGMI reports bytes as bytes per second, multiply by this constant to
     ensure consistency with our Counters */
   static constexpr auto BytesConversion{60};
-  /* DCGMI reports percentiles as decimals so .93 is actually 93 percent
-    we need to multiply our values by this const*/
+  /* DCGMI reports percentages as decimals, so .93 is actually 93 percent, and
+    we need to multiply our values by this const */
   static constexpr auto PercentileConversion{100};
 };
 
