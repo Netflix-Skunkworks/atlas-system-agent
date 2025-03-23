@@ -13,6 +13,7 @@
 #include "../lib/perfmetrics.h"
 #include "../lib/pressure_stall.h"
 #include "../lib/proc.h"
+#include "../lib/service_monitor.h"
 #include "../lib/util.h"
 #include "backward.hpp"
 #include <condition_variable>
@@ -246,6 +247,14 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
     gpuDCGM.emplace(registry);
   }
 
+  /*DCGM & ServiceMonitor have Dynamic metric collection lets improve how we handle this*/
+
+  std::optional<ServiceMonitor<TaggingRegistry>> serviceMetrics;
+  std::optional<std::vector<std::string>> serviceConfig{parse_service_monitor_config(ServiceMonitorConstants::ConfigPath)};
+  if (serviceConfig.has_value()) {
+    serviceMetrics.emplace(registry, serviceConfig.value());
+  }
+
   if (gpuDCGM.has_value()) {
     std::string serviceStatus = atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
     Logger()->info("DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service state: {}.", serviceStatus);
@@ -285,6 +294,13 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
       if (gpuDCGM.has_value() && atlasagent::is_service_running(DCGMConstants::ServiceName)) {
         if (gpuDCGM.value().gather_metrics() == false) {
           Logger()->error("Failed to gather DCGM metrics");
+        }
+      }
+
+      if (serviceMetrics.has_value())
+      {
+        if (serviceMetrics.value().gather_metrics() == false){
+          Logger()->error("Failed to gather Service metrics");
         }
       }
 

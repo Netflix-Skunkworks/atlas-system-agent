@@ -60,6 +60,8 @@ add_library(sysagent
     "pressure_stall.h"
     "proc.h"
     "sample_config.cc"
+    "service_monitor.cc"
+    "service_monitor.h"
     "tagger.h"
     "tagging_registry.h"
     "util.cc"
