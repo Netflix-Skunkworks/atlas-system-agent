@@ -38,6 +38,8 @@ add_library(sysagent
     "cgroup.h"
     "config.h"
     "cpufreq.h"
+    "dbus.h"
+    "dbus.cc"
     "dcgm_stats.h"
     "dcgm_stats.cc"
     "disk.h"
@@ -69,6 +71,7 @@ add_library(sysagent
 )
 target_link_libraries(sysagent
     contain
+    dbus-1
     spectator
     abseil::abseil
     CURL::libcurl
