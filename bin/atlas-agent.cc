@@ -249,7 +249,7 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
 
   /*DCGM & ServiceMonitor have Dynamic metric collection lets improve how we handle this*/
 
-  std::optional<ServiceMonitor<TaggingRegistry>> serviceMetrics;
+  std::optional<ServiceMonitor<TaggingRegistry>> serviceMetrics{};
   std::optional<std::vector<std::regex>> serviceConfig{parse_service_monitor_config(ServiceMonitorConstants::ConfigPath)};
   if (serviceConfig.has_value()) {
     serviceMetrics.emplace(registry, serviceConfig.value());

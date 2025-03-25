@@ -22,6 +22,8 @@ struct ProcessTimes {
 };
 
 std::optional<std::vector<std::regex>> parse_service_monitor_config(const char* configPath);
+void list_all_units();
+void GetServiceProperties(const std::string& serviceName);
 
 template <typename Reg = atlasagent::TaggingRegistry>
 class ServiceMonitor {
@@ -38,7 +40,7 @@ class ServiceMonitor {
   bool gather_metrics();
 
  private:
-  void InitMonitoredServices();
+  void init_monitored_services();
   bool updateMetrics();
 
   bool initSuccess{false};

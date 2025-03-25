@@ -43,7 +43,7 @@ struct ServiceProperties {
   std::string activeState;
 };
 
-void ListAllUnits() try {
+void list_all_units() try {
   // Create system bus connection
   auto connection = sdbus::createSystemBusConnection();
 
@@ -69,10 +69,11 @@ void ListAllUnits() try {
               << "Load State: " << std::get<2>(unit) << "\n"
               << "Active State: " << std::get<3>(unit) << "\n"
               << "Sub State: " << std::get<4>(unit) << "\n"
-              << "Object Path: " << std::get<5>(unit) << "\n"
-              << "Job ID: " << std::get<6>(unit) << "\n"
-              << "Job Type: " << std::get<7>(unit) << "\n"
-              << "Job Path: " << std::get<8>(unit) << "\n"
+              << "Followed Unit" << std::get<5>(unit) << "\n"
+              << "Object Path: " << std::get<6>(unit) << "\n"
+              << "Job ID: " << std::get<7>(unit) << "\n"
+              << "Job Type: " << std::get<8>(unit) << "\n"
+              << "Job Path: " << std::get<9>(unit) << "\n"
               << "------------------------\n";
   }
 
@@ -144,18 +145,25 @@ void GetServiceProperties(const std::string& serviceName) try {
 
 std::optional<std::vector<std::regex>> parse_service_monitor_config(const char* configPath) {
   std::optional<std::vector<std::string>> stringPatterns = atlasagent::read_file(configPath);
-  // If reading the config fails or the config is empty return
-  if (!stringPatterns.has_value() || stringPatterns.value().empty()) {
+
+  if (stringPatterns.has_value() == false) {
+    atlasagent::Logger()->error("Error reading service_monitor config.");
+  }
+
+  if (stringPatterns.value().empty()) {
+    atlasagent::Logger()->debug("Debug service_monitor config present but empty");
     return std::nullopt;
   }
 
-  std::vector<std::regex> regexPatterns;
-  regexPatterns.reserve(stringPatterns.value().size());
+  std::cout << "StringPatterns Size: " << stringPatterns.value().size() << std::endl;
+  std::vector<std::regex> regexPatterns(stringPatterns.value().size());
 
   for (const auto& regex_pattern : stringPatterns.value()) {
     try {
+      std::cout << "Pattern: " << regex_pattern << std::endl;
       regexPatterns.emplace_back(regex_pattern);
     } catch (const std::regex_error& e) {
+      atlasagent::Logger()->error("Exception thrown creating regex:{} {}", regex_pattern, e.what());
       return std::nullopt;
     }
   }
@@ -226,7 +234,7 @@ std::optional<unsigned int> get_number_fds(pid_t pid) try {
 }
 
 template <class Reg>
-void ServiceMonitor<Reg>::InitMonitoredServices() {
+void ServiceMonitor<Reg>::init_monitored_services() {
   // DBus dbus{};
 
   // Todo: Rename this to get AllUnits
@@ -258,7 +266,7 @@ template <class Reg>
 bool ServiceMonitor<Reg>::gather_metrics() {
   // Pattern match to find the services we want to monitor
   if (this->initSuccess == false) {
-    this->InitMonitoredServices();
+    this->init_monitored_services();
   }
 
   // We initialized but there are no services to monitor
