@@ -11,12 +11,12 @@ class AtlasSystemAgentConan(ConanFile):
         "abseil/20240116.2",
         "asio/1.32.0",
         "backward-cpp/1.6",
-        "dbus/1.15.8",
         "fmt/11.0.2",
         "gtest/1.15.0",
         "libcurl/8.10.1",
         "openssl/3.3.2",
         "rapidjson/cci.20230929",
+        "sdbus-cpp/2.0.0",
         "spdlog/1.15.0",
         "zlib/1.3.1",
     )

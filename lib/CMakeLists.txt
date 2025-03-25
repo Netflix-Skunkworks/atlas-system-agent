@@ -38,8 +38,6 @@ add_library(sysagent
     "cgroup.h"
     "config.h"
     "cpufreq.h"
-    "dbus.h"
-    "dbus.cc"
     "dcgm_stats.h"
     "dcgm_stats.cc"
     "disk.h"
@@ -77,5 +75,6 @@ target_link_libraries(sysagent
     CURL::libcurl
     fmt::fmt
     rapidjson
+    SDBusCpp::sdbus-c++
     spdlog::spdlog
 )
