@@ -255,6 +255,13 @@ void ServiceMonitor<Reg>::init_monitored_services() {
 
 template <class Reg>
 bool ServiceMonitor<Reg>::updateMetrics() {
+
+  for (const auto service : monitoredServices_){
+    detail::guage(registry_, "cpu_usage")->Set(0);
+    detail::guage(registry_, "rss")->Set(0);
+    detail::guage(registry_, "fds")->Set(0)
+  }
+
   return true;
 }
 
