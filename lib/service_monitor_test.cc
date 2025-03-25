@@ -12,11 +12,11 @@
 // }
 
 
-void PrintConfig(std::vector<std::regex> config){
-    for (auto x : config){
-        std::cout << "Pattern2: " << x.pattern() << std::endl;
-    }
-}
+// void PrintConfig(std::vector<std::regex> config){
+//     for (auto x : config){
+//         //std::cout << "Pattern2: " << x.pattern() << std::endl;
+//     }
+// }
 
 
 
@@ -26,7 +26,6 @@ void PrintConfig(std::vector<std::regex> config){
 TEST(ServiceMonitorTest, ParseValidConfig){
     auto filepath{"testdata/resources2/service_monitor/valid_regext.txt"};
     auto config = parse_service_monitor_config(filepath);
-    PrintConfig(config.value());
     EXPECT_NE(std::nullopt, config);
     EXPECT_EQ(20, config.value().size());
 }

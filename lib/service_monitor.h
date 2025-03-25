@@ -5,6 +5,12 @@
 #include <regex>
 #include <string>
 #include <vector>
+#include <sdbus-c++/sdbus-c++.h>
+
+// Define the Unit structure matching the D-Bus signature (ssssssouso)
+using Unit =
+    sdbus::Struct<std::string, std::string, std::string, std::string, std::string, std::string,
+                  sdbus::ObjectPath, uint32_t, std::string, sdbus::ObjectPath>;
 
 struct ServiceMonitorConstants {
   static constexpr auto ConfigPath{"/opt/service_config.txt"};
@@ -22,7 +28,7 @@ struct ProcessTimes {
 };
 
 std::optional<std::vector<std::regex>> parse_service_monitor_config(const char* configPath);
-void list_all_units();
+std::optional<std::vector<Unit>> list_all_units();
 void GetServiceProperties(const std::string& serviceName);
 
 template <typename Reg = atlasagent::TaggingRegistry>

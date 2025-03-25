@@ -1,5 +1,4 @@
 #include "service_monitor.h"
-#include <sdbus-c++/sdbus-c++.h>
 #include "util.h"
 #include <filesystem>
 #include <regex>
@@ -33,17 +32,14 @@ struct DBusConstants {
   static constexpr auto PropertyMainPID = "MainPID";
 };
 
-// Define the Unit structure matching the D-Bus signature (ssssssouso)
-using Unit =
-    sdbus::Struct<std::string, std::string, std::string, std::string, std::string, std::string,
-                  sdbus::ObjectPath, uint32_t, std::string, sdbus::ObjectPath>;
+
 
 struct ServiceProperties {
   uint32_t mainPid;
   std::string activeState;
 };
 
-void list_all_units() try {
+std::optional<std::vector<Unit>> list_all_units() try {
   // Create system bus connection
   auto connection = sdbus::createSystemBusConnection();
 
@@ -76,14 +72,13 @@ void list_all_units() try {
               << "Job Path: " << std::get<9>(unit) << "\n"
               << "------------------------\n";
   }
-
-  return;
+  return units;
 } catch (const sdbus::Error& e) {
-  std::cerr << "D-Bus error: " << e.getName() << " with message: " << e.getMessage() << std::endl;
-  return;
+  atlasagent::Logger()->error("D-Bus Exception: {} with message: {}", e.getName(), e.getMessage());
+  return std::nullopt;
 } catch (const std::exception& e) {
-  std::cerr << "Error: " << e.what() << std::endl;
-  return;
+  atlasagent::Logger()->error("List All Units exception: {}", e.what());
+  return std::nullopt;
 }
 
 void GetServiceProperties(const std::string& serviceName) try {
@@ -155,12 +150,11 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config(const char* 
     return std::nullopt;
   }
 
-  std::cout << "StringPatterns Size: " << stringPatterns.value().size() << std::endl;
-  std::vector<std::regex> regexPatterns(stringPatterns.value().size());
+  std::vector<std::regex> regexPatterns{};
+  regexPatterns.reserve(stringPatterns.value().size());
 
   for (const auto& regex_pattern : stringPatterns.value()) {
     try {
-      std::cout << "Pattern: " << regex_pattern << std::endl;
       regexPatterns.emplace_back(regex_pattern);
     } catch (const std::regex_error& e) {
       atlasagent::Logger()->error("Exception thrown creating regex:{} {}", regex_pattern, e.what());
@@ -235,24 +229,28 @@ std::optional<unsigned int> get_number_fds(pid_t pid) try {
 
 template <class Reg>
 void ServiceMonitor<Reg>::init_monitored_services() {
-  // DBus dbus{};
 
-  // Todo: Rename this to get AllUnits
-  // auto all_units = dbus.GetAllServices();
-  // if (all_units.has_value() == false) {
-  //  return;
-  //}
+  auto all_units = list_all_units();
+  if (all_units.has_value() == false)
+  {
+    atlasagent::Logger()->error("Error listing all units");
+    return;
+  }
 
-  // Units were retrieved init is now success because monitoredServices now initialized
-  // this->initSuccess = true;
-
-  // for (const auto& regex : this->config_) {
-  //   for (const auto& unit : all_units.value()) {
-  //     if (std::regex_search(unit.name, regex)) {
-  //       this->monitoredServices_.insert(unit.name.c_str());
-  //     }
-  //   }
-  // }
+  for (const auto& regex : this->config_) {
+    for (const auto& unit : all_units.value()) {
+      if (std::regex_search(unit.name, regex)) {
+        this->monitoredServices_.insert(unit.name.c_str());
+      }
+    }
+  }
+  // Units were retrieved. initSuccess is now true because monitoredServices now initialized
+  // with pattern matched services. Metrics will be computed for those services on the subsequent 
+  // iteration
+  this->initSuccess = true;
+  if (this->monitoredServices_.size() == 0){
+    atlasagent::Logger()->error("User Error: Monitor Service config provided but no services matched pattern");
+  }
 }
 
 template <class Reg>
@@ -263,14 +261,15 @@ bool ServiceMonitor<Reg>::updateMetrics() {
 // Todo change to optional bool because if size is 0 not a failure but user error
 // Maybe make a way to shutdown this module.
 template <class Reg>
-bool ServiceMonitor<Reg>::gather_metrics() {
-  // Pattern match to find the services we want to monitor
+bool ServiceMonitor<Reg>::gather_metrics() {  
   if (this->initSuccess == false) {
     this->init_monitored_services();
+    return;
   }
 
-  // We initialized but there are no services to monitor
-  // No services matched the pattern
+  // To Do: We initialized but there are no services to monitor (no patterns matched)
+  // This would be user error. We should create a way to remove this Collector from 60 sec collection
+  // I have logged this error in init_monitored_services
   if (this->monitoredServices_.size() == 0) {
     return false;
   }
