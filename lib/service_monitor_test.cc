@@ -25,7 +25,7 @@
 
 TEST(ServiceMonitorTest, ParseValidConfig){
     auto filepath{"testdata/resources2/service_monitor/valid_regext.txt"};
-    auto config = parse_service_monitor_config(filepath);
+    auto config = parse_regex_config_file(filepath);
     EXPECT_NE(std::nullopt, config);
     EXPECT_EQ(20, config.value().size());
 }
@@ -35,5 +35,5 @@ TEST(ServiceTest, TestA){
 }
 
 TEST(ServiceTest, TestB){
-  GetServiceProperties("nvidia-dcgm.service");
+  get_service_properties("nvidia-dcgm.service");
 }

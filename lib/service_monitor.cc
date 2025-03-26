@@ -32,13 +32,6 @@ struct DBusConstants {
   static constexpr auto PropertyMainPID = "MainPID";
 };
 
-
-
-struct ServiceProperties {
-  uint32_t mainPid;
-  std::string activeState;
-};
-
 std::optional<std::vector<Unit>> list_all_units() try {
   // Create system bus connection
   auto connection = sdbus::createSystemBusConnection();
@@ -81,7 +74,7 @@ std::optional<std::vector<Unit>> list_all_units() try {
   return std::nullopt;
 }
 
-void GetServiceProperties(const std::string& serviceName) try {
+std::optional<ServiceProperties> get_service_properties(const std::string& serviceName) try {
   // Connect to the system bus
   auto connection = sdbus::createSystemBusConnection();
 
@@ -122,7 +115,10 @@ void GetServiceProperties(const std::string& serviceName) try {
       .onInterface(DBusConstants::propertiesInterface)
       .withArguments(DBusConstants::unitInterface, DBusConstants::PropertySubState)
       .storeResultsTo(subStateVariant);
+  
+  
 
+    
   uint32_t mainPid = mainPidVariant.get<uint32_t>();
   std::string activeState = activeStateVariant.get<std::string>();
   std::string subState = subStateVariant.get<std::string>();
@@ -132,15 +128,17 @@ void GetServiceProperties(const std::string& serviceName) try {
   std::cout << "MainPID: " << mainPid << std::endl;
   std::cout << "Active State: " << activeState << std::endl;
   std::cout << "Sub State: " << subState << std::endl;
+  return std::nullopt;
 } catch (const sdbus::Error& e) {
   std::cerr << "D-Bus error: " << e.getName() << " - " << e.getMessage() << std::endl;
+  return std::nullopt;
 } catch (const std::exception& e) {
   std::cerr << "Error: " << e.what() << std::endl;
+  return std::nullopt;
 }
 
-std::optional<std::vector<std::regex>> parse_service_monitor_config(const char* configPath) {
-  std::optional<std::vector<std::string>> stringPatterns = atlasagent::read_file(configPath);
-
+std::optional<std::vector<std::regex>> parse_regex_config_file(const char* configFilePath) {
+  std::optional<std::vector<std::string>> stringPatterns = atlasagent::read_file(configFilePath);
   if (stringPatterns.has_value() == false) {
     atlasagent::Logger()->error("Error reading service_monitor config.");
     return std::nullopt;
@@ -150,10 +148,7 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config(const char* 
     atlasagent::Logger()->debug("Debug service_monitor config present but empty");
     return std::nullopt;
   }
-
   std::vector<std::regex> regexPatterns{};
-  regexPatterns.reserve(stringPatterns.value().size());
-
   for (const auto& regex_pattern : stringPatterns.value()) {
     try {
       regexPatterns.emplace_back(regex_pattern);
@@ -162,8 +157,29 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config(const char* 
       return std::nullopt;
     }
   }
-
   return regexPatterns;
+}
+
+std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(const char* directoryPath) {
+  if (std::filesystem::exists(directoryPath) == false || std::filesystem::is_directory(directoryPath) == false) {  
+    atlasagent::Logger()->error("Invalid service monitor config directory path {}", directoryPath);
+    return std::nullopt;
+  }
+
+  std::vector<std::regex> allRegexPatterns{};
+  for (const auto& file : std::filesystem::recursive_directory_iterator(directoryPath)) {
+    auto regexExpressions = parse_regex_config_file(file.path().c_str());
+
+    if (regexExpressions.has_value() == false){
+      atlasagent::Logger()->error("Error parsing service monitor config {}", file.path().c_str());
+    }
+
+    for (const auto& regex : regexExpressions.value()){
+      allRegexPatterns.push_back(regex);
+    }
+  }
+  return allRegexPatterns;
+
 }
 
 std::optional<std::vector<std::string>> get_proc_fields(pid_t pid) {
@@ -228,12 +244,44 @@ std::optional<unsigned int> get_number_fds(pid_t pid) try {
   return std::nullopt;
 }
 
+void calculate_cpu_usage(unsigned long long oldCpuTime, unsigned long long newCpuTime, ProcessTimes oldProcessTime, ProcessTimes newProcessTime, unsigned int numCores){
+  unsigned long long processTimeDelta = (newProcessTime.uTime - oldProcessTime.uTime) + (newProcessTime.sTime - oldProcessTime.uTime);
+  unsigned long long cpuTimeDelta = newCpuTime - oldCpuTime;
+
+
+  double cpuUsage = 100.0 * (double)processTimeDelta / (double)cpuTimeDelta * numCores;
+
+  std::cout << cpuUsage << std::endl;
+  return;
+}
+
+std::optional<unsigned int> get_cpu_cores() {
+  auto cpuInfo = atlasagent::read_file(ServiceMonitorConstants::CpuInfoPath);
+  if (cpuInfo.has_value() == false){
+    return std::nullopt;
+  }
+  
+  unsigned int cpuCores{0};
+  for (const auto& line : cpuInfo.value()){
+    if (line.substr(0, 9) == "processor") {
+      cpuCores++;
+    }
+  }
+  return cpuCores;
+}
+
 template <class Reg>
 void ServiceMonitor<Reg>::init_monitored_services() {
+  // CPU Cores is used to calculate the % CPU usage
+  auto cpuCores = get_cpu_cores();
+  if (cpuCores.has_value() == false){
+    atlasagent::Logger()->error("Error determining the number of cpu cores");
+    return;
+  }
+  this->numCpuCores = cpuCores.value();
 
   auto all_units = list_all_units();
-  if (all_units.has_value() == false)
-  {
+  if (all_units.has_value() == false) {
     atlasagent::Logger()->error("Error listing all units");
     return;
   }
@@ -246,16 +294,29 @@ void ServiceMonitor<Reg>::init_monitored_services() {
     }
   }
   // Units were retrieved. initSuccess is now true because monitoredServices now initialized
-  // with pattern matched services. Metrics will be computed for those services on the subsequent 
+  // with pattern matched services. Metrics will be computed for those services on the subsequent
   // iteration
   this->initSuccess = true;
-  if (this->monitoredServices_.size() == 0){
-    atlasagent::Logger()->error("User Error: Monitor Service config provided but no services matched pattern");
+  if (this->monitoredServices_.size() == 0) {
+    atlasagent::Logger()->error(
+        "User Error: Monitor Service config provided but no services matched pattern");
   }
 }
 
 template <class Reg>
 bool ServiceMonitor<Reg>::updateMetrics() {
+
+
+
+
+
+
+
+
+
+
+
+
 
   /*
   for (const auto service : monitoredServices_){
@@ -267,20 +328,21 @@ bool ServiceMonitor<Reg>::updateMetrics() {
   return true;
 }
 
-// Todo change to optional bool because if size is 0 not a failure but user error
-// Maybe make a way to shutdown this module.
+
+// To Do: Shutdown module if no services are being monitored
 template <class Reg>
-bool ServiceMonitor<Reg>::gather_metrics() {  
+bool ServiceMonitor<Reg>::gather_metrics() {
   if (this->initSuccess == false) {
     this->init_monitored_services();
     return false;
   }
 
   // To Do: We initialized but there are no services to monitor (no patterns matched)
-  // This would be user error. We should create a way to remove this Collector from 60 sec collection
-  // I have logged this error in init_monitored_services
+  // This would be user error. We should create a way to remove this Collector from 60 sec
+  // collection. I have logged this error in init_monitored_services. Returning true because
+  // this is not a failure but a user error.
   if (this->monitoredServices_.size() == 0) {
-    return false;
+    return true;
   }
 
   if (false == this->updateMetrics()) {
