@@ -143,6 +143,7 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config(const char* 
 
   if (stringPatterns.has_value() == false) {
     atlasagent::Logger()->error("Error reading service_monitor config.");
+    return std::nullopt;
   }
 
   if (stringPatterns.value().empty()) {
@@ -239,8 +240,8 @@ void ServiceMonitor<Reg>::init_monitored_services() {
 
   for (const auto& regex : this->config_) {
     for (const auto& unit : all_units.value()) {
-      if (std::regex_search(unit.name, regex)) {
-        this->monitoredServices_.insert(unit.name.c_str());
+      if (std::regex_search(std::get<0>(unit), regex)) {
+        this->monitoredServices_.insert(std::get<0>(unit).c_str());
       }
     }
   }
@@ -256,12 +257,13 @@ void ServiceMonitor<Reg>::init_monitored_services() {
 template <class Reg>
 bool ServiceMonitor<Reg>::updateMetrics() {
 
+  /*
   for (const auto service : monitoredServices_){
     detail::guage(registry_, "cpu_usage")->Set(0);
     detail::guage(registry_, "rss")->Set(0);
     detail::guage(registry_, "fds")->Set(0)
   }
-
+  */
   return true;
 }
 
@@ -271,7 +273,7 @@ template <class Reg>
 bool ServiceMonitor<Reg>::gather_metrics() {  
   if (this->initSuccess == false) {
     this->init_monitored_services();
-    return;
+    return false;
   }
 
   // To Do: We initialized but there are no services to monitor (no patterns matched)
