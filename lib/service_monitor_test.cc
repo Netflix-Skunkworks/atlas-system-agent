@@ -35,5 +35,5 @@ TEST(ServiceTest, TestA){
 }
 
 TEST(ServiceTest, TestB){
-  get_service_properties("nvidia-dcgm.service");
+  auto x = get_service_properties("nvidia-dcgm.service");
 }

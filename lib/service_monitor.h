@@ -21,6 +21,9 @@ struct ServiceMonitorConstants {
   static constexpr auto CpuInfoPath{"/proc/cpuinfo"};
   static constexpr auto AggregateCpuIndex{0};
   static constexpr unsigned int AggregateCpuDataIndex{1};
+  static constexpr auto ProcPath{"/proc"};
+  static constexpr auto StatPath{"stat"};
+  static constexpr auto FdPath{"fd"};
 };
 
 struct ProcessTimes {
@@ -32,7 +35,7 @@ struct ServiceProperties{
   std::string name;
   std::string activeState;
   std::string subState;
-  uint32_t mainPid;
+  unsigned int mainPid;
 };
 
 
@@ -56,10 +59,12 @@ class ServiceMonitor {
   bool gather_metrics();
 
  private:
-  void init_monitored_services();
+  bool init_monitored_services();
   bool updateMetrics();
 
-  std::unordered_map<pid_t, ProcessTimes> pidMap{};
+  unsigned long long currentCpuTime{0};
+  std::unordered_map<pid_t, ProcessTimes> currentProcessTimes{};
+  
   unsigned int numCpuCores;
   bool initSuccess{false};
   Reg* registry_;
