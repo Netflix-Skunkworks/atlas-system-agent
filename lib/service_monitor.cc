@@ -89,7 +89,6 @@ std::optional<ServiceProperties> get_service_properties(const std::string& servi
       .withArguments(serviceName)
       .storeResultsTo(unitObjectPath);
 
-  std::cout << "Unit path: " << unitObjectPath << std::endl;
 
   // Create a proxy to the service object with the correct path
   auto proxy =
@@ -116,19 +115,12 @@ std::optional<ServiceProperties> get_service_properties(const std::string& servi
       .withArguments(DBusConstants::unitInterface, DBusConstants::PropertySubState)
       .storeResultsTo(subStateVariant);
   
-  
 
-    
   uint32_t mainPid = mainPidVariant.get<uint32_t>();
   std::string activeState = activeStateVariant.get<std::string>();
   std::string subState = subStateVariant.get<std::string>();
 
-  // Print all properties
-  std::cout << "Service: " << serviceName << std::endl;
-  std::cout << "MainPID: " << mainPid << std::endl;
-  std::cout << "Active State: " << activeState << std::endl;
-  std::cout << "Sub State: " << subState << std::endl;
-  return std::nullopt;
+  return ServiceProperties{serviceName, activeState, subState, mainPid};
 } catch (const sdbus::Error& e) {
   std::cerr << "D-Bus error: " << e.getName() << " - " << e.getMessage() << std::endl;
   return std::nullopt;
@@ -150,6 +142,9 @@ std::optional<std::vector<std::regex>> parse_regex_config_file(const char* confi
   }
   std::vector<std::regex> regexPatterns{};
   for (const auto& regex_pattern : stringPatterns.value()) {
+    if (regex_pattern.empty()) {
+      continue;
+    }
     try {
       regexPatterns.emplace_back(regex_pattern);
     } catch (const std::regex_error& e) {
@@ -172,10 +167,11 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(co
 
     if (regexExpressions.has_value() == false){
       atlasagent::Logger()->error("Error parsing service monitor config {}", file.path().c_str());
+      continue;
     }
 
     for (const auto& regex : regexExpressions.value()){
-      allRegexPatterns.push_back(regex);
+      allRegexPatterns.emplace_back(regex);
     }
   }
   return allRegexPatterns;
