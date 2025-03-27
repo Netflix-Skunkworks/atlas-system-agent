@@ -3,9 +3,8 @@
 #include <optional>
 #include <regex>
 #include <sdbus-c++/sdbus-c++.h>
+#include <unordered_set>
 #include <vector>
-
-
 
 // Define the Unit structure matching the D-Bus signature (ssssssouso)
 using Unit =
@@ -49,6 +48,7 @@ struct ServiceMonitorUtilConstants {
     static constexpr auto StatPath{"stat"};
     static constexpr auto FdPath{"fd"};
     static constexpr auto Processor{"processor"};
+    static constexpr auto ConfigFileExtPattern = ".*\\.systemd-unit$";  // Fix the regex pattern
 };
 
 

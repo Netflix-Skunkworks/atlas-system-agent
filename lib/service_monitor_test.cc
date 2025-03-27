@@ -3,27 +3,43 @@
 
 #include <gtest/gtest.h>
 
-// TEST(DCGMTest, ParseLinesValidInput) {
-//   // std::string filePath{"testdata/resources2/dcgm/ValidInput1"};
-//   // auto lines = atlasagent::read_file(filePath);
-//   // std::map<int, std::vector<double>> dataMap;
-
-//   // EXPECT_EQ(parse_lines(lines.value(), dataMap), true);
-// }
-
-// void PrintConfig(std::vector<std::regex> config){
-//     for (auto x : config){
-//         //std::cout << "Pattern2: " << x.pattern() << std::endl;
-//     }
-// }
-
 TEST(ServiceMonitorTest, ParseValidConfig) {
-  auto filepath{"testdata/resources2/service_monitor/valid_regext.txt"};
+  auto filepath{"testdata/resources2/service_monitor/regex_directory/valid_regex.systemd-unit"};
   auto config = parse_regex_config_file(filepath);
+  EXPECT_NE(std::nullopt, config);
+  EXPECT_EQ(12, config.value().size());
+}
+
+TEST(ServiceMonitorTest, ParseRegexDirectory) {
+  auto directory{"testdata/resources2/service_monitor/regex_directory"};
+  auto config = parse_service_monitor_config_directory(directory);
   EXPECT_NE(std::nullopt, config);
   EXPECT_EQ(20, config.value().size());
 }
 
-TEST(ServiceTest, TestA) { list_all_units(); }
+TEST(ServiceMonitorTest, ParseNumberOfCores){
+  auto filepath{"testdata/resources2/service_monitor/valid-cpu-info.txt"};
+  auto fileContents = atlasagent::read_file(filepath);
+  EXPECT_NE(std::nullopt, fileContents);
+  auto coreCount = parse_cores(fileContents.value());
+  EXPECT_EQ(32, coreCount);
+}
 
-TEST(ServiceTest, TestB) { auto x = get_service_properties("nvidia-dcgm.service"); }
+TEST(ServiceMonitorTest, ParseProcStat){
+  auto filepath{"testdata/resources2/service_monitor/valid-proc-stat-info.txt"};
+  auto fileContents = atlasagent::read_file(filepath);
+  EXPECT_NE(std::nullopt, fileContents);
+  auto cpuTime = parse_cpu_time(fileContents.value());
+  EXPECT_EQ(46255609, cpuTime);
+}
+
+TEST(ServiceMonitorTest, ParseProcPidStat){
+  auto filepath{"testdata/resources2/service_monitor/valid-proc-pid-stat-info.txt"};
+  auto fileContents = atlasagent::read_file(filepath);
+  EXPECT_NE(std::nullopt, fileContents);
+  auto processTimes = parse_process_times(fileContents.value());
+  auto rss = parse_rss(fileContents.value());
+  EXPECT_EQ(5, processTimes.uTime);
+  EXPECT_EQ(6, processTimes.sTime);
+  EXPECT_EQ(2933, rss);
+}

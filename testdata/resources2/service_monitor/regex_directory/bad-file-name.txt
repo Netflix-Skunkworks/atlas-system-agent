@@ -1,15 +1,3 @@
-abc
-\d+
-[a-z]+
-\s+
-\w+
-\W+
-\d{3}
-a?b
-^abc$
-^hell
-world$
-cat|dog
 ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
 ^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$
 ^\d{4}-\d{2}-\d{2}$

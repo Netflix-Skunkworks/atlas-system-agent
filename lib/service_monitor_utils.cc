@@ -1,5 +1,6 @@
 #include <filesystem>
 
+#include "absl/strings/str_split.h"
 #include "service_monitor_utils.h"
 #include "util.h"
 
@@ -117,8 +118,16 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
     return std::nullopt;
   }
 
-  std::vector<std::regex> allRegexPatterns{};
+  std::vector<std::regex> allRegexPatterns;
+  // Create the regex pattern from the string constant
+  std::regex configFileExtPattern(ServiceMonitorUtilConstants::ConfigFileExtPattern);
+  
   for (const auto& file : std::filesystem::recursive_directory_iterator(directoryPath)) {
+    // Check if the file matches our pattern before processing
+    if (std::regex_match(file.path().filename().string(), configFileExtPattern) == false) {
+      continue;
+    }
+    
     auto regexExpressions = parse_regex_config_file(file.path().c_str());
 
     if (regexExpressions.has_value() == false) {
@@ -143,8 +152,18 @@ std::optional<std::vector<std::string>> get_proc_fields(pid_t pid) {
 }
 
 ProcessTimes parse_process_times(const std::vector<std::string>& pidStats) {
-  unsigned long uTime = std::stoul(pidStats[ServiceMonitorUtilConstants::uTimeIndex]);
-  unsigned long sTime = std::stoul(pidStats[ServiceMonitorUtilConstants::sTimeIndex]);
+  auto statLine = pidStats.at(0);
+  std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
+  
+  // Check if we have enough tokens before accessing them
+  if (statTokens.size() <= ServiceMonitorUtilConstants::sTimeIndex) {
+    atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
+                               ServiceMonitorUtilConstants::sTimeIndex + 1, statTokens.size());
+    return ProcessTimes{0, 0};  // Return zeros for invalid data
+  }
+  
+  unsigned long uTime = std::stoul(statTokens[ServiceMonitorUtilConstants::uTimeIndex]);
+  unsigned long sTime = std::stoul(statTokens[ServiceMonitorUtilConstants::sTimeIndex]);
   return ProcessTimes{uTime, sTime};
 }
 
@@ -157,7 +176,17 @@ std::optional<ProcessTimes> get_process_times(pid_t pid) {
 }
 
 unsigned long parse_rss(const std::vector<std::string>& pidStats) {
-  return std::stoul(pidStats[ServiceMonitorUtilConstants::rssIndex]);
+  auto statLine = pidStats.at(0);
+  std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
+  
+  // Check if we have enough tokens before accessing them
+  if (statTokens.size() <= ServiceMonitorUtilConstants::rssIndex) {
+    atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
+                               ServiceMonitorUtilConstants::rssIndex + 1, statTokens.size());
+    return 0;  // Return zero for invalid data
+  }
+  
+  return std::stoul(statTokens[ServiceMonitorUtilConstants::rssIndex]);
 }
 
 std::optional<unsigned long> get_rss(pid_t pid) {
@@ -170,11 +199,12 @@ std::optional<unsigned long> get_rss(pid_t pid) {
 
 unsigned long long parse_cpu_time(const std::vector<std::string>& cpuStats) {
   const auto& aggregateStats = cpuStats[ServiceMonitorUtilConstants::AggregateCpuIndex];
+  std::vector<std::string> statTokens = absl::StrSplit(aggregateStats, ' ', absl::SkipWhitespace());
 
   unsigned long long totalCpuTime{0};
   for (unsigned int i = ServiceMonitorUtilConstants::AggregateCpuDataIndex;
-       i < aggregateStats.size(); i++) {
-    totalCpuTime += aggregateStats.at(i);
+       i < statTokens.size(); i++) {
+    totalCpuTime += std::stoul(statTokens.at(i));
   }
 
   return totalCpuTime;
@@ -227,7 +257,7 @@ unsigned int parse_cores(const std::vector<std::string>& cpuInfo) {
       cpuCores++;
     }
   }
-  return cpuCores;
+  return (cpuCores == 0) ? 1 : cpuCores;
 }
 
 std::optional<unsigned int> get_cpu_cores() {
