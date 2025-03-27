@@ -1,48 +1,40 @@
+#pragma once
+
 #include "tagging_registry.h"
 #include "spectator/registry.h"
+#include "service_monitor_utils.h"
 
-#include <optional>
-#include <regex>
-#include <string>
-#include <vector>
-#include <sdbus-c++/sdbus-c++.h>
-
-// Define the Unit structure matching the D-Bus signature (ssssssouso)
-using Unit =
-    sdbus::Struct<std::string, std::string, std::string, std::string, std::string, std::string,
-                  sdbus::ObjectPath, uint32_t, std::string, sdbus::ObjectPath>;
 
 struct ServiceMonitorConstants {
   static constexpr auto ConfigPath{"/opt/service_config.txt"};
-  static constexpr auto uTimeIndex{13};
-  static constexpr auto sTimeIndex{14};
-  static constexpr auto rssIndex{23};
-  static constexpr auto ProcStatPath{"/proc/stat"};
-  static constexpr auto CpuInfoPath{"/proc/cpuinfo"};
-  static constexpr auto AggregateCpuIndex{0};
-  static constexpr unsigned int AggregateCpuDataIndex{1};
-  static constexpr auto ProcPath{"/proc"};
-  static constexpr auto StatPath{"stat"};
-  static constexpr auto FdPath{"fd"};
-};
-
-struct ProcessTimes {
-  unsigned long uTime{};
-  unsigned long sTime{};
-};
-
-struct ServiceProperties{
-  std::string name;
-  std::string activeState;
-  std::string subState;
-  unsigned int mainPid;
+  static constexpr auto rssName{"service.rss"};
+  static constexpr auto fdsName{"service.fds"};
+  static constexpr auto cpuUsageName{"service.cpu_usage"};
 };
 
 
-std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(const char* directoryPath);
-std::optional<std::vector<std::regex>> parse_regex_config_file(const char* configFilePath);
-std::optional<std::vector<Unit>> list_all_units();
-std::optional<ServiceProperties> get_service_properties(const std::string& serviceName);
+namespace detail {
+  template <typename Reg>
+  inline auto gauge(Reg* registry, const char* name, const char* serviceName, const char* id = nullptr) {
+    auto tags = spectator::Tags{{"service_name", fmt::format("{}", serviceName)}};
+    if (id != nullptr) {
+      tags.add("id", id);
+    }
+    return registry->GetGauge(name, tags);
+  }
+
+
+  template <typename Reg>
+  inline auto counter(Reg* registry, const char* name, const char* serviceName, const char* id = nullptr) {
+    auto tags = spectator::Tags{{"service_name", fmt::format("{}", serviceName)}};
+    if (id != nullptr) {
+      tags.add("id", id);
+    }
+    return registry->GetCounter(name, tags);
+  }
+}  // namespace detail
+  
+
 
 template <typename Reg = atlasagent::TaggingRegistry>
 class ServiceMonitor {

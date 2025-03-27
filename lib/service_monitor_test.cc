@@ -1,4 +1,4 @@
-#include "service_monitor.h"
+#include "service_monitor_utils.cc"
 #include "util.h"
 
 #include <gtest/gtest.h>
@@ -11,29 +11,19 @@
 //   // EXPECT_EQ(parse_lines(lines.value(), dataMap), true);
 // }
 
-
 // void PrintConfig(std::vector<std::regex> config){
 //     for (auto x : config){
 //         //std::cout << "Pattern2: " << x.pattern() << std::endl;
 //     }
 // }
 
-
-
-
-
-
-TEST(ServiceMonitorTest, ParseValidConfig){
-    auto filepath{"testdata/resources2/service_monitor/valid_regext.txt"};
-    auto config = parse_regex_config_file(filepath);
-    EXPECT_NE(std::nullopt, config);
-    EXPECT_EQ(20, config.value().size());
+TEST(ServiceMonitorTest, ParseValidConfig) {
+  auto filepath{"testdata/resources2/service_monitor/valid_regext.txt"};
+  auto config = parse_regex_config_file(filepath);
+  EXPECT_NE(std::nullopt, config);
+  EXPECT_EQ(20, config.value().size());
 }
 
-TEST(ServiceTest, TestA){
-  list_all_units();
-}
+TEST(ServiceTest, TestA) { list_all_units(); }
 
-TEST(ServiceTest, TestB){
-  auto x = get_service_properties("nvidia-dcgm.service");
-}
+TEST(ServiceTest, TestB) { auto x = get_service_properties("nvidia-dcgm.service"); }

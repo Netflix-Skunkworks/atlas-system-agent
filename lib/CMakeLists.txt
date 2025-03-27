@@ -62,6 +62,8 @@ add_library(sysagent
     "sample_config.cc"
     "service_monitor.cc"
     "service_monitor.h"
+    "service_monitor_utils.cc"
+    "service_monitor_utils.h"
     "tagger.h"
     "tagging_registry.h"
     "util.cc"
