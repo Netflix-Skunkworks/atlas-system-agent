@@ -20,8 +20,6 @@ find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(RapidJSON REQUIRED)
 find_package(sdbus-c++ REQUIRED)
-find_package(DBus1 REQUIRED)
-
 find_package(spdlog REQUIRED)
 find_package(ZLIB REQUIRED)
 

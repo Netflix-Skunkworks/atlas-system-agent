@@ -6,6 +6,7 @@
 
 
 struct ServiceMonitorConstants {
+  static constexpr auto MaxMonitoredServices{10};
   static constexpr auto ConfigPath{"/opt/atlas-configs"};
   static constexpr auto rssName{"service.rss"};
   static constexpr auto fdsName{"service.fds"};
@@ -42,8 +43,9 @@ namespace detail {
 template <typename Reg = atlasagent::TaggingRegistry>
 class ServiceMonitor {
  public:
-  ServiceMonitor(Reg* registry, std::vector<std::regex> config)
-      : registry_{registry}, config_{config} {}
+  ServiceMonitor(Reg* registry, std::vector<std::regex> config, unsigned int max_services)
+      : registry_{registry}, config_{config}, 
+        maxMonitoredServices{max_services == 0 ? ServiceMonitorConstants::MaxMonitoredServices : max_services} {}
   ~ServiceMonitor(){};
 
   // Abide by the C++ rule of 5
@@ -57,12 +59,12 @@ class ServiceMonitor {
   bool init_monitored_services();
   bool updateMetrics();
 
-  unsigned long long currentCpuTime{0};
-  std::unordered_map<pid_t, ProcessTimes> currentProcessTimes{};
-  
-  unsigned int numCpuCores;
-  bool initSuccess{false};
   Reg* registry_;
   std::vector<std::regex> config_;
-  std::unordered_set<std::string> monitoredServices_;
+  unsigned int maxMonitoredServices{};  
+  unsigned long long currentCpuTime{0};
+  std::unordered_map<pid_t, ProcessTimes> currentProcessTimes{};
+  unsigned int numCpuCores{};
+  bool initSuccess{false};  
+  std::unordered_set<std::string> monitoredServices_{};
 };

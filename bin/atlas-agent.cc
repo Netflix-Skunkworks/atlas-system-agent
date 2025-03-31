@@ -225,7 +225,7 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
 }
 #else
 void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                            const spectator::Tags& net_tags) {
+                            const spectator::Tags& net_tags, const int max_monitored_services) {
   using std::chrono::duration_cast;
   using std::chrono::milliseconds;
   using std::chrono::seconds;
@@ -247,12 +247,12 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
     gpuDCGM.emplace(registry);
   }
 
-  /*DCGM & ServiceMonitor have Dynamic metric collection lets improve how we handle this*/
-
+  /* To Do: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to check if these
+  optionals have a set value. lets improve how we handle this */
   std::optional<ServiceMonitor<TaggingRegistry>> serviceMetrics{};
   std::optional<std::vector<std::regex>> serviceConfig{parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
   if (serviceConfig.has_value()) {
-    serviceMetrics.emplace(registry, serviceConfig.value());
+    serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
   }
 
   if (gpuDCGM.has_value()) {
@@ -319,13 +319,14 @@ struct agent_options {
   spectator::Tags network_tags;
   std::string cfg_file;
   bool verbose;
+  unsigned int max_monitored_services{0};
 };
 
 static constexpr const char* const kDefaultCfgFile = "/etc/default/atlas-agent.json";
 
 static void usage(const char* progname) {
   fprintf(stderr,
-          "Usage: %s [-c cfg_file] [-v] [-t extra-network-tags]\n"
+          "Usage: %s [-c cfg_file] [-s monitored-service-threshold][-v] [-t extra-network-tags]\n"
           "\t-c\tUse cfg_file as the configuration file. Default %s\n"
           "\t-v\tBe very verbose\n"
           "\t-t tags\tAdd extra tags to the network metrics.\n"
@@ -349,6 +350,12 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
       case 't':
         result->network_tags = atlasagent::parse_tags(optarg);
         break;
+      case 's':
+        result->max_monitored_services = std::stoi(optarg);
+        if (result->max_monitored_services < 0) {
+          fprintf(stderr, "Invalid value for -s: %s\n", optarg);
+          usage(argv[0]);
+        }
       case '?':
       default:
         usage(argv[0]);
@@ -413,7 +420,7 @@ int main(int argc, char* const argv[]) {
   collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags);
 #else
   Logger()->info("Start gathering EC2 system metrics");
-  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags);
+  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
 #endif
   logger->info("Shutting down spectator registry");
   atlasagent::HttpClient<>::GlobalShutdown();

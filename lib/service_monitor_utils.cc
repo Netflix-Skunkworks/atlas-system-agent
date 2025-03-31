@@ -4,6 +4,7 @@
 #include "service_monitor_utils.h"
 #include "util.h"
 
+// The function returns a vector of Unit structs, which contain information about each unit.
 std::optional<std::vector<Unit>> list_all_units() try {
   // Create system bus connection
   auto connection = sdbus::createSystemBusConnection();
@@ -29,6 +30,7 @@ std::optional<std::vector<Unit>> list_all_units() try {
   return std::nullopt;
 }
 
+// The function returns a ServiceProperties struct containing the properties of the service.
 std::optional<ServiceProperties> get_service_properties(const std::string& serviceName) try {
   // Connect to the system bus
   auto connection = sdbus::createSystemBusConnection();
