@@ -4,7 +4,7 @@
 template class ServiceMonitor<atlasagent::TaggingRegistry>;
 
 template <class Reg>
-bool ServiceMonitor<Reg>::init_monitored_services() {
+bool ServiceMonitor<Reg>::init_monitored_services() try {
   // CPU Cores is used to calculate the % CPU usage
   auto cpuCores = get_cpu_cores();
   if (cpuCores.has_value() == false) {
@@ -54,8 +54,7 @@ bool ServiceMonitor<Reg>::init_monitored_services() {
   }
 
   // Units were retrieved. initSuccess is now true because monitoredServices now initialized
-  // with pattern matched services. Metrics will be computed for those services on the subsequent
-  // iteration
+  // with pattern matched services.
   this->initSuccess = true;
   if (this->monitoredServices_.empty() == true) {
     atlasagent::Logger()->error(
@@ -63,9 +62,13 @@ bool ServiceMonitor<Reg>::init_monitored_services() {
   }
   return true;
 }
+catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception: {} in init_monitored_services", e.what());
+  return false;
+}
 
 template <class Reg>
-bool ServiceMonitor<Reg>::updateMetrics() {
+bool ServiceMonitor<Reg>::update_metrics() try {
   std::vector<ServiceProperties> servicesStates{};
   servicesStates.reserve(monitoredServices_.size());
   bool success = true;
@@ -144,6 +147,9 @@ bool ServiceMonitor<Reg>::updateMetrics() {
   this->currentProcessTimes = std::move(newProcessTimes);
   this->currentCpuTime = newCpuTime.value();
   return success;
+} catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception: {} in servic moniotr update_metrics", e.what());
+  return false;
 }
 
 // To Do: Shutdown module if no services are being monitored
@@ -163,7 +169,7 @@ bool ServiceMonitor<Reg>::gather_metrics() {
     return true;
   }
 
-  if (false == this->updateMetrics()) {
+  if (false == this->update_metrics()) {
     return false;
   }
 

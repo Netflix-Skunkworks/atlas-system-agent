@@ -39,7 +39,7 @@ TEST(ServiceMonitorTest, ParseProcPidStat) {
   EXPECT_NE(std::nullopt, fileContents);
   auto processTimes = parse_process_times(fileContents.value());
   auto rss = parse_rss(fileContents.value());
-  EXPECT_EQ(5, processTimes.uTime);
-  EXPECT_EQ(6, processTimes.sTime);
+  EXPECT_EQ(5, processTimes.value().uTime);
+  EXPECT_EQ(6, processTimes.value().sTime);
   EXPECT_EQ(2933, rss);
 }

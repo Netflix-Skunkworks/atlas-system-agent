@@ -84,7 +84,7 @@ std::optional<ServiceProperties> get_service_properties(const std::string& servi
   return std::nullopt;
 }
 
-std::optional<std::vector<std::regex>> parse_regex_config_file(const char* configFilePath) {
+std::optional<std::vector<std::regex>> parse_regex_config_file(const char* configFilePath) try{
   std::optional<std::vector<std::string>> stringPatterns = atlasagent::read_file(configFilePath);
   if (stringPatterns.has_value() == false) {
     atlasagent::Logger()->error("Error reading config file {}", configFilePath);
@@ -110,10 +110,13 @@ std::optional<std::vector<std::regex>> parse_regex_config_file(const char* confi
     }
   }
   return regexPatterns;
+} catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception: {} in parse_regex_config_file", e.what());
+  return std::nullopt;
 }
 
 std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
-    const char* directoryPath) {
+    const char* directoryPath) try {
   if (std::filesystem::exists(directoryPath) == false ||
       std::filesystem::is_directory(directoryPath) == false) {
     atlasagent::Logger()->error("Invalid service monitor config directory {}", directoryPath);
@@ -144,6 +147,9 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
   }
 
   return allRegexPatterns;
+} catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
+  return std::nullopt;
 }
 
 std::optional<std::vector<std::string>> get_proc_fields(pid_t pid) {
@@ -153,7 +159,7 @@ std::optional<std::vector<std::string>> get_proc_fields(pid_t pid) {
   return pidStats;
 }
 
-ProcessTimes parse_process_times(const std::vector<std::string>& pidStats) {
+std::optional<ProcessTimes> parse_process_times(const std::vector<std::string>& pidStats) try {
   auto statLine = pidStats.at(0);
   std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
 
@@ -161,12 +167,15 @@ ProcessTimes parse_process_times(const std::vector<std::string>& pidStats) {
   if (statTokens.size() <= ServiceMonitorUtilConstants::sTimeIndex) {
     atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
                                 ServiceMonitorUtilConstants::sTimeIndex + 1, statTokens.size());
-    return ProcessTimes{0, 0};  // Return zeros for invalid data
+    return std::nullopt;
   }
 
   unsigned long uTime = std::stoul(statTokens[ServiceMonitorUtilConstants::uTimeIndex]);
   unsigned long sTime = std::stoul(statTokens[ServiceMonitorUtilConstants::sTimeIndex]);
   return ProcessTimes{uTime, sTime};
+} catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception: {} in parse_process_times", e.what());
+  return std::nullopt;
 }
 
 std::optional<ProcessTimes> get_process_times(pid_t pid) {
@@ -177,7 +186,7 @@ std::optional<ProcessTimes> get_process_times(pid_t pid) {
   return parse_process_times(pidStats.value());
 }
 
-unsigned long parse_rss(const std::vector<std::string>& pidStats) {
+std::optional<unsigned long> parse_rss(const std::vector<std::string>& pidStats) try {
   auto statLine = pidStats.at(0);
   std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
 
@@ -185,10 +194,13 @@ unsigned long parse_rss(const std::vector<std::string>& pidStats) {
   if (statTokens.size() <= ServiceMonitorUtilConstants::rssIndex) {
     atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
                                 ServiceMonitorUtilConstants::rssIndex + 1, statTokens.size());
-    return 0;  // Return zero for invalid data
+    return std::nullopt;
   }
 
   return std::stoul(statTokens[ServiceMonitorUtilConstants::rssIndex]);
+} catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception: {} in parse_rss", e.what());
+  return std::nullopt;
 }
 
 std::optional<unsigned long> get_rss(pid_t pid) {
@@ -272,7 +284,7 @@ std::optional<unsigned int> get_cpu_cores() {
 }
 
 std::unordered_map<pid_t, ProcessTimes> create_pid_map(
-    const std::vector<ServiceProperties>& services) {
+    const std::vector<ServiceProperties>& services) try {
   std::unordered_map<pid_t, ProcessTimes> pidMap{};
   for (const auto& service : services) {
     auto pid = service.mainPid;
@@ -284,4 +296,7 @@ std::unordered_map<pid_t, ProcessTimes> create_pid_map(
     pidMap[pid] = processTimes.value();
   }
   return pidMap;
+} catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception: {} in create_pid_map", e.what());
+  return {};
 }

@@ -57,7 +57,7 @@ class ServiceMonitor {
 
  private:
   bool init_monitored_services();
-  bool updateMetrics();
+  bool update_metrics();
 
   Reg* registry_;
   std::vector<std::regex> config_;

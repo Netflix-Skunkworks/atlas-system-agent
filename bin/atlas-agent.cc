@@ -225,7 +225,7 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
 }
 #else
 void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                            const spectator::Tags& net_tags, const int max_monitored_services) {
+                            const spectator::Tags& net_tags, const int& max_monitored_services) {
   using std::chrono::duration_cast;
   using std::chrono::milliseconds;
   using std::chrono::seconds;
