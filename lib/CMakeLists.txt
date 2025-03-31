@@ -71,7 +71,6 @@ add_library(sysagent
 )
 target_link_libraries(sysagent
     contain
-    dbus-1
     spectator
     abseil::abseil
     CURL::libcurl

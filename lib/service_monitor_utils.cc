@@ -84,7 +84,7 @@ std::optional<ServiceProperties> get_service_properties(const std::string& servi
   return std::nullopt;
 }
 
-std::optional<std::vector<std::regex>> parse_regex_config_file(const char* configFilePath) try{
+std::optional<std::vector<std::regex>> parse_regex_config_file(const char* configFilePath) try {
   std::optional<std::vector<std::string>> stringPatterns = atlasagent::read_file(configFilePath);
   if (stringPatterns.has_value() == false) {
     atlasagent::Logger()->error("Error reading config file {}", configFilePath);

@@ -61,8 +61,7 @@ bool ServiceMonitor<Reg>::init_monitored_services() try {
         "User Error: Monitor Service config provided but no services matched pattern");
   }
   return true;
-}
-catch (const std::exception& e) {
+} catch (const std::exception& e) {
   atlasagent::Logger()->error("Exception: {} in init_monitored_services", e.what());
   return false;
 }
