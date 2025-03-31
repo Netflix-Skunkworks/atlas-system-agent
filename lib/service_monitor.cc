@@ -23,7 +23,7 @@ bool ServiceMonitor<Reg>::init_monitored_services() {
   for (const auto& regex : this->config_) {
     for (const auto& unit : all_units.value()) {
       if (std::regex_search(std::get<0>(unit), regex)) {
-        this->monitoredServices_.insert(std::get<0>(unit).c_str());
+        this->monitoredServices_.insert(std::get<0>(unit));
       }
     }
   }
@@ -43,7 +43,7 @@ bool ServiceMonitor<Reg>::updateMetrics() {
   std::vector<ServiceProperties> servicesStates{};
   servicesStates.reserve(monitoredServices_.size());
 
-  for (const auto service : monitoredServices_){
+  for (const auto& service : monitoredServices_){
     auto serviceState = get_service_properties(service);
     
     if (serviceState.has_value() == false){
@@ -70,16 +70,17 @@ bool ServiceMonitor<Reg>::updateMetrics() {
     
     if (serviceRSS.has_value()){
       //std::cout << "service.rss " << serviceRSS.value() << " service " << service.name << std::endl;
-      detail::counter(this->registry_, ServiceMonitorConstants::rssName, service.name.c_str())->Add(serviceRSS.value());
+      detail::gauge(this->registry_, ServiceMonitorConstants::rssName, service.name.c_str())->Set(serviceRSS.value());
     }
     if (serviceFds.has_value()){
       //std::cout << "service.fds " << serviceFds.value() << " service " << service.name << std::endl;
-      detail::counter(this->registry_, ServiceMonitorConstants::fdsName, service.name.c_str())->Add(serviceFds.value());
+      detail::gauge(this->registry_, ServiceMonitorConstants::fdsName, service.name.c_str())->Set(serviceFds.value());
     }
     if (cpuUsage.has_value()){
       //std::cout << "service.cpu_usage " << cpuUsage.value() << " service " << service.name << std::endl;
-      detail::gauge(this->registry_, ServiceMonitorConstants::fdsName, service.name.c_str())->Set(cpuUsage.value());
+      detail::gauge(this->registry_, ServiceMonitorConstants::cpuUsageName, service.name.c_str())->Set(cpuUsage.value());
     }
+    detail::guageServiceState(this->registry_, ServiceMonitorConstants::serviceStatusName, service.name.c_str(), service.activeState.c_str(), service.subState.c_str())->Set(1);
   }
 
 

@@ -242,7 +242,7 @@ double calculate_cpu_usage(unsigned long long oldCpuTime, unsigned long long new
                            ProcessTimes oldProcessTime, ProcessTimes newProcessTime,
                            unsigned int numCores) {
   unsigned long long processTimeDelta =
-      (newProcessTime.uTime - oldProcessTime.uTime) + (newProcessTime.sTime - oldProcessTime.uTime);
+      (newProcessTime.uTime - oldProcessTime.uTime) + (newProcessTime.sTime - oldProcessTime.sTime);
   unsigned long long cpuTimeDelta = newCpuTime - oldCpuTime;
 
   double cpuUsage = 100.0 * (double)processTimeDelta / (double)cpuTimeDelta * numCores;

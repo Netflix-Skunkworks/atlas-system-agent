@@ -6,10 +6,11 @@
 
 
 struct ServiceMonitorConstants {
-  static constexpr auto ConfigPath{"/opt/service_config.txt"};
+  static constexpr auto ConfigPath{"/opt/atlas-configs"};
   static constexpr auto rssName{"service.rss"};
   static constexpr auto fdsName{"service.fds"};
   static constexpr auto cpuUsageName{"service.cpu_usage"};
+  static constexpr auto serviceStatusName{"service.status"};
 };
 
 
@@ -23,14 +24,16 @@ namespace detail {
     return registry->GetGauge(name, tags);
   }
 
-
   template <typename Reg>
-  inline auto counter(Reg* registry, const char* name, const char* serviceName, const char* id = nullptr) {
+  inline auto guageServiceState(Reg* registry, const char* name, const char* serviceName, const char* activeState, const char* subState){ 
     auto tags = spectator::Tags{{"service_name", fmt::format("{}", serviceName)}};
-    if (id != nullptr) {
-      tags.add("id", id);
+    if (activeState != nullptr) {
+      tags.add("active_state", activeState);
     }
-    return registry->GetCounter(name, tags);
+    if (subState != nullptr) {
+      tags.add("sub_state", subState);
+    }
+    return registry->GetGauge(name, tags);
   }
 }  // namespace detail
   
@@ -61,5 +64,5 @@ class ServiceMonitor {
   bool initSuccess{false};
   Reg* registry_;
   std::vector<std::regex> config_;
-  std::unordered_set<const char*> monitoredServices_;
+  std::unordered_set<std::string> monitoredServices_;
 };
