@@ -31,7 +31,6 @@ else()
     message(STATUS "building atlas-system-agent")
 endif()
 
-add_subdirectory(contain)
 add_subdirectory(lib)
 
 #-- sysagent_test test executable

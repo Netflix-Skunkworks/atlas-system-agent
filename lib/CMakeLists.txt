@@ -70,7 +70,6 @@ add_library(sysagent
     "util.h"
 )
 target_link_libraries(sysagent
-    contain
     spectator
     abseil::abseil
     CURL::libcurl
