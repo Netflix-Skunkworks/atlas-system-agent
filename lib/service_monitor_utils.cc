@@ -123,13 +123,13 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
   std::vector<std::regex> allRegexPatterns;
   // Create the regex pattern from the string constant
   std::regex configFileExtPattern(ServiceMonitorUtilConstants::ConfigFileExtPattern);
-  
+
   for (const auto& file : std::filesystem::recursive_directory_iterator(directoryPath)) {
     // Check if the file matches our pattern before processing
     if (std::regex_match(file.path().filename().string(), configFileExtPattern) == false) {
       continue;
     }
-    
+
     auto regexExpressions = parse_regex_config_file(file.path().c_str());
 
     if (regexExpressions.has_value() == false) {
@@ -156,14 +156,14 @@ std::optional<std::vector<std::string>> get_proc_fields(pid_t pid) {
 ProcessTimes parse_process_times(const std::vector<std::string>& pidStats) {
   auto statLine = pidStats.at(0);
   std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
-  
+
   // Check if we have enough tokens before accessing them
   if (statTokens.size() <= ServiceMonitorUtilConstants::sTimeIndex) {
     atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
-                               ServiceMonitorUtilConstants::sTimeIndex + 1, statTokens.size());
+                                ServiceMonitorUtilConstants::sTimeIndex + 1, statTokens.size());
     return ProcessTimes{0, 0};  // Return zeros for invalid data
   }
-  
+
   unsigned long uTime = std::stoul(statTokens[ServiceMonitorUtilConstants::uTimeIndex]);
   unsigned long sTime = std::stoul(statTokens[ServiceMonitorUtilConstants::sTimeIndex]);
   return ProcessTimes{uTime, sTime};
@@ -180,14 +180,14 @@ std::optional<ProcessTimes> get_process_times(pid_t pid) {
 unsigned long parse_rss(const std::vector<std::string>& pidStats) {
   auto statLine = pidStats.at(0);
   std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
-  
+
   // Check if we have enough tokens before accessing them
   if (statTokens.size() <= ServiceMonitorUtilConstants::rssIndex) {
     atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
-                               ServiceMonitorUtilConstants::rssIndex + 1, statTokens.size());
+                                ServiceMonitorUtilConstants::rssIndex + 1, statTokens.size());
     return 0;  // Return zero for invalid data
   }
-  
+
   return std::stoul(statTokens[ServiceMonitorUtilConstants::rssIndex]);
 }
 
@@ -204,8 +204,8 @@ unsigned long long parse_cpu_time(const std::vector<std::string>& cpuStats) {
   std::vector<std::string> statTokens = absl::StrSplit(aggregateStats, ' ', absl::SkipWhitespace());
 
   unsigned long long totalCpuTime{0};
-  for (unsigned int i = ServiceMonitorUtilConstants::AggregateCpuDataIndex;
-       i < statTokens.size(); i++) {
+  for (unsigned int i = ServiceMonitorUtilConstants::AggregateCpuDataIndex; i < statTokens.size();
+       i++) {
     totalCpuTime += std::stoul(statTokens.at(i));
   }
 

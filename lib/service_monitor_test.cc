@@ -17,7 +17,7 @@ TEST(ServiceMonitorTest, ParseRegexDirectory) {
   EXPECT_EQ(20, config.value().size());
 }
 
-TEST(ServiceMonitorTest, ParseNumberOfCores){
+TEST(ServiceMonitorTest, ParseNumberOfCores) {
   auto filepath{"testdata/resources2/service_monitor/valid-cpu-info.txt"};
   auto fileContents = atlasagent::read_file(filepath);
   EXPECT_NE(std::nullopt, fileContents);
@@ -25,7 +25,7 @@ TEST(ServiceMonitorTest, ParseNumberOfCores){
   EXPECT_EQ(32, coreCount);
 }
 
-TEST(ServiceMonitorTest, ParseProcStat){
+TEST(ServiceMonitorTest, ParseProcStat) {
   auto filepath{"testdata/resources2/service_monitor/valid-proc-stat-info.txt"};
   auto fileContents = atlasagent::read_file(filepath);
   EXPECT_NE(std::nullopt, fileContents);
@@ -33,7 +33,7 @@ TEST(ServiceMonitorTest, ParseProcStat){
   EXPECT_EQ(46255609, cpuTime);
 }
 
-TEST(ServiceMonitorTest, ParseProcPidStat){
+TEST(ServiceMonitorTest, ParseProcPidStat) {
   auto filepath{"testdata/resources2/service_monitor/valid-proc-pid-stat-info.txt"};
   auto fileContents = atlasagent::read_file(filepath);
   EXPECT_NE(std::nullopt, fileContents);

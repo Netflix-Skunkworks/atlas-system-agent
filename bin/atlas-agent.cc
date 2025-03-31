@@ -247,17 +247,22 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
     gpuDCGM.emplace(registry);
   }
 
-  /* To Do: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to check if these
-  optionals have a set value. lets improve how we handle this */
-  std::optional<ServiceMonitor<TaggingRegistry>> serviceMetrics{};
-  std::optional<std::vector<std::regex>> serviceConfig{parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
+  /* To Do: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
+  check if these optionals have a set value. lets improve how we handle this */
+  std::optional<ServiceMonitor<TaggingRegistry> > serviceMetrics{};
+  std::optional<std::vector<std::regex> > serviceConfig{
+      parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
   if (serviceConfig.has_value()) {
     serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
   }
 
   if (gpuDCGM.has_value()) {
-    std::string serviceStatus = atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
-    Logger()->info("DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service state: {}.", serviceStatus);
+    std::string serviceStatus =
+        atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
+    Logger()->info(
+        "DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service "
+        "state: {}.",
+        serviceStatus);
   } else {
     Logger()->info("DCGMI binary not present. Agent will not collect DCGM metrics.");
   }
@@ -297,9 +302,8 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
         }
       }
 
-      if (serviceMetrics.has_value())
-      {
-        if (serviceMetrics.value().gather_metrics() == false){
+      if (serviceMetrics.has_value()) {
+        if (serviceMetrics.value().gather_metrics() == false) {
           Logger()->error("Failed to gather Service metrics");
         }
       }
@@ -420,7 +424,8 @@ int main(int argc, char* const argv[]) {
   collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags);
 #else
   Logger()->info("Start gathering EC2 system metrics");
-  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
+  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags,
+                         options.max_monitored_services);
 #endif
   logger->info("Shutting down spectator registry");
   atlasagent::HttpClient<>::GlobalShutdown();

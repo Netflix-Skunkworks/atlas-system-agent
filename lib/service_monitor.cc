@@ -31,7 +31,8 @@ bool ServiceMonitor<Reg>::init_monitored_services() {
     }
 
     if (matched == false) {
-      atlasagent::Logger()->debug("Service {} does not match any regex patterns. Ignoring.",unit_name);
+      atlasagent::Logger()->debug("Service {} does not match any regex patterns. Ignoring.",
+                                  unit_name);
       continue;
     }
 
@@ -41,11 +42,15 @@ bool ServiceMonitor<Reg>::init_monitored_services() {
     }
 
     if (monitoredServices_.size() >= maxMonitoredServices) {
-      atlasagent::Logger()->info("Reached maximum number of monitored services ({}). Ignoring service {} and remaining services.",maxMonitoredServices, unit_name);
+      atlasagent::Logger()->info(
+          "Reached maximum number of monitored services ({}). Ignoring service {} and remaining "
+          "services.",
+          maxMonitoredServices, unit_name);
       break;  // Break out of the units loop entirely
     }
 
-    atlasagent::Logger()->debug("Added service {} to monitoring list ({}/{})", unit_name, monitoredServices_.size(), maxMonitoredServices);
+    atlasagent::Logger()->debug("Added service {} to monitoring list ({}/{})", unit_name,
+                                monitoredServices_.size(), maxMonitoredServices);
   }
 
   // Units were retrieved. initSuccess is now true because monitoredServices now initialized
@@ -53,7 +58,8 @@ bool ServiceMonitor<Reg>::init_monitored_services() {
   // iteration
   this->initSuccess = true;
   if (this->monitoredServices_.empty() == true) {
-    atlasagent::Logger()->error("User Error: Monitor Service config provided but no services matched pattern");
+    atlasagent::Logger()->error(
+        "User Error: Monitor Service config provided but no services matched pattern");
   }
   return true;
 }
@@ -79,18 +85,19 @@ bool ServiceMonitor<Reg>::updateMetrics() {
     atlasagent::Logger()->error("Could not get properties for any monitored services");
     return false;
   }
-  
+
   // It is possible that we could not get the properties for some of the services we are monitoring.
   // This is not a complete failure. We will still update the metrics for the services we were
-  // able to get the properties for. This is why we iterate over serviceStates and not monitoredServices_
-  // to update the metrics.
+  // able to get the properties for. This is why we iterate over serviceStates and not
+  // monitoredServices_ to update the metrics.
   auto newProcessTimes = create_pid_map(servicesStates);
   auto newCpuTime = get_total_cpu_time();
   for (const auto& service : servicesStates) {
     auto serviceRSS = get_rss(service.mainPid);
     auto serviceFds = get_number_fds(service.mainPid);
 
-    std::optional<double> cpuUsage{std::nullopt}; // this must be an optional because reading the new cpu time could have failed
+    std::optional<double> cpuUsage{std::nullopt};  // this must be an optional because reading the
+                                                   // new cpu time could have failed
     if (newCpuTime.has_value() &&
         currentProcessTimes.find(service.mainPid) != currentProcessTimes.end() &&
         newProcessTimes.find(service.mainPid) != newProcessTimes.end()) {
@@ -100,27 +107,34 @@ bool ServiceMonitor<Reg>::updateMetrics() {
                                            newProcessTime, this->numCpuCores));
     }
 
-    if (serviceRSS.has_value() == false || serviceFds.has_value() == false || cpuUsage.has_value() == false) {
+    if (serviceRSS.has_value() == false || serviceFds.has_value() == false ||
+        cpuUsage.has_value() == false) {
       success = false;
       atlasagent::Logger()->error("Failed to get {} metrics", service.name);
     }
     if (serviceRSS.has_value()) {
-      detail::gauge(this->registry_, ServiceMonitorConstants::rssName, service.name.c_str())->Set(serviceRSS.value());
+      detail::gauge(this->registry_, ServiceMonitorConstants::rssName, service.name.c_str())
+          ->Set(serviceRSS.value());
     }
     if (serviceFds.has_value()) {
-      detail::gauge(this->registry_, ServiceMonitorConstants::fdsName, service.name.c_str())->Set(serviceFds.value());
+      detail::gauge(this->registry_, ServiceMonitorConstants::fdsName, service.name.c_str())
+          ->Set(serviceFds.value());
     }
     if (cpuUsage.has_value()) {
-      detail::gauge(this->registry_, ServiceMonitorConstants::cpuUsageName, service.name.c_str())->Set(cpuUsage.value());
+      detail::gauge(this->registry_, ServiceMonitorConstants::cpuUsageName, service.name.c_str())
+          ->Set(cpuUsage.value());
     }
-    detail::guageServiceState(this->registry_, ServiceMonitorConstants::serviceStatusName,service.name.c_str(), service.activeState.c_str(),
-                service.subState.c_str())->Set(1);
+    detail::guageServiceState(this->registry_, ServiceMonitorConstants::serviceStatusName,
+                              service.name.c_str(), service.activeState.c_str(),
+                              service.subState.c_str())
+        ->Set(1);
   }
 
-  // Now we update the currentProcessTimes and currentCpuTime. 
-  // If we failed to get new ProcessTimes for a few of the services, thats okay on the next iteration we will compute cpu
-  // usage for the services we have. If we failed to get the new cpu time, we will not be able to calculate the cpu usage for
-  // any of the services on the next iteration. So we need to set the currentProcessTimes to empty and currentCpuTime to 0.
+  // Now we update the currentProcessTimes and currentCpuTime.
+  // If we failed to get new ProcessTimes for a few of the services, thats okay on the next
+  // iteration we will compute cpu usage for the services we have. If we failed to get the new cpu
+  // time, we will not be able to calculate the cpu usage for any of the services on the next
+  // iteration. So we need to set the currentProcessTimes to empty and currentCpuTime to 0.
   if (newCpuTime.has_value() == false) {
     this->currentCpuTime = 0;
     this->currentProcessTimes.clear();
