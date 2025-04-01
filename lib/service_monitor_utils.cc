@@ -146,6 +146,11 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
     }
   }
 
+  if (allRegexPatterns.empty()) {
+    atlasagent::Logger()->info("No regex patterns found in directory {}", directoryPath);
+    return std::nullopt;
+  }
+
   return allRegexPatterns;
 } catch (const std::exception& e) {
   atlasagent::Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());

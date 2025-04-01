@@ -254,6 +254,9 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
   if (serviceConfig.has_value()) {
     serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
   }
+  else{
+    Logger()->info("Service Monitoring is disabled.");
+  }
 
   if (gpuDCGM.has_value()) {
     std::string serviceStatus =
@@ -342,7 +345,7 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
   result->verbose = std::getenv("VERBOSE_AGENT") != nullptr;  // default for backwards compat
 
   int ch;
-  while ((ch = getopt(argc, argv, "c:vt:")) != -1) {
+  while ((ch = getopt(argc, argv, "c:vt:s:")) != -1) {
     switch (ch) {
       case 'c':
         result->cfg_file = optarg;
@@ -359,6 +362,7 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
           fprintf(stderr, "Invalid value for -s: %s\n", optarg);
           usage(argv[0]);
         }
+        break;
       case '?':
       default:
         usage(argv[0]);

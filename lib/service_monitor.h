@@ -41,11 +41,7 @@ inline auto guageServiceState(Reg* registry, const char* name, const char* servi
 template <typename Reg = atlasagent::TaggingRegistry>
 class ServiceMonitor {
  public:
-  ServiceMonitor(Reg* registry, std::vector<std::regex> config, unsigned int max_services)
-      : registry_{registry},
-        config_{config},
-        maxMonitoredServices{max_services == 0 ? ServiceMonitorConstants::MaxMonitoredServices
-                                               : max_services} {}
+  ServiceMonitor(Reg* registry, std::vector<std::regex> config, unsigned int max_services);
   ~ServiceMonitor(){};
 
   // Abide by the C++ rule of 5

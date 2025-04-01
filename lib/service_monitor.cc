@@ -3,6 +3,19 @@
 
 template class ServiceMonitor<atlasagent::TaggingRegistry>;
 
+template <typename Reg>
+ServiceMonitor<Reg>::ServiceMonitor(Reg* registry, std::vector<std::regex> config, unsigned int max_services)
+    : registry_{registry},
+      config_{std::move(config)},
+      maxMonitoredServices{max_services == 0 ? ServiceMonitorConstants::MaxMonitoredServices
+                                             : max_services} {
+  if (this->maxMonitoredServices != ServiceMonitorConstants::MaxMonitoredServices) {
+    atlasagent::Logger()->info(
+        "Custom max monitored services value set: {} (default is {})", maxMonitoredServices,
+        ServiceMonitorConstants::MaxMonitoredServices);
+  }
+}
+
 template <class Reg>
 bool ServiceMonitor<Reg>::init_monitored_services() try {
   // CPU Cores is used to calculate the % CPU usage
@@ -22,36 +35,26 @@ bool ServiceMonitor<Reg>::init_monitored_services() try {
   for (const auto& unit : all_units.value()) {
     const auto& unit_name = std::get<0>(unit);
 
-    bool matched = false;
-    for (const auto& regex : config_) {
-      if (std::regex_search(unit_name, regex)) {
-        matched = true;
-        break;
-      }
-    }
+    bool matched = std::any_of(config_.begin(), config_.end(),[&unit_name](const std::regex& regex) {
+      return std::regex_search(unit_name, regex);});
 
     if (matched == false) {
-      atlasagent::Logger()->debug("Service {} does not match any regex patterns. Ignoring.",
-                                  unit_name);
-      continue;
-    }
-
-    if (monitoredServices_.size() < maxMonitoredServices) {
-      monitoredServices_.insert(unit_name);
       continue;
     }
 
     if (monitoredServices_.size() >= maxMonitoredServices) {
       atlasagent::Logger()->info(
-          "Reached maximum number of monitored services ({}). Ignoring service {} and remaining "
-          "services.",
-          maxMonitoredServices, unit_name);
-      break;  // Break out of the units loop entirely
+        "Reached maximum number of monitored services ({}). Ignoring service {} and remaining "
+        "services.",
+        maxMonitoredServices, unit_name);
+      break;
     }
 
+    monitoredServices_.insert(unit_name);
     atlasagent::Logger()->debug("Added service {} to monitoring list ({}/{})", unit_name,
-                                monitoredServices_.size(), maxMonitoredServices);
+                                monitoredServices_.size(), this->maxMonitoredServices);
   }
+  
 
   // Units were retrieved. initSuccess is now true because monitoredServices now initialized
   // with pattern matched services.
@@ -165,6 +168,10 @@ bool ServiceMonitor<Reg>::gather_metrics() {
   // collection. I have logged this error in init_monitored_services. Returning true because
   // this is not a failure but a user error.
   if (this->monitoredServices_.size() == 0) {
+    atlasagent::Logger()->error(
+        "No services are being monitored, monitored services list is empty."
+        "Configured maximum services to monitor: {}.",
+        this->maxMonitoredServices);
     return true;
   }
 
