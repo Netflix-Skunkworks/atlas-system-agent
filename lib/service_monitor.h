@@ -16,7 +16,7 @@ struct ServiceMonitorConstants {
 namespace detail {
 template <typename Reg>
 inline auto gauge(Reg* registry, const char* name, const char* serviceName) {
-  auto tags = spectator::Tags{{"service_name", fmt::format("{}", serviceName)}};
+  auto tags = spectator::Tags{{"service.name", fmt::format("{}", serviceName)}};
   return registry->GetGauge(name, tags);
 }
 
