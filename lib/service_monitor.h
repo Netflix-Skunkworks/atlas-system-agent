@@ -6,7 +6,7 @@
 
 struct ServiceMonitorConstants {
   static constexpr auto MaxMonitoredServices{10};
-  static constexpr auto ConfigPath{"/opt/atlas-configs"};
+  static constexpr auto ConfigPath{"/etc/atlas-system-agent/conf.d"};
   static constexpr auto rssName{"service.rss"};
   static constexpr auto fdsName{"service.fds"};
   static constexpr auto cpuUsageName{"service.cpu_usage"};
@@ -15,24 +15,20 @@ struct ServiceMonitorConstants {
 
 namespace detail {
 template <typename Reg>
-inline auto gauge(Reg* registry, const char* name, const char* serviceName,
-                  const char* id = nullptr) {
+inline auto gauge(Reg* registry, const char* name, const char* serviceName) {
   auto tags = spectator::Tags{{"service_name", fmt::format("{}", serviceName)}};
-  if (id != nullptr) {
-    tags.add("id", id);
-  }
   return registry->GetGauge(name, tags);
 }
 
 template <typename Reg>
-inline auto guageServiceState(Reg* registry, const char* name, const char* serviceName,
+inline auto gaugeServiceState(Reg* registry, const char* name, const char* serviceName,
                               const char* activeState, const char* subState) {
-  auto tags = spectator::Tags{{"service_name", fmt::format("{}", serviceName)}};
+  auto tags = spectator::Tags{{"service.name", fmt::format("{}", serviceName)}};
   if (activeState != nullptr) {
-    tags.add("active_state", activeState);
+    tags.add("active.state", activeState);
   }
   if (subState != nullptr) {
-    tags.add("sub_state", subState);
+    tags.add("sub.state", subState);
   }
   return registry->GetGauge(name, tags);
 }
@@ -61,6 +57,7 @@ class ServiceMonitor {
   unsigned long long currentCpuTime{0};
   std::unordered_map<pid_t, ProcessTimes> currentProcessTimes{};
   unsigned int numCpuCores{};
+  int pageSize{};
   bool initSuccess{false};
   std::unordered_set<std::string> monitoredServices_{};
 };

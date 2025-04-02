@@ -26,6 +26,13 @@ bool ServiceMonitor<Reg>::init_monitored_services() try {
   }
   this->numCpuCores = cpuCores.value();
 
+  // Get the page size (used to convert rss to bytes)
+  this->pageSize = sysconf(_SC_PAGESIZE);
+  if (this->pageSize == -1) {
+    atlasagent::Logger()->error("Error getting page size");
+    return false;
+  }
+
   auto all_units = list_all_units();
   if (all_units.has_value() == false) {
     atlasagent::Logger()->error("Error gathering all units from Systemd");
@@ -119,7 +126,7 @@ bool ServiceMonitor<Reg>::update_metrics() try {
     }
     if (serviceRSS.has_value()) {
       detail::gauge(this->registry_, ServiceMonitorConstants::rssName, service.name.c_str())
-          ->Set(serviceRSS.value());
+          ->Set(serviceRSS.value() * this->pageSize);
     }
     if (serviceFds.has_value()) {
       detail::gauge(this->registry_, ServiceMonitorConstants::fdsName, service.name.c_str())
@@ -129,7 +136,7 @@ bool ServiceMonitor<Reg>::update_metrics() try {
       detail::gauge(this->registry_, ServiceMonitorConstants::cpuUsageName, service.name.c_str())
           ->Set(cpuUsage.value());
     }
-    detail::guageServiceState(this->registry_, ServiceMonitorConstants::serviceStatusName,
+    detail::gaugeServiceState(this->registry_, ServiceMonitorConstants::serviceStatusName,
                               service.name.c_str(), service.activeState.c_str(),
                               service.subState.c_str())
         ->Set(1);
