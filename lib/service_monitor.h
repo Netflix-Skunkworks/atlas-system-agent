@@ -57,7 +57,7 @@ class ServiceMonitor {
   unsigned long long currentCpuTime{0};
   std::unordered_map<pid_t, ProcessTimes> currentProcessTimes{};
   unsigned int numCpuCores{};
-  int pageSize{};
+  long pageSize{};
   bool initSuccess{false};
   std::unordered_set<std::string> monitoredServices_{};
 };
