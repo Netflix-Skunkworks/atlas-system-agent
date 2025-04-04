@@ -255,4 +255,27 @@ bool is_file_present(const char* fileName) try {
   return false;
 }
 
+std::optional<std::vector<std::string>> read_file(const std::string& filePath) try {
+  if (is_file_present(filePath.c_str()) == false){
+    return std::nullopt;
+  }
+
+  std::ifstream file(filePath);
+  if (file.is_open() == false) {
+    return std::nullopt;
+  }
+
+  // Read lines into a vector
+  std::vector<std::string> lines{};
+  std::string line{};
+  while (std::getline(file, line)) {
+    lines.push_back(line);
+  }
+  return lines;
+}
+catch (const std::exception& e){
+  atlasagent::Logger()->error("Exception thrown in read_file: {}", e.what());
+  return std::nullopt;
+}
+
 }  // namespace atlasagent

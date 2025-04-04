@@ -12,6 +12,7 @@
 #include "../lib/perfmetrics.h"
 #include "../lib/pressure_stall.h"
 #include "../lib/proc.h"
+#include "../lib/service_monitor.h"
 #include "../lib/util.h"
 #include "backward.hpp"
 #include <condition_variable>
@@ -223,7 +224,7 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
 }
 #else
 void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                            const spectator::Tags& net_tags) {
+                            const spectator::Tags& net_tags, const int& max_monitored_services) {
   using std::chrono::duration_cast;
   using std::chrono::milliseconds;
   using std::chrono::seconds;
@@ -245,9 +246,25 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
     gpuDCGM.emplace(registry);
   }
 
+  /* To Do: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
+  check if these optionals have a set value. lets improve how we handle this */
+  std::optional<ServiceMonitor<TaggingRegistry> > serviceMetrics{};
+  std::optional<std::vector<std::regex> > serviceConfig{
+      parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
+  if (serviceConfig.has_value()) {
+    serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
+  }
+  else{
+    Logger()->info("Service Monitoring is disabled.");
+  }
+
   if (gpuDCGM.has_value()) {
-    std::string serviceStatus = atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
-    Logger()->info("DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service state: {}.", serviceStatus);
+    std::string serviceStatus =
+        atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
+    Logger()->info(
+        "DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service "
+        "state: {}.",
+        serviceStatus);
   } else {
     Logger()->info("DCGMI binary not present. Agent will not collect DCGM metrics.");
   }
@@ -287,6 +304,12 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
         }
       }
 
+      if (serviceMetrics.has_value()) {
+        if (serviceMetrics.value().gather_metrics() == false) {
+          Logger()->error("Failed to gather Service metrics");
+        }
+      }
+
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
       Logger()->debug("Published system metrics (delay={})", elapsed);
       next_slow_run += seconds(60);
@@ -302,13 +325,14 @@ struct agent_options {
   spectator::Tags network_tags;
   std::string cfg_file;
   bool verbose;
+  unsigned int max_monitored_services{0};
 };
 
 static constexpr const char* const kDefaultCfgFile = "/etc/default/atlas-agent.json";
 
 static void usage(const char* progname) {
   fprintf(stderr,
-          "Usage: %s [-c cfg_file] [-v] [-t extra-network-tags]\n"
+          "Usage: %s [-c cfg_file] [-s monitored-service-threshold][-v] [-t extra-network-tags]\n"
           "\t-c\tUse cfg_file as the configuration file. Default %s\n"
           "\t-v\tBe very verbose\n"
           "\t-t tags\tAdd extra tags to the network metrics.\n"
@@ -321,7 +345,7 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
   result->verbose = std::getenv("VERBOSE_AGENT") != nullptr;  // default for backwards compat
 
   int ch;
-  while ((ch = getopt(argc, argv, "c:vt:")) != -1) {
+  while ((ch = getopt(argc, argv, "c:vt:s:")) != -1) {
     switch (ch) {
       case 'c':
         result->cfg_file = optarg;
@@ -331,6 +355,13 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
         break;
       case 't':
         result->network_tags = atlasagent::parse_tags(optarg);
+        break;
+      case 's':
+        result->max_monitored_services = std::stoi(optarg);
+        if (result->max_monitored_services < 0) {
+          fprintf(stderr, "Invalid value for -s: %s\n", optarg);
+          usage(argv[0]);
+        }
         break;
       case '?':
       default:
@@ -396,7 +427,8 @@ int main(int argc, char* const argv[]) {
   collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags);
 #else
   Logger()->info("Start gathering EC2 system metrics");
-  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags);
+  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags,
+                         options.max_monitored_services);
 #endif
   logger->info("Shutting down spectator registry");
   atlasagent::HttpClient<>::GlobalShutdown();

@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+#include <optional>
 #include <vector>
 #include "files.h"
 #include "spectator/id.h"
@@ -52,5 +53,8 @@ inline spectator::IdPtr id_for(const char* name, const char* iface, const char* 
 bool is_service_running(const char* serviceName);
 
 bool is_file_present(const char* fileName);
+
+// read a file line by line into a vector
+std::optional<std::vector<std::string>> read_file(const std::string& filePath);
 
 }  // namespace atlasagent
