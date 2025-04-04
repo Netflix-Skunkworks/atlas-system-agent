@@ -7,10 +7,10 @@
 struct ServiceMonitorConstants {
   static constexpr auto MaxMonitoredServices{10};
   static constexpr auto ConfigPath{"/etc/atlas-system-agent/conf.d"};
-  static constexpr auto rssName{"service.rss"};
-  static constexpr auto fdsName{"service.fds"};
-  static constexpr auto cpuUsageName{"service.cpu_usage"};
-  static constexpr auto serviceStatusName{"service.status"};
+  static constexpr auto rssName{"systemd.service.rss"};
+  static constexpr auto fdsName{"systemd.service.fds"};
+  static constexpr auto cpuUsageName{"systemd.service.cpu.usage"};
+  static constexpr auto serviceStatusName{"systemd.service.status"};
 };
 
 namespace detail {
