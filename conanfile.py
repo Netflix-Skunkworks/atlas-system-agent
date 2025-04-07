@@ -24,7 +24,7 @@ class AtlasSystemAgentConan(ConanFile):
     generators = "CMakeDeps", "CMakeToolchain"
 
     def requirements(self):
-        # To Do: remove this when SystemD updates package for zstd
+        # TODO: remove this when SystemD updates package for zstd
         self.requires("zstd/1.5.7", override=True)
 
     def configure(self):

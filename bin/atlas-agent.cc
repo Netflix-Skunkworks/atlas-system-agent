@@ -246,8 +246,8 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
     gpuDCGM.emplace(registry);
   }
 
-  /* To Do: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
-  check if these optionals have a set value. lets improve how we handle this */
+  // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
+  // check if these optionals have a set value. lets improve how we handle this
   std::optional<ServiceMonitor<TaggingRegistry> > serviceMetrics{};
   std::optional<std::vector<std::regex> > serviceConfig{
       parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};

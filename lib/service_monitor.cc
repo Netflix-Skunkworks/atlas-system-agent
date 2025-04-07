@@ -161,7 +161,7 @@ bool ServiceMonitor<Reg>::update_metrics() try {
   return false;
 }
 
-// To Do: Shutdown module if no services are being monitored
+// TODO: Shutdown module if no services are being monitored
 template <class Reg>
 bool ServiceMonitor<Reg>::gather_metrics() {
   if (this->initSuccess == false) {
@@ -170,7 +170,7 @@ bool ServiceMonitor<Reg>::gather_metrics() {
     }
   }
 
-  // To Do: We initialized but there are no services to monitor (no patterns matched)
+  // TODO: We initialized but there are no services to monitor (no patterns matched)
   // This would be user error. We should create a way to remove this Collector from 60 sec
   // collection. I have logged this error in init_monitored_services. Returning true because
   // this is not a failure but a user error.
