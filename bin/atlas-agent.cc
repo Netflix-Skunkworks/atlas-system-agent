@@ -171,8 +171,8 @@ long initial_polling_delay() {
 }
 
 #if defined(TITUS_SYSTEM_SERVICE)
-void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvidia_lib,
-                           spectator::Tags net_tags) {
+void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
+  const spectator::Tags& net_tags, const int& max_monitored_services) {
   using std::chrono::duration_cast;
   using std::chrono::milliseconds;
   using std::chrono::seconds;
@@ -185,6 +185,18 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
   Proc proc{registry, std::move(net_tags)};
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
+
+  // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
+  // check if these optionals have a set value. lets improve how we handle this
+  std::optional<ServiceMonitor<TaggingRegistry> > serviceMetrics{};
+  std::optional<std::vector<std::regex> > serviceConfig{
+      parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
+  if (serviceConfig.has_value()) {
+    serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
+  }
+  else{
+    Logger()->info("Service Monitoring is disabled.");
+  }
 
   // initial polling delay, to prevent publishing too close to a minute boundary
   auto delay = initial_polling_delay();
@@ -212,6 +224,11 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<Nvml> nvid
       perf_metrics.collect();
       if (gpu) {
         gpu->gpu_metrics();
+      }
+      if (serviceMetrics.has_value()) {
+        if (serviceMetrics.value().gather_metrics() == false) {
+          Logger()->error("Failed to gather Service metrics");
+        }
       }
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
       Logger()->info("Published Titus metrics (delay={})", elapsed);
@@ -259,12 +276,8 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
   }
 
   if (gpuDCGM.has_value()) {
-    std::string serviceStatus =
-        atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
-    Logger()->info(
-        "DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service "
-        "state: {}.",
-        serviceStatus);
+    std::string serviceStatus = atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
+    Logger()->info("DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service state: {}.", serviceStatus);
   } else {
     Logger()->info("DCGMI binary not present. Agent will not collect DCGM metrics.");
   }
