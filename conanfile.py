@@ -43,12 +43,12 @@ class AtlasSystemAgentConan(ConanFile):
 
     def get_spectator_cpp(self):
         repo = "Netflix/spectator-cpp"
-        commit = "5761837faf6911a5c8fe04646cb05649b68a8ae3"
+        commit = "6e7c2fd5f26085aa75a978fc5eff28805bbaf0cc"
         zip_name = repo.replace("Netflix/", "") + f"-{commit}.zip"
 
         self.maybe_remove_file(zip_name)
         download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_name)
-        check_sha256(self, zip_name, "04cac036a9a1ad08ab381408578153c108b4e553db3bfb4148cf4a8fcbd7ba3a")
+        check_sha256(self, zip_name, "1605b3a4a8deb9f1f1ce742f1d95b3a1aefae32289ee7df585525c87f2a51193")
 
         dir_name = repo.replace("Netflix/", "")
         self.maybe_remove_dir(dir_name)

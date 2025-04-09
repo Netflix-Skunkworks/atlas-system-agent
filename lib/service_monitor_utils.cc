@@ -276,9 +276,18 @@ unsigned int parse_cores(const std::vector<std::string>& cpuInfo) {
       cpuCores++;
     }
   }
-  return (cpuCores == 0) ? 1 : cpuCores;
+  return (cpuCores == 0) ? ServiceMonitorUtilConstants::defaultCoreCount : cpuCores;
 }
 
+#if defined(TITUS_SYSTEM_SERVICE)
+std::optional<unsigned int> get_cpu_cores() {
+  auto cpuInfo = atlasagent::read_environment_file(ServiceMonitorUtilConstants::titusCoresEnvVar);
+  if (cpuInfo.has_value() == false) {
+    return ServiceMonitorUtilConstants::defaultCoreCount;
+  }
+  return std::stoul(cpuInfo.value());
+}
+#else
 std::optional<unsigned int> get_cpu_cores() {
   auto cpuInfo = atlasagent::read_file(ServiceMonitorUtilConstants::CpuInfoPath);
   if (cpuInfo.has_value() == false) {
@@ -287,6 +296,7 @@ std::optional<unsigned int> get_cpu_cores() {
 
   return parse_cores(cpuInfo.value());
 }
+#endif
 
 std::unordered_map<pid_t, ProcessTimes> create_pid_map(
     const std::vector<ServiceProperties>& services) try {

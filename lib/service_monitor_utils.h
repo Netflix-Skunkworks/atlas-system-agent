@@ -48,7 +48,9 @@ struct ServiceMonitorUtilConstants {
   static constexpr auto StatPath{"stat"};
   static constexpr auto FdPath{"fd"};
   static constexpr auto Processor{"processor"};
-  static constexpr auto ConfigFileExtPattern = ".*\\.systemd-unit$";  // Fix the regex pattern
+  static constexpr auto ConfigFileExtPattern = ".*\\.systemd-unit$";
+  static constexpr auto titusCoresEnvVar{"TITUS_NUM_CPU"};
+  static constexpr auto defaultCoreCount{1};
 };
 
 struct ProcessTimes {

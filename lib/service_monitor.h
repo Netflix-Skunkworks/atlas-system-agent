@@ -6,6 +6,7 @@
 
 struct ServiceMonitorConstants {
   static constexpr auto MaxMonitoredServices{10};
+  static constexpr auto GaugeTTLSeconds{60};
   static constexpr auto ConfigPath{"/etc/atlas-system-agent/conf.d"};
   static constexpr auto rssName{"systemd.service.rss"};
   static constexpr auto fdsName{"systemd.service.fds"};
@@ -17,7 +18,7 @@ namespace detail {
 template <typename Reg>
 inline auto gauge(Reg* registry, const char* name, const char* serviceName) {
   auto tags = spectator::Tags{{"service.name", fmt::format("{}", serviceName)}};
-  return registry->GetGauge(name, tags);
+  return registry->GetGaugeTTL(name, ServiceMonitorConstants::GaugeTTLSeconds, tags);
 }
 
 template <typename Reg>
@@ -27,7 +28,7 @@ inline auto gaugeServiceState(Reg* registry, const char* name, const char* servi
   if (activeState != nullptr && subState != nullptr) {
     tags.add("state", fmt::format("{}.{}", activeState, subState));
   }
-  return registry->GetGauge(name, tags);
+  return registry->GetGaugeTTL(name, ServiceMonitorConstants::GaugeTTLSeconds, tags);
 }
 }  // namespace detail
 

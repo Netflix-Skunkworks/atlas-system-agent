@@ -57,4 +57,7 @@ bool is_file_present(const char* fileName);
 // read a file line by line into a vector
 std::optional<std::vector<std::string>> read_file(const std::string& filePath);
 
+// Read an environment variable and return its value as a string optional
+std::optional<std::string> read_environment_var(const char* name);
+
 }  // namespace atlasagent

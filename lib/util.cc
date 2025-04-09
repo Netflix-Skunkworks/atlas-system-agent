@@ -278,4 +278,12 @@ catch (const std::exception& e){
   return std::nullopt;
 }
 
+std::optional<std::string> read_environment_var(const char* name) {
+  const char* value = std::getenv(name);
+  if (value == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(value);
+}
+
 }  // namespace atlasagent
