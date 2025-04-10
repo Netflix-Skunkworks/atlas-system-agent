@@ -21,8 +21,8 @@ TEST(ServiceMonitorTest, ParseNumberOfCores) {
   auto filepath{"testdata/resources2/service_monitor/valid-cpu-info.txt"};
   auto fileContents = atlasagent::read_file(filepath);
   EXPECT_NE(std::nullopt, fileContents);
-  auto coreCount = parse_cores(fileContents.value());
-  EXPECT_EQ(32, coreCount);
+  auto coreCount = parse_cores(fileContents.value()[0]);
+  EXPECT_EQ(96, coreCount);
 }
 
 TEST(ServiceMonitorTest, ParseProcStat) {

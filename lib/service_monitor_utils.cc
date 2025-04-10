@@ -263,40 +263,43 @@ double calculate_cpu_usage(unsigned long long oldCpuTime, unsigned long long new
   unsigned long long processTimeDelta =
       (newProcessTime.uTime - oldProcessTime.uTime) + (newProcessTime.sTime - oldProcessTime.sTime);
   unsigned long long cpuTimeDelta = newCpuTime - oldCpuTime;
-
   double cpuUsage = (100.0 * processTimeDelta / cpuTimeDelta) * numCores;
 
   return cpuUsage;
 }
 
-unsigned int parse_cores(const std::vector<std::string>& cpuInfo) {
-  unsigned int cpuCores{0};
-  for (const auto& line : cpuInfo) {
-    if (line.substr(0, 9) == ServiceMonitorUtilConstants::Processor) {
-      cpuCores++;
-    }
+unsigned int parse_cores(const std::string& cpuInfo) try {
+  if (cpuInfo == "0") {
+    return 1;
   }
-  return (cpuCores == 0) ? ServiceMonitorUtilConstants::defaultCoreCount : cpuCores;
-}
-
-#if defined(TITUS_SYSTEM_SERVICE)
-std::optional<unsigned int> get_cpu_cores() {
-  auto cpuInfo = atlasagent::read_environment_file(ServiceMonitorUtilConstants::titusCoresEnvVar);
-  if (cpuInfo.has_value() == false) {
+  // Format is typically "0-N" where N+1 is the number of cores
+  size_t dashPos = cpuInfo.find('-');
+  if (dashPos == std::string::npos) {
+    atlasagent::Logger()->error("Unexpected format in CPU info: {}", cpuInfo);
     return ServiceMonitorUtilConstants::defaultCoreCount;
   }
-  return std::stoul(cpuInfo.value());
+  
+  unsigned int lastCore = std::stoul(cpuInfo.substr(dashPos + 1));
+  return lastCore + 1;
+} catch (const std::exception& e) {
+  atlasagent::Logger()->error("Exception in parse_cores");
+  return ServiceMonitorUtilConstants::defaultCoreCount;
 }
-#else
+
 std::optional<unsigned int> get_cpu_cores() {
-  auto cpuInfo = atlasagent::read_file(ServiceMonitorUtilConstants::CpuInfoPath);
-  if (cpuInfo.has_value() == false) {
+  auto possible = atlasagent::read_file("/sys/devices/system/cpu/possible");
+  if (possible.has_value() == false || possible.value().empty()) {
+    atlasagent::Logger()->error("Error reading /sys/devices/system/cpu/possible");
     return std::nullopt;
   }
 
-  return parse_cores(cpuInfo.value());
+  // File should only be one line
+  if (possible.value().size() != 1) {
+    return std::nullopt;
+  }
+
+  return parse_cores(possible.value()[0]);
 }
-#endif
 
 std::unordered_map<pid_t, ProcessTimes> create_pid_map(
     const std::vector<ServiceProperties>& services) try {

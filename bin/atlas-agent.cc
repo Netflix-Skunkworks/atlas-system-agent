@@ -437,7 +437,7 @@ int main(int argc, char* const argv[]) {
   TaggingRegistry registry{&spectator_registry, maybe_tagger.value_or(atlasagent::Tagger::Nop())};
 #if defined(TITUS_SYSTEM_SERVICE)
   Logger()->info("Start gathering Titus system metrics");
-  collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags);
+  collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
 #else
   Logger()->info("Start gathering EC2 system metrics");
   collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags,
