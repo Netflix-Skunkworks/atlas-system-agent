@@ -140,7 +140,8 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
                                   file.path().c_str());
       continue;
     }
-    allRegexPatterns.insert(allRegexPatterns.end(), regexExpressions.value().begin(), regexExpressions.value().end());
+    allRegexPatterns.insert(allRegexPatterns.end(), regexExpressions.value().begin(),
+                            regexExpressions.value().end());
   }
 
   if (allRegexPatterns.empty()) {
@@ -191,7 +192,6 @@ std::optional<ProcessTimes> get_process_times(pid_t pid) {
 std::optional<unsigned long> parse_rss(const std::vector<std::string>& pidStats) try {
   auto statLine = pidStats.at(0);
   std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
-
   // Check if we have enough tokens before accessing them
   if (statTokens.size() <= ServiceMonitorUtilConstants::RssIndex) {
     atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",

@@ -225,7 +225,7 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent
       if (gpu) {
         gpu->gpu_metrics();
       }
-      if (serviceMetrics.has_value() && (serviceMetrics.value().gather_metrics() == false) {
+      if (serviceMetrics.has_value() && serviceMetrics.value().gather_metrics() == false) {
         Logger()->error("Failed to gather Service metrics");
       }
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
