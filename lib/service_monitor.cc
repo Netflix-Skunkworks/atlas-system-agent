@@ -4,15 +4,15 @@
 template class ServiceMonitor<atlasagent::TaggingRegistry>;
 
 template <typename Reg>
-ServiceMonitor<Reg>::ServiceMonitor(Reg* registry, std::vector<std::regex> config, unsigned int max_services)
+ServiceMonitor<Reg>::ServiceMonitor(Reg* registry, std::vector<std::regex> config,
+                                    unsigned int max_services)
     : registry_{registry},
       config_{std::move(config)},
       maxMonitoredServices{max_services == 0 ? ServiceMonitorConstants::MaxMonitoredServices
                                              : max_services} {
   if (this->maxMonitoredServices != ServiceMonitorConstants::MaxMonitoredServices) {
-    atlasagent::Logger()->info(
-        "Custom max monitored services value set: {} (default is {})", maxMonitoredServices,
-        ServiceMonitorConstants::MaxMonitoredServices);
+    atlasagent::Logger()->info("Custom max monitored services value set: {} (default is {})",
+                               maxMonitoredServices, ServiceMonitorConstants::MaxMonitoredServices);
   }
 }
 
@@ -42,8 +42,9 @@ bool ServiceMonitor<Reg>::init_monitored_services() try {
   for (const auto& unit : all_units.value()) {
     const auto& unit_name = std::get<0>(unit);
 
-    bool matched = std::any_of(config_.begin(), config_.end(),[&unit_name](const std::regex& regex) {
-      return std::regex_search(unit_name, regex);});
+    bool matched = std::any_of(
+        config_.begin(), config_.end(),
+        [&unit_name](const std::regex& regex) { return std::regex_search(unit_name, regex); });
 
     if (matched == false) {
       continue;
@@ -51,17 +52,16 @@ bool ServiceMonitor<Reg>::init_monitored_services() try {
 
     if (monitoredServices_.size() >= maxMonitoredServices) {
       atlasagent::Logger()->info(
-        "Reached maximum number of monitored services ({}). Ignoring service {} and remaining "
-        "services.",
-        maxMonitoredServices, unit_name);
+          "Reached maximum number of monitored services ({}). Ignoring service {} and remaining "
+          "services.",
+          maxMonitoredServices, unit_name);
       break;
     }
 
     monitoredServices_.insert(unit_name);
-    atlasagent::Logger()->debug("Added service {} to monitoring list ({}/{})", unit_name,
+    atlasagent::Logger()->info("Added service {} to monitoring list ({}/{})", unit_name,
                                 monitoredServices_.size(), this->maxMonitoredServices);
   }
-  
 
   // Units were retrieved. initSuccess is now true because monitoredServices now initialized
   // with pattern matched services.
@@ -108,8 +108,8 @@ bool ServiceMonitor<Reg>::update_metrics() try {
     auto serviceRSS = get_rss(service.mainPid);
     auto serviceFds = get_number_fds(service.mainPid);
 
-    std::optional<double> cpuUsage{std::nullopt};  // this must be an optional because reading the
-                                                   // new cpu time could have failed
+    // this must be an optional b/c reading the new cpu time could have failed
+    std::optional<double> cpuUsage{std::nullopt};
     if (newCpuTime.has_value() &&
         currentProcessTimes.find(service.mainPid) != currentProcessTimes.end() &&
         newProcessTimes.find(service.mainPid) != newProcessTimes.end()) {
@@ -122,7 +122,7 @@ bool ServiceMonitor<Reg>::update_metrics() try {
     if (serviceRSS.has_value() == false || serviceFds.has_value() == false ||
         cpuUsage.has_value() == false) {
       success = false;
-      atlasagent::Logger()->error("Failed to get {} metrics", service.name);
+      atlasagent::Logger()->debug("Failed to get {} metrics", service.name);
     }
     if (serviceRSS.has_value()) {
       detail::gauge(this->registry_, ServiceMonitorConstants::rssName, service.name.c_str())
@@ -157,17 +157,15 @@ bool ServiceMonitor<Reg>::update_metrics() try {
   this->currentCpuTime = newCpuTime.value();
   return success;
 } catch (const std::exception& e) {
-  atlasagent::Logger()->error("Exception: {} in servic moniotr update_metrics", e.what());
+  atlasagent::Logger()->error("Exception: {} in service moniotr update_metrics", e.what());
   return false;
 }
 
 // TODO: Shutdown module if no services are being monitored
 template <class Reg>
 bool ServiceMonitor<Reg>::gather_metrics() {
-  if (this->initSuccess == false) {
-    if (this->init_monitored_services() == false) {
-      return false;
-    }
+  if (this->initSuccess == false && this->init_monitored_services() == false) {
+    return false;
   }
 
   // TODO: We initialized but there are no services to monitor (no patterns matched)
@@ -182,9 +180,5 @@ bool ServiceMonitor<Reg>::gather_metrics() {
     return true;
   }
 
-  if (false == this->update_metrics()) {
-    return false;
-  }
-
-  return true;
+  return this->update_metrics();
 }

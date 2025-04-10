@@ -13,33 +13,33 @@ using Unit =
 
 struct DBusConstants {
   // Service and path constants
-  static constexpr auto service = "org.freedesktop.systemd1";
-  static constexpr auto path = "/org/freedesktop/systemd1";
+  static constexpr auto Service = "org.freedesktop.systemd1";
+  static constexpr auto Path = "/org/freedesktop/systemd1";
 
   // Manager interface constants
-  static constexpr auto interface = "org.freedesktop.systemd1.Manager";
+  static constexpr auto Interface = "org.freedesktop.systemd1.Manager";
   static constexpr auto MethodListUnits = "ListUnits";
   static constexpr auto MethodGetUnit = "GetUnit";
 
   // Properties interface constants
-  static constexpr auto propertiesInterface = "org.freedesktop.DBus.Properties";
+  static constexpr auto PropertiesInterface = "org.freedesktop.DBus.Properties";
   static constexpr auto MethodGet = "Get";
 
   // Unit interface constants
-  static constexpr auto unitInterface = "org.freedesktop.systemd1.Unit";
+  static constexpr auto UnitInterface = "org.freedesktop.systemd1.Unit";
   static constexpr auto PropertyActiveState = "ActiveState";
   static constexpr auto PropertyLoadState = "LoadState";
   static constexpr auto PropertySubState = "SubState";
 
   // Service interface constants
-  static constexpr auto serviceInterface = "org.freedesktop.systemd1.Service";
+  static constexpr auto ServiceInterface = "org.freedesktop.systemd1.Service";
   static constexpr auto PropertyMainPID = "MainPID";
 };
 
 struct ServiceMonitorUtilConstants {
-  static constexpr auto uTimeIndex{13};
-  static constexpr auto sTimeIndex{14};
-  static constexpr auto rssIndex{23};
+  static constexpr auto UTimeIndex{13};
+  static constexpr auto STimeIndex{14};
+  static constexpr auto RssIndex{23};
   static constexpr auto ProcStatPath{"/proc/stat"};
   static constexpr auto CpuInfoPath{"/proc/cpuinfo"};
   static constexpr auto AggregateCpuIndex{0};
@@ -49,8 +49,7 @@ struct ServiceMonitorUtilConstants {
   static constexpr auto FdPath{"fd"};
   static constexpr auto Processor{"processor"};
   static constexpr auto ConfigFileExtPattern = ".*\\.systemd-unit$";
-  static constexpr auto titusCoresEnvVar{"TITUS_NUM_CPU"};
-  static constexpr auto defaultCoreCount{1};
+  static constexpr auto DefaultCoreCount{1};
 };
 
 struct ProcessTimes {

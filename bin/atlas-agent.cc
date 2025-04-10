@@ -225,10 +225,8 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent
       if (gpu) {
         gpu->gpu_metrics();
       }
-      if (serviceMetrics.has_value()) {
-        if (serviceMetrics.value().gather_metrics() == false) {
-          Logger()->error("Failed to gather Service metrics");
-        }
+      if (serviceMetrics.has_value() && (serviceMetrics.value().gather_metrics() == false) {
+        Logger()->error("Failed to gather Service metrics");
       }
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
       Logger()->info("Published Titus metrics (delay={})", elapsed);
@@ -317,10 +315,8 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
         }
       }
 
-      if (serviceMetrics.has_value()) {
-        if (serviceMetrics.value().gather_metrics() == false) {
-          Logger()->error("Failed to gather Service metrics");
-        }
+      if (serviceMetrics.has_value() && serviceMetrics.value().gather_metrics() == false) {
+        Logger()->error("Failed to gather Service metrics");
       }
 
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
@@ -347,6 +343,7 @@ static void usage(const char* progname) {
   fprintf(stderr,
           "Usage: %s [-c cfg_file] [-s monitored-service-threshold][-v] [-t extra-network-tags]\n"
           "\t-c\tUse cfg_file as the configuration file. Default %s\n"
+          "\t-s\tSet the maximum number of monitored services. Default is 10\n"
           "\t-v\tBe very verbose\n"
           "\t-t tags\tAdd extra tags to the network metrics.\n"
           "\t\tExpects a string of the form key=val,key2=val2\n",
@@ -371,7 +368,7 @@ static int parse_options(int& argc, char* const argv[], agent_options* result) {
         break;
       case 's':
         result->max_monitored_services = std::stoi(optarg);
-        if (result->max_monitored_services < 0) {
+        if (result->max_monitored_services <= 0) {
           fprintf(stderr, "Invalid value for -s: %s\n", optarg);
           usage(argv[0]);
         }

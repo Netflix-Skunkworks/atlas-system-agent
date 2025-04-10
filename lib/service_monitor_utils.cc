@@ -10,16 +10,16 @@ std::optional<std::vector<Unit>> list_all_units() try {
   auto connection = sdbus::createSystemBusConnection();
 
   // Create the proxy
-  auto proxy = sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::service},
-                                  sdbus::ObjectPath{DBusConstants::path});
+  auto proxy = sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::Service},
+                                  sdbus::ObjectPath{DBusConstants::Path});
 
   // Create method call message
-  auto methodCall = proxy->createMethodCall(sdbus::InterfaceName{DBusConstants::interface},
+  auto methodCall = proxy->createMethodCall(sdbus::InterfaceName{DBusConstants::Interface},
                                             sdbus::MethodName{DBusConstants::MethodListUnits});
 
   std::vector<Unit> units{};
   proxy->callMethod(sdbus::MethodName{DBusConstants::MethodListUnits})
-      .onInterface(sdbus::InterfaceName{DBusConstants::interface})
+      .onInterface(sdbus::InterfaceName{DBusConstants::Interface})
       .storeResultsTo(units);
   return units;
 } catch (const sdbus::Error& e) {
@@ -37,38 +37,38 @@ std::optional<ServiceProperties> get_service_properties(const std::string& servi
 
   // First get the unit object path using Manager.GetUnit method
   sdbus::ObjectPath unitObjectPath;
-  auto managerProxy = sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::service},
-                                         sdbus::ObjectPath{DBusConstants::path});
+  auto managerProxy = sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::Service},
+                                         sdbus::ObjectPath{DBusConstants::Path});
 
   // Get the proper object path for the unit
   managerProxy->callMethod(DBusConstants::MethodGetUnit)
-      .onInterface(DBusConstants::interface)
+      .onInterface(DBusConstants::Interface)
       .withArguments(serviceName)
       .storeResultsTo(unitObjectPath);
 
   // Create a proxy to the service object with the correct path
   auto proxy =
-      sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::service}, unitObjectPath);
+      sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::Service}, unitObjectPath);
 
   // Get MainPID property
   sdbus::Variant mainPidVariant;
   proxy->callMethod(DBusConstants::MethodGet)
-      .onInterface(DBusConstants::propertiesInterface)
-      .withArguments(DBusConstants::serviceInterface, DBusConstants::PropertyMainPID)
+      .onInterface(DBusConstants::PropertiesInterface)
+      .withArguments(DBusConstants::ServiceInterface, DBusConstants::PropertyMainPID)
       .storeResultsTo(mainPidVariant);
 
   // Get ActiveState property
   sdbus::Variant activeStateVariant;
   proxy->callMethod(DBusConstants::MethodGet)
-      .onInterface(DBusConstants::propertiesInterface)
-      .withArguments(DBusConstants::unitInterface, DBusConstants::PropertyActiveState)
+      .onInterface(DBusConstants::PropertiesInterface)
+      .withArguments(DBusConstants::UnitInterface, DBusConstants::PropertyActiveState)
       .storeResultsTo(activeStateVariant);
 
   // Get SubState property
   sdbus::Variant subStateVariant;
   proxy->callMethod(DBusConstants::MethodGet)
-      .onInterface(DBusConstants::propertiesInterface)
-      .withArguments(DBusConstants::unitInterface, DBusConstants::PropertySubState)
+      .onInterface(DBusConstants::PropertiesInterface)
+      .withArguments(DBusConstants::UnitInterface, DBusConstants::PropertySubState)
       .storeResultsTo(subStateVariant);
 
   uint32_t mainPid = mainPidVariant.get<uint32_t>();
@@ -140,10 +140,7 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
                                   file.path().c_str());
       continue;
     }
-
-    for (const auto& regex : regexExpressions.value()) {
-      allRegexPatterns.emplace_back(regex);
-    }
+    allRegexPatterns.insert(allRegexPatterns.end(), regexExpressions.value().begin(), regexExpressions.value().end());
   }
 
   if (allRegexPatterns.empty()) {
@@ -169,14 +166,14 @@ std::optional<ProcessTimes> parse_process_times(const std::vector<std::string>& 
   std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
 
   // Check if we have enough tokens before accessing them
-  if (statTokens.size() <= ServiceMonitorUtilConstants::sTimeIndex) {
+  if (statTokens.size() <= ServiceMonitorUtilConstants::STimeIndex) {
     atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
-                                ServiceMonitorUtilConstants::sTimeIndex + 1, statTokens.size());
+                                ServiceMonitorUtilConstants::STimeIndex + 1, statTokens.size());
     return std::nullopt;
   }
 
-  unsigned long uTime = std::stoul(statTokens[ServiceMonitorUtilConstants::uTimeIndex]);
-  unsigned long sTime = std::stoul(statTokens[ServiceMonitorUtilConstants::sTimeIndex]);
+  unsigned long uTime = std::stoul(statTokens[ServiceMonitorUtilConstants::UTimeIndex]);
+  unsigned long sTime = std::stoul(statTokens[ServiceMonitorUtilConstants::STimeIndex]);
   return ProcessTimes{uTime, sTime};
 } catch (const std::exception& e) {
   atlasagent::Logger()->error("Exception: {} in parse_process_times", e.what());
@@ -196,13 +193,13 @@ std::optional<unsigned long> parse_rss(const std::vector<std::string>& pidStats)
   std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
 
   // Check if we have enough tokens before accessing them
-  if (statTokens.size() <= ServiceMonitorUtilConstants::rssIndex) {
+  if (statTokens.size() <= ServiceMonitorUtilConstants::RssIndex) {
     atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
-                                ServiceMonitorUtilConstants::rssIndex + 1, statTokens.size());
+                                ServiceMonitorUtilConstants::RssIndex + 1, statTokens.size());
     return std::nullopt;
   }
 
-  return std::stoul(statTokens[ServiceMonitorUtilConstants::rssIndex]);
+  return std::stoul(statTokens[ServiceMonitorUtilConstants::RssIndex]);
 } catch (const std::exception& e) {
   atlasagent::Logger()->error("Exception: {} in parse_rss", e.what());
   return std::nullopt;
@@ -276,14 +273,14 @@ unsigned int parse_cores(const std::string& cpuInfo) try {
   size_t dashPos = cpuInfo.find('-');
   if (dashPos == std::string::npos) {
     atlasagent::Logger()->error("Unexpected format in CPU info: {}", cpuInfo);
-    return ServiceMonitorUtilConstants::defaultCoreCount;
+    return ServiceMonitorUtilConstants::DefaultCoreCount;
   }
-  
+
   unsigned int lastCore = std::stoul(cpuInfo.substr(dashPos + 1));
   return lastCore + 1;
 } catch (const std::exception& e) {
   atlasagent::Logger()->error("Exception in parse_cores");
-  return ServiceMonitorUtilConstants::defaultCoreCount;
+  return ServiceMonitorUtilConstants::DefaultCoreCount;
 }
 
 std::optional<unsigned int> get_cpu_cores() {
