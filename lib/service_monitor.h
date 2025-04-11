@@ -5,13 +5,15 @@
 #include "service_monitor_utils.h"
 
 struct ServiceMonitorConstants {
-  static constexpr auto MaxMonitoredServices{10};
+  static constexpr auto DefaultMonitoredServices{10};
   static constexpr auto GaugeTTLSeconds{60};
   static constexpr auto ConfigPath{"/etc/atlas-system-agent/conf.d"};
-  static constexpr auto rssName{"systemd.service.rss"};
-  static constexpr auto fdsName{"systemd.service.fds"};
-  static constexpr auto cpuUsageName{"systemd.service.cpuUsage"};
-  static constexpr auto serviceStatusName{"systemd.service.status"};
+  static constexpr auto RssName{"systemd.service.rss"};
+  static constexpr auto FdsName{"systemd.service.fds"};
+  static constexpr auto CpuUsageName{"systemd.service.cpuUsage"};
+  static constexpr auto ServiceStatusName{"systemd.service.status"};
+  static constexpr auto Active{"active"};
+  static constexpr auto Running{"running"};
 };
 
 namespace detail {
@@ -53,9 +55,9 @@ class ServiceMonitor {
   std::vector<std::regex> config_;
   unsigned int maxMonitoredServices{};
   unsigned long long currentCpuTime{0};
-  std::unordered_map<pid_t, ProcessTimes> currentProcessTimes{};
+  std::unordered_map<unsigned int, ProcessTimes> currentProcessTimes{};
   unsigned int numCpuCores{};
   long pageSize{};
   bool initSuccess{false};
-  std::unordered_set<std::string> monitoredServices_{};
+  std::vector<std::string> monitoredServices_{};
 };

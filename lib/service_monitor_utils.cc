@@ -16,7 +16,8 @@ std::optional<std::vector<Unit>> list_all_units() try {
   // Create method call message
   auto methodCall = proxy->createMethodCall(sdbus::InterfaceName{DBusConstants::Interface},
                                             sdbus::MethodName{DBusConstants::MethodListUnits});
-
+  
+  // Store all the results from the method MethodListUnits into a vector of Unit structs
   std::vector<Unit> units{};
   proxy->callMethod(sdbus::MethodName{DBusConstants::MethodListUnits})
       .onInterface(sdbus::InterfaceName{DBusConstants::Interface})
@@ -85,17 +86,21 @@ std::optional<ServiceProperties> get_service_properties(const std::string& servi
 }
 
 std::optional<std::vector<std::regex>> parse_regex_config_file(const char* configFilePath) try {
+  // Read the all the regex patterns in the config file
   std::optional<std::vector<std::string>> stringPatterns = atlasagent::read_file(configFilePath);
   if (stringPatterns.has_value() == false) {
     atlasagent::Logger()->error("Error reading config file {}", configFilePath);
     return std::nullopt;
   }
 
+  // Skip empty files
   if (stringPatterns.value().empty()) {
     atlasagent::Logger()->debug("Empty config file {}", configFilePath);
     return std::nullopt;
   }
 
+  // Read all the lines in the file and if the line is a valid regex pattern, add it to regexPatterns
+  // If any of the regex patterns are invalid, log the error and return nullopt
   std::vector<std::regex> regexPatterns{};
   for (const auto& regex_pattern : stringPatterns.value()) {
     if (regex_pattern.empty()) {
@@ -115,47 +120,44 @@ std::optional<std::vector<std::regex>> parse_regex_config_file(const char* confi
   return std::nullopt;
 }
 
-std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
-    const char* directoryPath) try {
-  if (std::filesystem::exists(directoryPath) == false ||
-      std::filesystem::is_directory(directoryPath) == false) {
+std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(const char* directoryPath) try {
+  if (std::filesystem::exists(directoryPath) == false || std::filesystem::is_directory(directoryPath) == false) {
     atlasagent::Logger()->error("Invalid service monitor config directory {}", directoryPath);
     return std::nullopt;
   }
 
-  std::vector<std::regex> allRegexPatterns;
-  // Create the regex pattern from the string constant
   std::regex configFileExtPattern(ServiceMonitorUtilConstants::ConfigFileExtPattern);
+  std::vector<std::regex> allRegexPatterns{};
 
+  // Iterate through all files in the config directory, but do not process them if they do not match the service 
+  // monitoring config regex pattern ".systemd-unit"
   for (const auto& file : std::filesystem::recursive_directory_iterator(directoryPath)) {
-    // Check if the file matches our pattern before processing
     if (std::regex_match(file.path().filename().string(), configFileExtPattern) == false) {
       continue;
     }
 
+    // If parsing the file succeeds, add the regex patterns to allRegexPatterns, otherwise log & continue to the next file
     auto regexExpressions = parse_regex_config_file(file.path().c_str());
-
     if (regexExpressions.has_value() == false) {
-      atlasagent::Logger()->error("Could not add regex expressions from file {}",
-                                  file.path().c_str());
+      atlasagent::Logger()->error("Could not add regex expressions from file {}", file.path().c_str());
       continue;
     }
-    allRegexPatterns.insert(allRegexPatterns.end(), regexExpressions.value().begin(),
-                            regexExpressions.value().end());
+    allRegexPatterns.insert(allRegexPatterns.end(), regexExpressions.value().begin(), regexExpressions.value().end());
   }
 
+  // If no regex patterns were found in the directory, log the error and return nullopt
   if (allRegexPatterns.empty()) {
     atlasagent::Logger()->info("No regex patterns found in directory {}", directoryPath);
     return std::nullopt;
   }
-
+  
   return allRegexPatterns;
 } catch (const std::exception& e) {
   atlasagent::Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
   return std::nullopt;
 }
 
-std::optional<std::vector<std::string>> get_proc_fields(pid_t pid) {
+std::optional<std::vector<std::string>> get_proc_fields(const unsigned int &pid) {
   std::filesystem::path procPath = std::filesystem::path(ServiceMonitorUtilConstants::ProcPath) /
                                    std::to_string(pid) / ServiceMonitorUtilConstants::StatPath;
   auto pidStats = atlasagent::read_file(procPath.string().c_str());
@@ -181,7 +183,7 @@ std::optional<ProcessTimes> parse_process_times(const std::vector<std::string>& 
   return std::nullopt;
 }
 
-std::optional<ProcessTimes> get_process_times(pid_t pid) {
+std::optional<ProcessTimes> get_process_times(const unsigned int &pid) {
   auto pidStats = get_proc_fields(pid);
   if (pidStats.has_value() == false) {
     return std::nullopt;
@@ -205,7 +207,7 @@ std::optional<unsigned long> parse_rss(const std::vector<std::string>& pidStats)
   return std::nullopt;
 }
 
-std::optional<unsigned long> get_rss(pid_t pid) {
+std::optional<unsigned long> get_rss(const unsigned int &pid) {
   auto pidStats = get_proc_fields(pid);
   if (pidStats.has_value() == false) {
     return std::nullopt;
@@ -236,7 +238,7 @@ std::optional<unsigned long long> get_total_cpu_time() {
   return parse_cpu_time(cpuStats.value());
 }
 
-std::optional<unsigned int> get_number_fds(pid_t pid) try {
+std::optional<unsigned int> get_number_fds(const unsigned int& pid) try {
   auto path = std::filesystem::path(ServiceMonitorUtilConstants::ProcPath) / std::to_string(pid) /
               ServiceMonitorUtilConstants::FdPath;
 
@@ -254,11 +256,10 @@ std::optional<unsigned int> get_number_fds(pid_t pid) try {
   return std::nullopt;
 }
 
-double calculate_cpu_usage(unsigned long long oldCpuTime, unsigned long long newCpuTime,
-                           ProcessTimes oldProcessTime, ProcessTimes newProcessTime,
-                           unsigned int numCores) {
-  unsigned long long processTimeDelta =
-      (newProcessTime.uTime - oldProcessTime.uTime) + (newProcessTime.sTime - oldProcessTime.sTime);
+double calculate_cpu_usage(const unsigned long long &oldCpuTime, const unsigned long long &newCpuTime,
+                           const ProcessTimes &oldProcessTime, const ProcessTimes &newProcessTime,
+                           const unsigned int &numCores) {
+  unsigned long long processTimeDelta = (newProcessTime.uTime - oldProcessTime.uTime) + (newProcessTime.sTime - oldProcessTime.sTime);
   unsigned long long cpuTimeDelta = newCpuTime - oldCpuTime;
   double cpuUsage = (100.0 * processTimeDelta / cpuTimeDelta) * numCores;
 
@@ -267,8 +268,9 @@ double calculate_cpu_usage(unsigned long long oldCpuTime, unsigned long long new
 
 unsigned int parse_cores(const std::string& cpuInfo) try {
   if (cpuInfo == "0") {
-    return 1;
+    return ServiceMonitorUtilConstants::DefaultCoreCount;
   }
+
   // Format is typically "0-N" where N+1 is the number of cores
   size_t dashPos = cpuInfo.find('-');
   if (dashPos == std::string::npos) {
@@ -284,9 +286,9 @@ unsigned int parse_cores(const std::string& cpuInfo) try {
 }
 
 std::optional<unsigned int> get_cpu_cores() {
-  auto possible = atlasagent::read_file("/sys/devices/system/cpu/possible");
+  auto possible = atlasagent::read_file(ServiceMonitorUtilConstants::CpuInfoPath);
   if (possible.has_value() == false || possible.value().empty()) {
-    atlasagent::Logger()->error("Error reading /sys/devices/system/cpu/possible");
+    atlasagent::Logger()->error("Error reading {}", ServiceMonitorUtilConstants::CpuInfoPath);
     return std::nullopt;
   }
 
@@ -298,9 +300,13 @@ std::optional<unsigned int> get_cpu_cores() {
   return parse_cores(possible.value()[0]);
 }
 
-std::unordered_map<pid_t, ProcessTimes> create_pid_map(
-    const std::vector<ServiceProperties>& services) try {
-  std::unordered_map<pid_t, ProcessTimes> pidMap{};
+
+/* Iterate through the services and get the main PID and process times for each service
+Store the results in a map where the key is the PID and the value is the ProcessTimes struct
+If any of the process times cannot be retrieved, log the error and continue to the next service
+Return the map of PIDs and process times */
+std::unordered_map<unsigned int, ProcessTimes> create_pid_map(const std::vector<ServiceProperties>& services) try {
+  std::unordered_map<unsigned int, ProcessTimes> pidMap{};
   for (const auto& service : services) {
     auto pid = service.mainPid;
     auto processTimes = get_process_times(pid);

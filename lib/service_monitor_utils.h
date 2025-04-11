@@ -41,7 +41,7 @@ struct ServiceMonitorUtilConstants {
   static constexpr auto STimeIndex{14};
   static constexpr auto RssIndex{23};
   static constexpr auto ProcStatPath{"/proc/stat"};
-  static constexpr auto CpuInfoPath{"/proc/cpuinfo"};
+  static constexpr auto CpuInfoPath{"/sys/devices/system/cpu/possible"};
   static constexpr auto AggregateCpuIndex{0};
   static constexpr unsigned int AggregateCpuDataIndex{1};
   static constexpr auto ProcPath{"/proc"};
@@ -73,12 +73,12 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(
     const char* directoryPath);
 
 // Metrics Functions
-std::optional<unsigned long> get_rss(pid_t pid);
+std::optional<unsigned long> get_rss(const unsigned int &pid);
 std::optional<unsigned long long> get_total_cpu_time();
-std::optional<unsigned int> get_number_fds(pid_t pid);
-double calculate_cpu_usage(unsigned long long oldCpuTime, unsigned long long newCpuTime,
-                           ProcessTimes oldProcessTime, ProcessTimes newProcessTime,
-                           unsigned int numCores);
+std::optional<unsigned int> get_number_fds(const unsigned int &pid);
+double calculate_cpu_usage(const unsigned long long &oldCpuTime, const unsigned long long &newCpuTime,
+                           const ProcessTimes &oldProcessTime, const ProcessTimes &newProcessTime,
+                           const unsigned int &numCores);
 std::optional<unsigned int> get_cpu_cores();
-std::unordered_map<pid_t, ProcessTimes> create_pid_map(
+std::unordered_map<unsigned int, ProcessTimes> create_pid_map(
     const std::vector<ServiceProperties>& services);

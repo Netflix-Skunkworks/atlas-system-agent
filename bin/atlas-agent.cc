@@ -263,9 +263,10 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
 
   // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
   // check if these optionals have a set value. lets improve how we handle this
+  
+  // Create a ServiceMonitor object to monitor Systemd services if any configs are valid
   std::optional<ServiceMonitor<TaggingRegistry> > serviceMetrics{};
-  std::optional<std::vector<std::regex> > serviceConfig{
-      parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
+  std::optional<std::vector<std::regex> > serviceConfig{parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
   if (serviceConfig.has_value()) {
     serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
   }
@@ -334,7 +335,7 @@ struct agent_options {
   spectator::Tags network_tags;
   std::string cfg_file;
   bool verbose;
-  unsigned int max_monitored_services{0};
+  unsigned int max_monitored_services{ServiceMonitorConstants::DefaultMonitoredServices};
 };
 
 static constexpr const char* const kDefaultCfgFile = "/etc/default/atlas-agent.json";
