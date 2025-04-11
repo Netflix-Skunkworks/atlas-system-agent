@@ -28,7 +28,6 @@ struct DBusConstants {
   // Unit interface constants
   static constexpr auto UnitInterface = "org.freedesktop.systemd1.Unit";
   static constexpr auto PropertyActiveState = "ActiveState";
-  static constexpr auto PropertyLoadState = "LoadState";
   static constexpr auto PropertySubState = "SubState";
 
   // Service interface constants
@@ -47,9 +46,10 @@ struct ServiceMonitorUtilConstants {
   static constexpr auto ProcPath{"/proc"};
   static constexpr auto StatPath{"stat"};
   static constexpr auto FdPath{"fd"};
-  static constexpr auto Processor{"processor"};
   static constexpr auto ConfigFileExtPattern = ".*\\.systemd-unit$";
   static constexpr auto DefaultCoreCount{1};
+  static constexpr auto Active{"active"};
+  static constexpr auto Running{"running"};
 };
 
 struct ProcessTimes {

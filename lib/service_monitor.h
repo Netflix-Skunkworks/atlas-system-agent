@@ -12,24 +12,19 @@ struct ServiceMonitorConstants {
   static constexpr auto FdsName{"systemd.service.fds"};
   static constexpr auto CpuUsageName{"systemd.service.cpuUsage"};
   static constexpr auto ServiceStatusName{"systemd.service.status"};
-  static constexpr auto Active{"active"};
-  static constexpr auto Running{"running"};
 };
 
 namespace detail {
 template <typename Reg>
-inline auto gauge(Reg* registry, const char* name, const char* serviceName) {
+inline auto gauge(Reg* registry, const std::string_view name, const std::string_view serviceName) {
   auto tags = spectator::Tags{{"service.name", fmt::format("{}", serviceName)}};
   return registry->GetGaugeTTL(name, ServiceMonitorConstants::GaugeTTLSeconds, tags);
 }
 
 template <typename Reg>
-inline auto gaugeServiceState(Reg* registry, const char* name, const char* serviceName,
-                              const char* activeState, const char* subState) {
+inline auto gaugeServiceState(Reg* registry, const std::string_view name, const std::string_view serviceName, const std::string_view state) {
   auto tags = spectator::Tags{{"service.name", fmt::format("{}", serviceName)}};
-  if (activeState != nullptr && subState != nullptr) {
-    tags.add("state", fmt::format("{}.{}", activeState, subState));
-  }
+  tags.add("state", state);
   return registry->GetGaugeTTL(name, ServiceMonitorConstants::GaugeTTLSeconds, tags);
 }
 }  // namespace detail
@@ -60,4 +55,5 @@ class ServiceMonitor {
   long pageSize{};
   bool initSuccess{false};
   std::vector<std::string> monitoredServices_{};
+  std::unordered_map<std::string, std::string> previousStates{};
 };

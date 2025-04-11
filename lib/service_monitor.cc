@@ -117,46 +117,54 @@ bool ServiceMonitor<Reg>::update_metrics() try {
   
   // Iterate throught the services and update the metrics for each service
   for (const auto& service : servicesStates) {
-    detail::gaugeServiceState(this->registry_, ServiceMonitorConstants::ServiceStatusName,
-                              service.name.c_str(), service.activeState.c_str(),
-                              service.subState.c_str())
-        ->Set(1);
 
-    // The systemd service variable 'main pid' remains set even if the process is not running.
-    // We need to check if the service is active and running before we get the metrics b/c
-    // all of these values are read from /proc/<pid>
-    if (service.activeState == ServiceMonitorConstants::Active && service.subState == ServiceMonitorConstants::Running) {
-      auto serviceRSS = get_rss(service.mainPid);
-      auto serviceFds = get_number_fds(service.mainPid);
+    const auto newServiceState = fmt::format("{}.{}", service.activeState, service.subState);
+    const auto it = this->previousStates.find(service.name);
 
-      // Only calculate the cpu usage for a service if we have the new cpu time, the processes previous time,
-      // and the new processes time. There is no need to check that the old cpu time (this->currentCpuTime) is not 0.
-      // This is because if on the previous iteration we failed to get the cpu time, the previous process time map is empty.
-      std::optional<double> cpuUsage{std::nullopt};
-      if (newCpuTime.has_value() && currentProcessTimes.find(service.mainPid) != currentProcessTimes.end() &&
-          newProcessTimes.find(service.mainPid) != newProcessTimes.end()) {
-        auto newProcessTime = newProcessTimes[service.mainPid];
-        auto oldProcessTime = currentProcessTimes[service.mainPid];
-        cpuUsage.emplace(calculate_cpu_usage(currentCpuTime, newCpuTime.value(), oldProcessTime,
-                                             newProcessTime, this->numCpuCores));
-      }
+    if (it != this->previousStates.end() && it->second != newServiceState) {
+      detail::gaugeServiceState(this->registry_, ServiceMonitorConstants::ServiceStatusName, service.name.c_str(), it->second.c_str())->Set(0);
+    }
 
-      if (serviceRSS.has_value() == false || serviceFds.has_value() == false || cpuUsage.has_value() == false) {
-        success = false;
-        atlasagent::Logger()->error("Failed to get metric(s) for {}", service.name);
-      }
-      if (serviceRSS.has_value()) {
-        detail::gauge(this->registry_, ServiceMonitorConstants::RssName, service.name.c_str())
-            ->Set(serviceRSS.value() * this->pageSize);
-      }
-      if (serviceFds.has_value()) {
-        detail::gauge(this->registry_, ServiceMonitorConstants::FdsName, service.name.c_str())
-            ->Set(serviceFds.value());
-      }
-      if (cpuUsage.has_value()) {
-        detail::gauge(this->registry_, ServiceMonitorConstants::CpuUsageName, service.name.c_str())
-            ->Set(cpuUsage.value());
-      }
+    detail::gaugeServiceState(this->registry_, ServiceMonitorConstants::ServiceStatusName, service.name.c_str(), newServiceState.c_str())->Set(1);
+    this->previousStates[service.name] = newServiceState;
+
+    // If the service is not active and running, we do not want to send metrics that depend on /proc/[pid]
+    // The systemd service variable 'main pid' remains set even if a process/service is not running.
+    if (service.activeState != ServiceMonitorUtilConstants::Active || service.subState != ServiceMonitorUtilConstants::Running) {
+      atlasagent::Logger()->info("Service {} is not active and running, not sending metrics dependent on /proc/[pid]", service.name);
+      continue;
+    }
+
+    auto serviceRSS = get_rss(service.mainPid);
+    auto serviceFds = get_number_fds(service.mainPid);
+
+    // Only calculate the cpu usage for a service if we have the new cpu time, the processes previous time,
+    // and the new processes time. There is no need to check that the old cpu time (this->currentCpuTime) is not 0.
+    // This is because if on the previous iteration we failed to get the cpu time, the previous process time map is empty.
+    std::optional<double> cpuUsage{std::nullopt};
+    if (newCpuTime.has_value() && currentProcessTimes.find(service.mainPid) != currentProcessTimes.end() &&
+        newProcessTimes.find(service.mainPid) != newProcessTimes.end()) {
+      auto newProcessTime = newProcessTimes[service.mainPid];
+      auto oldProcessTime = currentProcessTimes[service.mainPid];
+      cpuUsage.emplace(calculate_cpu_usage(currentCpuTime, newCpuTime.value(), oldProcessTime,
+                                            newProcessTime, this->numCpuCores));
+    }
+
+    if (serviceRSS.has_value() == false || serviceFds.has_value() == false || cpuUsage.has_value() == false) {
+      success = false;
+      atlasagent::Logger()->error("Failed to get metric(s) for {}", service.name);
+    }
+    if (serviceRSS.has_value()) {
+      detail::gauge(this->registry_, ServiceMonitorConstants::RssName, service.name.c_str())
+          ->Set(serviceRSS.value() * this->pageSize);
+    }
+    if (serviceFds.has_value()) {
+      detail::gauge(this->registry_, ServiceMonitorConstants::FdsName, service.name.c_str())
+          ->Set(serviceFds.value());
+    }
+    if (cpuUsage.has_value()) {
+      detail::gauge(this->registry_, ServiceMonitorConstants::CpuUsageName, service.name.c_str())
+          ->Set(cpuUsage.value());
     }
   }
 

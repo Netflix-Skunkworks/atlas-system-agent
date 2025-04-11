@@ -308,6 +308,10 @@ Return the map of PIDs and process times */
 std::unordered_map<unsigned int, ProcessTimes> create_pid_map(const std::vector<ServiceProperties>& services) try {
   std::unordered_map<unsigned int, ProcessTimes> pidMap{};
   for (const auto& service : services) {
+    if (service.activeState != ServiceMonitorUtilConstants::Active || service.subState != ServiceMonitorUtilConstants::Running) {
+      atlasagent::Logger()->debug("Service {} is not active and running, not gathering process time", service.name);
+      continue;
+    }
     auto pid = service.mainPid;
     auto processTimes = get_process_times(pid);
     if (processTimes.has_value() == false) {
