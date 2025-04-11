@@ -33,6 +33,9 @@ class base_tagging_registry {
   auto GetGauge(const spectator::IdPtr& id) {
     return registry_->GetGauge(tagger_.GetId(id));
   }
+  auto GetGaugeTTL(absl::string_view name, unsigned int ttl_seconds, spectator::Tags tags = {}) {
+    return registry_->GetGaugeTTL(tagger_.GetId(name, std::move(tags)), ttl_seconds);
+  }
   auto GetMaxGauge(absl::string_view name, spectator::Tags tags = {}) {
     return registry_->GetMaxGauge(tagger_.GetId(name, std::move(tags)));
   }
