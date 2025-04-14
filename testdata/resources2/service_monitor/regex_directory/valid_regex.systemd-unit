@@ -1,0 +1,12 @@
+abc
+\d+
+[a-z]+
+\s+
+\w+
+\W+
+\d{3}
+a?b
+^abc$
+^hell
+world$
+cat|dog
