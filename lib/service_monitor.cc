@@ -119,14 +119,7 @@ bool ServiceMonitor<Reg>::update_metrics() try {
   for (const auto& service : servicesStates) {
 
     const auto newServiceState = fmt::format("{}.{}", service.activeState, service.subState);
-    const auto it = this->previousStates.find(service.name);
-
-    if (it != this->previousStates.end() && it->second != newServiceState) {
-      detail::gaugeServiceState(this->registry_, ServiceMonitorConstants::ServiceStatusName, service.name.c_str(), it->second.c_str())->Set(0);
-    }
-
     detail::gaugeServiceState(this->registry_, ServiceMonitorConstants::ServiceStatusName, service.name.c_str(), newServiceState.c_str())->Set(1);
-    this->previousStates[service.name] = newServiceState;
 
     // If the service is not active and running, we do not want to send metrics that depend on /proc/[pid]
     // The systemd service variable 'main pid' remains set even if a process/service is not running.

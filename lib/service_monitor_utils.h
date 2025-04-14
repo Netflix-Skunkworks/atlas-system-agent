@@ -3,7 +3,8 @@
 #include <optional>
 #include <regex>
 #include <sdbus-c++/sdbus-c++.h>
-#include <unordered_set>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 // Define the Unit structure matching the D-Bus signature (ssssssouso)

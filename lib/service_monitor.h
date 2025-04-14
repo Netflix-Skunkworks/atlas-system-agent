@@ -55,5 +55,4 @@ class ServiceMonitor {
   long pageSize{};
   bool initSuccess{false};
   std::vector<std::string> monitoredServices_{};
-  std::unordered_map<std::string, std::string> previousStates{};
 };
