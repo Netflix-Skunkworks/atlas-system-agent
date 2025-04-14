@@ -141,6 +141,8 @@ bool ServiceMonitor<Reg>::update_metrics() try {
     // Only calculate the cpu usage for a service if we have the new cpu time, the processes previous time,
     // and the new processes time. There is no need to check that the old cpu time (this->currentCpuTime) is not 0.
     // This is because if on the previous iteration we failed to get the cpu time, the previous process time map is empty.
+    // Very unlikely but it is possible that two services die within the same 60 second interval, and then be reassigned 
+    // each others pids. We could fix this by also tracking the service name in the process time map.
     std::optional<double> cpuUsage{std::nullopt};
     if (newCpuTime.has_value() && currentProcessTimes.find(service.mainPid) != currentProcessTimes.end() &&
         newProcessTimes.find(service.mainPid) != newProcessTimes.end()) {
@@ -150,7 +152,12 @@ bool ServiceMonitor<Reg>::update_metrics() try {
                                             newProcessTime, this->numCpuCores));
     }
 
-    if (serviceRSS.has_value() == false || serviceFds.has_value() == false || cpuUsage.has_value() == false) {
+    // If we failed to get the RSS, FDs, or CPU usage for a service, log the error and set success to false
+    // We check currentProcessTimes to see if we have the old process time for a service b/c we dont want to unnecessarily log
+    // erros when calculating cpu usage. Cpu usage requires two 60 second iterations in order to calculate. Without this check 
+    // we would unecessarily log errors during the first iteration on startup, or when a new process is started for the first time. 
+    if (serviceRSS.has_value() == false || serviceFds.has_value() == false || 
+    (currentProcessTimes.find(service.mainPid) != currentProcessTimes.end() && cpuUsage.has_value() == false)) {
       success = false;
       atlasagent::Logger()->error("Failed to get metric(s) for {}", service.name);
     }
