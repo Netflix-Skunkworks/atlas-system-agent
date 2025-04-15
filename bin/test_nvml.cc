@@ -1,5 +1,5 @@
-#include "../lib/logger.h"
-#include "../lib/nvml.h"
+#include "../lib/Logger/logger.h"
+#include "../lib/NVML/nvml.h"
 #include <iostream>
 
 using atlasagent::Logger;

@@ -1,5 +1,5 @@
-#include "../logger.h"
-#include "../log_entry.h"
+#include "../Logger/logger.h"
+#include "../Logger/log_entry.h"
 
 #include <algorithm>
 #include <utility>

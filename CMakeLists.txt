@@ -36,9 +36,9 @@ add_subdirectory(lib)
 #-- sysagent_test test executable
 file(GLOB sysagent_test_source_files
     "bin/runtests.cc"
-    "lib/*test.cc"
+    "lib/*/*test.cc"
     "lib/sample_config.cc"
-    "lib/measurement_utils.*"
+    "lib/MeasurementUtils/measurement_utils.*"
 )
 add_executable(sysagent_test ${sysagent_test_source_files})
 target_link_libraries(sysagent_test
