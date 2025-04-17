@@ -33,6 +33,7 @@ add_custom_command(
 
 add_subdirectory(Util)
 add_subdirectory(Tagging)
+add_subdirectory(MeasurementUtils)
 
 
 #-- sysagent library
@@ -78,4 +79,5 @@ target_link_libraries(sysagent
     spdlog::spdlog
     util
     tagging
+    measurement_utils
 )
