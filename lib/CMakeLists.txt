@@ -49,14 +49,14 @@ add_subdirectory(Tagging)
 add_subdirectory(MeasurementUtils)
 add_subdirectory(HttpClient)
 add_subdirectory(CGroup)
+add_subdirectory(ServiceMonitor)
+add_subdirectory(DCGM)
 
 #-- sysagent library
 add_library(sysagent
     "AWS/aws.h"
     "Config/config.h"
     "CPUFreq/cpufreq.h"
-    "DCGM/dcgm_stats.h"
-    "DCGM/dcgm_stats.cc"
     "Disk/disk.h"
     "Ethtool/ethtool.h"
     "Files/files.h"
@@ -73,10 +73,6 @@ add_library(sysagent
     "PressureStall/pressure_stall.h"
     "Proc/proc.h"
     "Config/sample_config.cc"
-    "ServiceMonitor/service_monitor.cc"
-    "ServiceMonitor/service_monitor.h"
-    "ServiceMonitor/service_monitor_utils.cc"
-    "ServiceMonitor/service_monitor_utils.h"
 )
 target_link_libraries(sysagent
     spectator
@@ -84,11 +80,12 @@ target_link_libraries(sysagent
     CURL::libcurl
     fmt::fmt
     rapidjson
-    SDBusCpp::sdbus-c++
     spdlog::spdlog
     util
     tagging
     measurement_utils
     HttpClient
     cgroup
+    service_monitor
+    dcgm
 )

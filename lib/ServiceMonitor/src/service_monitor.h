@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lib/Tagging/src/tagging_registry.h>
-#include "../spectator/registry.h"
+#include "../../spectator/registry.h"
 #include "service_monitor_utils.h"
 
 struct ServiceMonitorConstants {
