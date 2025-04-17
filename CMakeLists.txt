@@ -37,6 +37,7 @@ add_subdirectory(lib)
 file(GLOB sysagent_test_source_files
     "bin/runtests.cc"
     "lib/*/*test.cc"
+    "lib/*/*/*test.cc"
     "lib/sample_config.cc"
     "lib/MeasurementUtils/measurement_utils.*"
 )

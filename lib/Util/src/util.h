@@ -5,8 +5,8 @@
 #include <unordered_map>
 #include <optional>
 #include <vector>
-#include "../Files/files.h"
-#include "../spectator/id.h"
+#include "../../Files/files.h"
+#include "../../spectator/id.h"
 
 struct UtilConstants {
   static constexpr auto ServiceActiveCmd{"systemctl is-active --quiet"};

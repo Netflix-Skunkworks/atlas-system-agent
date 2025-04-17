@@ -1,5 +1,6 @@
 #include "dcgm_stats.cc"
-#include "../Util/util.h"
+#include <lib/Util/src/util.h>
+
 
 #include <gtest/gtest.h>
 

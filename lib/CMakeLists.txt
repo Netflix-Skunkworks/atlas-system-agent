@@ -31,6 +31,8 @@ add_custom_command(
     DEPENDS gen_valid_chars
 )
 
+add_subdirectory(Util)
+
 
 #-- sysagent library
 add_library(sysagent
@@ -66,8 +68,6 @@ add_library(sysagent
     "ServiceMonitor/service_monitor_utils.h"
     "Tagging/tagger.h"
     "Tagging/tagging_registry.h"
-    "Util/util.cc"
-    "Util/util.h"
 )
 target_link_libraries(sysagent
     spectator
@@ -77,4 +77,5 @@ target_link_libraries(sysagent
     rapidjson
     SDBusCpp::sdbus-c++
     spdlog::spdlog
+    util
 )

@@ -3,7 +3,7 @@
 
 #include "absl/strings/str_split.h"
 #include "../DCGM/dcgm_stats.h"
-#include "../Util/util.h"
+#include <lib/Util/src/util.h>
 
 using atlasagent::GetLogger;
 using atlasagent::Logger;
