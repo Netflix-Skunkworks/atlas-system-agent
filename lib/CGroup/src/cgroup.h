@@ -41,5 +41,3 @@ class CGroup {
 };
 
 }  // namespace atlasagent
-
-#include "../internal/cgroup.inc"

@@ -7,6 +7,7 @@
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 #include <rapidjson/filereadstream.h>
+#include <optional>
 #include <string_view>
 
 namespace atlasagent {

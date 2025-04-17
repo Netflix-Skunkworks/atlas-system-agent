@@ -2,7 +2,7 @@
 #include <sys/vfs.h>
 #endif
 #include "../lib/AWS/aws.h"
-#include "../lib/CGroup/cgroup.h"
+#include <lib/CGroup/src/cgroup.h>
 #include "../lib/CPUFreq/cpufreq.h"
 #include "../lib/DCGM/dcgm_stats.h"
 #include "../lib/Disk/disk.h"

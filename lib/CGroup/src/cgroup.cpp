@@ -1,3 +1,4 @@
+#include "cgroup.h"
 #include <lib/Util/src/util.h>
 #include <cstdlib>
 #include <map>
@@ -294,3 +295,12 @@ void CGroup<Reg>::do_cpu_peak_stats(absl::Time now) noexcept {
 }
 
 }  // namespace atlasagent
+
+
+// Explicit template instantiation for TestRegistry
+namespace atlasagent {
+  // Instead of instantiating each method individually, instantiate the entire class template
+  template class CGroup<spectator::TestRegistry>;
+  
+}  // namespace atlasagent
+

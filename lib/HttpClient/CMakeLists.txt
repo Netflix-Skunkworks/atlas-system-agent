@@ -5,6 +5,9 @@ add_library(HttpClient
     src/log_entry.h
 )
 
+# Depend on the custom target that ensures valid_chars.inc is generated
+add_dependencies(HttpClient generate_valid_chars)
+
 target_include_directories(HttpClient
     PUBLIC ${CMAKE_SOURCE_DIR}
 )
