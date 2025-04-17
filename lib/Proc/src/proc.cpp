@@ -1,3 +1,5 @@
+#include "proc.h"
+
 #include <lib/Util/src/util.h>
 #include "absl/strings/str_split.h"
 #include <cinttypes>
@@ -910,3 +912,13 @@ void Proc<Reg>::process_stats() noexcept {
 }
 
 }  // namespace atlasagent
+
+// Explicit template instantiation for TestRegistry
+namespace atlasagent {
+  // Instead of instantiating each method individually, instantiate the entire class template
+  template class Proc<spectator::TestRegistry>;
+  
+  // Add explicit instantiation for SpectatordRegistry used by atlas-agent
+  template class Proc<base_tagging_registry<spectator::SpectatordRegistry>>;
+}  // namespace atlasagent
+

@@ -51,6 +51,7 @@ add_subdirectory(HttpClient)
 add_subdirectory(CGroup)
 add_subdirectory(ServiceMonitor)
 add_subdirectory(DCGM)
+add_subdirectory(Proc)
 
 #-- sysagent library
 add_library(sysagent
@@ -62,7 +63,6 @@ add_library(sysagent
     "Files/files.h"
     "NVML/gpumetrics.h"
     "internal/disk.inc"
-    "internal/proc.inc"
     "Logger/logger.cc"
     "Logger/logger.h"
     "MonotonicTimer/monotonic_timer.h"
@@ -71,7 +71,6 @@ add_library(sysagent
     "NVML/nvml.h"
     "Perfmetrics/perfmetrics.h"
     "PressureStall/pressure_stall.h"
-    "Proc/proc.h"
     "Config/sample_config.cc"
 )
 target_link_libraries(sysagent
@@ -88,4 +87,5 @@ target_link_libraries(sysagent
     cgroup
     service_monitor
     dcgm
+    proc
 )

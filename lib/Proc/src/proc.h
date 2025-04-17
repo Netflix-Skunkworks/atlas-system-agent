@@ -44,5 +44,3 @@ int get_pid_from_sched(const char* sched_line) noexcept;
 }  // namespace proc
 
 }  // namespace atlasagent
-
-#include "../internal/proc.inc"
