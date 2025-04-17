@@ -1,7 +1,7 @@
 #pragma once
 
 #include "absl/time/time.h"
-#include "../spectator/registry.h"
+#include "../../spectator/registry.h"
 #include <map>
 #include <memory>
 #include <string>
@@ -59,5 +59,3 @@ class HttpClient {
 };
 
 }  // namespace atlasagent
-
-#include "../internal/http_client.inc"

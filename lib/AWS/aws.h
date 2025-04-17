@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../HttpClient/http_client.h"
+#include <lib/HttpClient/src/http_client.h>
 #include "../Logger/logger.h"
 #include <lib/Tagging/src/tagging_registry.h>
 #include <rapidjson/document.h>

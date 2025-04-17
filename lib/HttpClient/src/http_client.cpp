@@ -1,5 +1,6 @@
-#include "../Logger/logger.h"
-#include "../Logger/log_entry.h"
+#include "http_client.h"
+#include "../../Logger/logger.h"
+#include "log_entry.h"
 
 #include <algorithm>
 #include <utility>

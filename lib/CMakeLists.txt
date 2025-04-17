@@ -34,7 +34,7 @@ add_custom_command(
 add_subdirectory(Util)
 add_subdirectory(Tagging)
 add_subdirectory(MeasurementUtils)
-
+add_subdirectory(HttpClient)
 
 #-- sysagent library
 add_library(sysagent
@@ -48,12 +48,9 @@ add_library(sysagent
     "Ethtool/ethtool.h"
     "Files/files.h"
     "NVML/gpumetrics.h"
-    "HttpClient/http_client.h"
     "internal/cgroup.inc"
     "internal/disk.inc"
-    "internal/http_client.inc"
     "internal/proc.inc"
-    "Logger/log_entry.h"
     "Logger/logger.cc"
     "Logger/logger.h"
     "MonotonicTimer/monotonic_timer.h"
@@ -80,4 +77,5 @@ target_link_libraries(sysagent
     util
     tagging
     measurement_utils
+    HttpClient
 )
