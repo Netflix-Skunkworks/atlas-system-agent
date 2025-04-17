@@ -1,7 +1,7 @@
 #pragma once
 
 #include "nvml.h"
-#include "../spectator/registry.h"
+#include "../../spectator/registry.h"
 
 namespace atlasagent {
 

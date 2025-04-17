@@ -1,6 +1,6 @@
 #include "nvml.h"
-#include "../Config/config.h"
-#include "../Logger/logger.h"
+#include "../../Config/config.h"
+#include "../../Logger/logger.h"
 #include <dlfcn.h>
 
 namespace atlasagent {

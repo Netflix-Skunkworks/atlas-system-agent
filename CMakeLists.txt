@@ -60,4 +60,4 @@ target_link_options(atlas_system_agent PRIVATE "-static-libstdc++")
 
 #-- test_nvml executable
 add_executable(test_nvml "bin/test_nvml.cc")
-target_link_libraries(test_nvml sysagent)
+target_link_libraries(test_nvml sysagent nvml)

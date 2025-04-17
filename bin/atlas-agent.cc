@@ -7,7 +7,7 @@
 #include <lib/DCGM/src/dcgm_stats.h>
 #include <lib/Disk/src/disk.h>
 #include "../lib/Ethtool/ethtool.h"
-#include "../lib/NVML/gpumetrics.h"
+#include <lib/NVML/src/gpumetrics.h>
 #include "../lib/NTP/ntp.h"
 #include "../lib/Perfmetrics/perfmetrics.h"
 #include "../lib/PressureStall/pressure_stall.h"

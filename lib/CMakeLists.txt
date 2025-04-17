@@ -53,6 +53,7 @@ add_subdirectory(ServiceMonitor)
 add_subdirectory(DCGM)
 add_subdirectory(Proc)
 add_subdirectory(Disk)
+add_subdirectory(NVML)
 
 #-- sysagent library
 add_library(sysagent
@@ -61,13 +62,10 @@ add_library(sysagent
     "CPUFreq/cpufreq.h"
     "Ethtool/ethtool.h"
     "Files/files.h"
-    "NVML/gpumetrics.h"
     "Logger/logger.cc"
     "Logger/logger.h"
     "MonotonicTimer/monotonic_timer.h"
     "NTP/ntp.h"
-    "NVML/nvml.cc"
-    "NVML/nvml.h"
     "Perfmetrics/perfmetrics.h"
     "PressureStall/pressure_stall.h"
     "Config/sample_config.cc"
@@ -88,4 +86,5 @@ target_link_libraries(sysagent
     dcgm
     proc
     disk
+    nvml
 )
