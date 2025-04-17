@@ -1,3 +1,4 @@
+#include "disk.h"
 #include <lib/Util/src/util.h>
 #include "absl/strings/str_split.h"
 #include <fmt/format.h>
@@ -330,3 +331,12 @@ template <> struct fmt::formatter<atlasagent::MountPoint>: formatter<std::string
                           mp.device_minor, mp.mount_point, mp.device, mp.fs_type);
   }
 };
+
+// Explicit template instantiations
+namespace atlasagent {
+  // Instantiate for TestRegistry (for tests)
+  template class Disk<spectator::TestRegistry>;
+  
+  // Instantiate for SpectatordRegistry (used by atlas-agent)
+  template class Disk<base_tagging_registry<spectator::SpectatordRegistry>>;
+}  // namespace atlasagent

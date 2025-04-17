@@ -5,7 +5,7 @@
 #include <lib/CGroup/src/cgroup.h>
 #include "../lib/CPUFreq/cpufreq.h"
 #include <lib/DCGM/src/dcgm_stats.h>
-#include "../lib/Disk/disk.h"
+#include <lib/Disk/src/disk.h>
 #include "../lib/Ethtool/ethtool.h"
 #include "../lib/NVML/gpumetrics.h"
 #include "../lib/NTP/ntp.h"

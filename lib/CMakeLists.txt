@@ -52,17 +52,16 @@ add_subdirectory(CGroup)
 add_subdirectory(ServiceMonitor)
 add_subdirectory(DCGM)
 add_subdirectory(Proc)
+add_subdirectory(Disk)
 
 #-- sysagent library
 add_library(sysagent
     "AWS/aws.h"
     "Config/config.h"
     "CPUFreq/cpufreq.h"
-    "Disk/disk.h"
     "Ethtool/ethtool.h"
     "Files/files.h"
     "NVML/gpumetrics.h"
-    "internal/disk.inc"
     "Logger/logger.cc"
     "Logger/logger.h"
     "MonotonicTimer/monotonic_timer.h"
@@ -88,4 +87,5 @@ target_link_libraries(sysagent
     service_monitor
     dcgm
     proc
+    disk
 )

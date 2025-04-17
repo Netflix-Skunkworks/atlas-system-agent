@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../MonotonicTimer/monotonic_timer.h"
+#include "../../MonotonicTimer/monotonic_timer.h"
 #include <lib/Tagging/src/tagging_registry.h>
 
 #include <string>
@@ -65,5 +65,3 @@ class Disk {
 };
 
 }  // namespace atlasagent
-
-#include "../internal/disk.inc"
