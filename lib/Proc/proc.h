@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Tagging/tagging_registry.h"
+#include <lib/Tagging/src/tagging_registry.h>
 
 namespace atlasagent {
 template <typename Reg = TaggingRegistry>

@@ -1,5 +1,5 @@
-#include "tagging_registry.h"
-#include "../MeasurementUtils/measurement_utils.h"
+#include "../src/tagging_registry.h"
+#include "../../MeasurementUtils/measurement_utils.h"
 #include <gtest/gtest.h>
 
 namespace {

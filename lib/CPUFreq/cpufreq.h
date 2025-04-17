@@ -1,7 +1,8 @@
 #pragma once
 
 #include "../Files/files.h"
-#include "../Tagging/tagging_registry.h"
+#include <lib/Tagging/src/tagging_registry.h>
+
 #include <lib/Util/src/util.h>
 #include <sys/stat.h>
 

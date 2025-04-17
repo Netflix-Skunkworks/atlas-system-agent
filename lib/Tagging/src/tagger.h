@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../Files/files.h"
-#include "../Logger/logger.h"
-#include "../spectator/id.h"
+#include "../../Files/files.h"
+#include "../../Logger/logger.h"
+#include "../../spectator/id.h"
 #include <fmt/format.h>
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>

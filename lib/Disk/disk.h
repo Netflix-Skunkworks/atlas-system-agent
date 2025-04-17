@@ -1,7 +1,8 @@
 #pragma once
 
 #include "../MonotonicTimer/monotonic_timer.h"
-#include "../Tagging/tagging_registry.h"
+#include <lib/Tagging/src/tagging_registry.h>
+
 #include <string>
 #include <sys/types.h>
 #include <unordered_map>

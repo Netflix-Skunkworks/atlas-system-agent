@@ -1,4 +1,4 @@
-#include "tagger.h"
+#include "../src/tagger.h"
 #include <gtest/gtest.h>
 
 namespace {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "tagger.h"
-#include "../spectator/registry.h"
+#include "../../spectator/registry.h"
 
 namespace atlasagent {
 

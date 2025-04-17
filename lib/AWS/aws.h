@@ -2,7 +2,7 @@
 
 #include "../HttpClient/http_client.h"
 #include "../Logger/logger.h"
-#include "../Tagging/tagging_registry.h"
+#include <lib/Tagging/src/tagging_registry.h>
 #include <rapidjson/document.h>
 
 namespace atlasagent {
