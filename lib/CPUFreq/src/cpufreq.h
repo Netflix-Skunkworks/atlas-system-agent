@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../Files/files.h"
+#include <lib/Files/src/files.h>
 #include <lib/Tagging/src/tagging_registry.h>
 
 #include <lib/Util/src/util.h>

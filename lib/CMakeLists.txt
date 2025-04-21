@@ -57,11 +57,11 @@ add_subdirectory(NVML)
 add_subdirectory(AWS)
 add_subdirectory(CPUFreq)
 add_subdirectory(Ethtool)
+add_subdirectory(Files)
 
 #-- sysagent library
 add_library(sysagent
     "Config/config.h"
-    "Files/files.h"
     "Logger/logger.cc"
     "Logger/logger.h"
     "MonotonicTimer/monotonic_timer.h"
@@ -90,4 +90,5 @@ target_link_libraries(sysagent
     aws
     cpufreq
     ethtool
+    files
 )
