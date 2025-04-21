@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../Logger/logger.h"
+#include <lib/Logger/src/logger.h>
 #include <cstdio>
 #include <dirent.h>
 #include <unistd.h>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lib/Files/src/files.h>
-#include "../../Logger/logger.h"
+#include <lib/Logger/src/logger.h>
 #include "../../spectator/id.h"
 #include <fmt/format.h>
 #include <rapidjson/document.h>

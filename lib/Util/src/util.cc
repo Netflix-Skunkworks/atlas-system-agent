@@ -1,5 +1,5 @@
 #include "util.h"
-#include "../../Logger/logger.h"
+#include <lib/Logger/src/logger.h>
 #include "absl/strings/str_split.h"
 #include <cinttypes>
 #include <filesystem>

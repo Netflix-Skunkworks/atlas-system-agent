@@ -1,5 +1,5 @@
 #include "../src/disk.h"
-#include "../../Logger/logger.h"
+#include <lib/Logger/src/logger.h>
 #include <lib/MeasurementUtils/src/measurement_utils.h>
 #include <gtest/gtest.h>
 #include <unordered_set>

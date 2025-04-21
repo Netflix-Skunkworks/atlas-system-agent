@@ -1,4 +1,4 @@
-#include "../../Logger/logger.h"
+#include <lib/Logger/src/logger.h>
 #include <lib/MeasurementUtils/src/measurement_utils.h>
 #include "../src/ethtool.h"
 #include <gtest/gtest.h>

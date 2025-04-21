@@ -1,4 +1,4 @@
-#include "../lib/Logger/logger.h"
+#include <lib/Logger/src/logger.h>
 #include <lib/NVML/src/nvml.h>
 #include <iostream>
 
