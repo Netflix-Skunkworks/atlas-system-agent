@@ -59,12 +59,12 @@ add_subdirectory(CPUFreq)
 add_subdirectory(Ethtool)
 add_subdirectory(Files)
 add_subdirectory(Logger)
+add_subdirectory(MonotonicTimer)
+add_subdirectory(NTP)
 
 #-- sysagent library
 add_library(sysagent
     "Config/config.h"
-    "MonotonicTimer/monotonic_timer.h"
-    "NTP/ntp.h"
     "Perfmetrics/perfmetrics.h"
     "PressureStall/pressure_stall.h"
     "Config/sample_config.cc"
@@ -91,4 +91,6 @@ target_link_libraries(sysagent
     ethtool
     files
     logger
+    monotonic_timer
+    ntp
 )

@@ -1,6 +1,6 @@
 #include <lib/Logger/src/logger.h>
 #include <lib/MeasurementUtils/src/measurement_utils.h>
-#include "ntp.h"
+#include "../src/ntp.h"
 #include <gtest/gtest.h>
 
 namespace {

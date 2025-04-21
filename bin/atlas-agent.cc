@@ -8,7 +8,7 @@
 #include <lib/Disk/src/disk.h>
 #include <lib/Ethtool/src/ethtool.h>
 #include <lib/NVML/src/gpumetrics.h>
-#include "../lib/NTP/ntp.h"
+#include <lib/NTP/src/ntp.h>
 #include "../lib/Perfmetrics/perfmetrics.h"
 #include "../lib/PressureStall/pressure_stall.h"
 #include <lib/Proc/src/proc.h>

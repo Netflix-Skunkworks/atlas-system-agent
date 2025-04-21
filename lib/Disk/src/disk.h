@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../MonotonicTimer/monotonic_timer.h"
+#include <lib/MonotonicTimer/src/monotonic_timer.h>
 #include <lib/Tagging/src/tagging_registry.h>
 
 #include <string>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../spectator/registry.h"
+#include "../../spectator/registry.h"
 
 namespace atlasagent {
 template <typename Reg>
