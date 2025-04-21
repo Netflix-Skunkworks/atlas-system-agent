@@ -61,12 +61,12 @@ add_subdirectory(Files)
 add_subdirectory(Logger)
 add_subdirectory(MonotonicTimer)
 add_subdirectory(NTP)
+add_subdirectory(Perfmetrics)
+add_subdirectory(PressureStall)
 
 #-- sysagent library
 add_library(sysagent
     "Config/config.h"
-    "Perfmetrics/perfmetrics.h"
-    "PressureStall/pressure_stall.h"
     "Config/sample_config.cc"
 )
 target_link_libraries(sysagent
@@ -93,4 +93,6 @@ target_link_libraries(sysagent
     logger
     monotonic_timer
     ntp
+    perfmetrics
+    pressurestall
 )
