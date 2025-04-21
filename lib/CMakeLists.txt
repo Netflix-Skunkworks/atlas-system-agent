@@ -55,11 +55,11 @@ add_subdirectory(Proc)
 add_subdirectory(Disk)
 add_subdirectory(NVML)
 add_subdirectory(AWS)
+add_subdirectory(CPUFreq)
 
 #-- sysagent library
 add_library(sysagent
     "Config/config.h"
-    "CPUFreq/cpufreq.h"
     "Ethtool/ethtool.h"
     "Files/files.h"
     "Logger/logger.cc"
@@ -88,4 +88,5 @@ target_link_libraries(sysagent
     disk
     nvml
     aws
+    cpufreq
 )
