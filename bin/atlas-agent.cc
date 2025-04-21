@@ -1,7 +1,7 @@
 #ifdef __linux__
 #include <sys/vfs.h>
 #endif
-#include "../lib/AWS/aws.h"
+#include <lib/AWS/src/aws.h>
 #include <lib/CGroup/src/cgroup.h>
 #include "../lib/CPUFreq/cpufreq.h"
 #include <lib/DCGM/src/dcgm_stats.h>

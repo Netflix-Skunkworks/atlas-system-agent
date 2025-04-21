@@ -54,10 +54,10 @@ add_subdirectory(DCGM)
 add_subdirectory(Proc)
 add_subdirectory(Disk)
 add_subdirectory(NVML)
+add_subdirectory(AWS)
 
 #-- sysagent library
 add_library(sysagent
-    "AWS/aws.h"
     "Config/config.h"
     "CPUFreq/cpufreq.h"
     "Ethtool/ethtool.h"
@@ -87,4 +87,5 @@ target_link_libraries(sysagent
     proc
     disk
     nvml
+    aws
 )
