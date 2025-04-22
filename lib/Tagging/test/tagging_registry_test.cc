@@ -1,4 +1,4 @@
-#include "../src/tagging_registry.h"
+#include <lib/Tagging/src/tagging_registry.h>
 #include <lib/MeasurementUtils/src/measurement_utils.h>
 #include <gtest/gtest.h>
 

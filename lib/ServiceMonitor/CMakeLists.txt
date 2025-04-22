@@ -11,7 +11,26 @@ target_include_directories(service_monitor
 
 # Add dependencies
 target_link_libraries(service_monitor
-SDBusCpp::sdbus-c++
-fmt::fmt
-abseil::abseil
+    SDBusCpp::sdbus-c++
+    fmt::fmt
+    abseil::abseil
+)
+
+# Add service monitor test executable
+add_executable(service_monitor_test
+    test/service_monitor_test.cc
+)
+
+target_link_libraries(service_monitor_test
+    service_monitor
+    util
+    logger
+    gtest::gtest
+)
+
+# Register the test with CTest
+add_test(
+    NAME service_monitor_test
+    COMMAND service_monitor_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

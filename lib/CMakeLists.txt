@@ -69,6 +69,7 @@ add_library(sysagent
     "Config/config.h"
     "Config/sample_config.cc"
 )
+
 target_link_libraries(sysagent
     spectator
     abseil::abseil

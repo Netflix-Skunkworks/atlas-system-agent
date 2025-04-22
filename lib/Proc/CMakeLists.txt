@@ -13,3 +13,23 @@ target_link_libraries(proc
     abseil::abseil
     spectator
 )
+
+# Add proc test executable
+add_executable(proc_test
+    test/proc_test.cc
+)
+
+target_link_libraries(proc_test
+    proc
+    logger
+    measurement_utils
+    util
+    gtest::gtest
+)
+
+# Register the test with CTest
+add_test(
+    NAME proc_test
+    COMMAND proc_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

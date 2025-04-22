@@ -14,3 +14,23 @@ target_link_libraries(disk
     spectator
     tagging
 )
+
+# Add disk test executable
+add_executable(disk_test
+    test/disk_test.cc
+)
+
+target_link_libraries(disk_test
+    disk
+    util
+    logger
+    measurement_utils
+    gtest::gtest
+)
+
+# Register the test with CTest
+add_test(
+    NAME disk_test
+    COMMAND disk_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

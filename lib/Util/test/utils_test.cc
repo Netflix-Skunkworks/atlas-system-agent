@@ -1,9 +1,7 @@
-#include "../src/util.h"
+#include <lib/Util/src/util.h>
 #include <gtest/gtest.h>
 
 namespace {
-
-using atlasagent::Logger;
 
 TEST(Utils, ReadLinesFields) {
   auto lines = atlasagent::read_lines_fields("testdata/resources/proc", "stat");
