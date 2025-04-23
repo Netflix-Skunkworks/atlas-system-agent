@@ -1,5 +1,5 @@
 add_library(nvml
-    src/nvml.cc
+    src/nvml.cpp
     src/gpumetrics.h
     src/nvml.h
 )
@@ -18,7 +18,7 @@ target_link_libraries(nvml
 
 # Add nvml test executable
 add_executable(gpu_test
-    test/gpu_test.cc
+    test/gpu_test.cpp
 )
 
 target_link_libraries(gpu_test
@@ -38,5 +38,5 @@ add_test(
 )
 
 #-- test_nvml executable
-add_executable(test_nvml "test/test_nvml.cc")
+add_executable(test_nvml "test/test_nvml.cpp")
 target_link_libraries(test_nvml nvml logger)

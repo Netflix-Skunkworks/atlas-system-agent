@@ -1,5 +1,5 @@
 add_library(measurement_utils
-    src/measurement_utils.cc
+    src/measurement_utils.cpp
     src/measurement_utils.h
 )
 

@@ -1,5 +1,5 @@
 add_library(util
-    src/util.cc
+    src/util.cpp
     src/util.h
 )
 
@@ -16,7 +16,7 @@ target_link_libraries(util
 
 # Add utils test executable
 add_executable(utils_test
-    test/utils_test.cc
+    test/utils_test.cpp
 )
 
 target_link_libraries(utils_test

@@ -1,4 +1,4 @@
-#include <lib/collectors/service_monitor/src/service_monitor_utils.cc>
+#include <lib/collectors/service_monitor/src/service_monitor_utils.cpp>
 #include <lib/util/src/util.h>
 
 

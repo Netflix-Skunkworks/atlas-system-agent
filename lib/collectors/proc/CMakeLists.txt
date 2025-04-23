@@ -16,7 +16,7 @@ target_link_libraries(proc
 
 # Add proc test executable
 add_executable(proc_test
-    test/proc_test.cc
+    test/proc_test.cpp
 )
 
 target_link_libraries(proc_test

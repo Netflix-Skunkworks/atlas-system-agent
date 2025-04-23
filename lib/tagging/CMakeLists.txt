@@ -17,7 +17,7 @@ INTERFACE
 
 # Add tagger test executable
 add_executable(tagger_test
-    test/tagger_test.cc
+    test/tagger_test.cpp
 )
 
 target_link_libraries(tagger_test
@@ -36,7 +36,7 @@ add_test(
 
 # Add tagging registry test executable
 add_executable(tagging_registry_test
-    test/tagging_registry_test.cc
+    test/tagging_registry_test.cpp
 )
 
 target_link_libraries(tagging_registry_test

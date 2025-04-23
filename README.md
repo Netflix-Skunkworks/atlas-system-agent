@@ -38,7 +38,7 @@ source venv/bin/activate
 gdb ./cmake-build/bin/sysagent_test
 
 # set a break point at a specific line
-b /home/nfsuper/atlas-system-agent/lib/cgroup_test.cc:86
+b /home/nfsuper/atlas-system-agent/lib/cgroup_test.cpp:86
 
 # enable the terminal ui, so you can see the source code as you step
 tui enable

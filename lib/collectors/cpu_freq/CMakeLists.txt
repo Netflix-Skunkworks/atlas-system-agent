@@ -13,7 +13,7 @@ target_link_libraries(cpufreq
 
 # Add cpufreq test executable
 add_executable(cpufreq_test
-    test/cpufreq_test.cc
+    test/cpufreq_test.cpp
 )
 
 target_link_libraries(cpufreq_test

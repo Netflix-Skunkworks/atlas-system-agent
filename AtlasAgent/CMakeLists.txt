@@ -1,5 +1,5 @@
 #-- atlas_system_agent executable
-add_executable(atlas_system_agent "src/atlas-agent.cc")
+add_executable(atlas_system_agent "src/atlas-agent.cpp")
 
 target_include_directories(atlas_system_agent
     PUBLIC ${CMAKE_SOURCE_DIR}

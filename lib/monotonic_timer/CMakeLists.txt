@@ -14,7 +14,7 @@ target_link_libraries(monotonic_timer
 
 # Add monotonic_timer test executable
 add_executable(monotonic_timer_test
-    test/monotonic_timer_test.cc
+    test/monotonic_timer_test.cpp
 )
 
 target_link_libraries(monotonic_timer_test

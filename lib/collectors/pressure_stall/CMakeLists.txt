@@ -13,7 +13,7 @@ target_link_libraries(pressurestall
 
 # Add pressure stall test executable
 add_executable(pressure_stall_test
-    test/pressure_stall_test.cc
+    test/pressure_stall_test.cpp
 )
 
 target_link_libraries(pressure_stall_test

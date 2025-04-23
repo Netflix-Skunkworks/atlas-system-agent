@@ -15,7 +15,7 @@ target_link_libraries(aws
 
 # Add aws test executable
 add_executable(aws_test
-    test/aws_test.cc
+    test/aws_test.cpp
 )
 
 target_link_libraries(aws_test

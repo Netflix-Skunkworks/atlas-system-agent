@@ -1,5 +1,5 @@
 add_library(disk
-    src/disk.cc
+    src/disk.cpp
     src/disk.h
 )
 
@@ -17,7 +17,7 @@ target_link_libraries(disk
 
 # Add disk test executable
 add_executable(disk_test
-    test/disk_test.cc
+    test/disk_test.cpp
 )
 
 target_link_libraries(disk_test

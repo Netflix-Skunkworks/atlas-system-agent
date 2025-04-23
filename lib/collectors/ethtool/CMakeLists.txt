@@ -14,7 +14,7 @@ target_link_libraries(ethtool
 
 # Add ethtool test executable
 add_executable(ethtool_test
-    test/ethtool_test.cc
+    test/ethtool_test.cpp
 )
 
 target_link_libraries(ethtool_test

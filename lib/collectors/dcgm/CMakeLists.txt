@@ -1,5 +1,5 @@
 add_library(dcgm
-    src/dcgm_stats.cc
+    src/dcgm_stats.cpp
     src/dcgm_stats.h
 )
 
@@ -16,7 +16,7 @@ target_link_libraries(dcgm
 
 # Add dcgm test executable
 add_executable(dcgm_stats_test
-    test/dcgm_stats_test.cc
+    test/dcgm_stats_test.cpp
 )
 
 target_link_libraries(dcgm_stats_test

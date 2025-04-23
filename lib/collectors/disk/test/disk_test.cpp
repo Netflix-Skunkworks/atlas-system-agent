@@ -12,7 +12,7 @@ template <> struct fmt::formatter<atlasagent::MountPoint> : formatter<std::strin
   }
 };
 
-// Add the missing function declarations from disk.cc
+// Add the missing function declarations from disk.cpp
 namespace atlasagent {
   std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix);
   std::string get_id_from_mountpoint(const std::string& mp);

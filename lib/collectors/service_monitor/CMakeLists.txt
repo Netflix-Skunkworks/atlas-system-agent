@@ -1,7 +1,7 @@
 add_library(service_monitor
-    src/service_monitor.cc
+    src/service_monitor.cpp
     src/service_monitor.h
-    src/service_monitor_utils.cc
+    src/service_monitor_utils.cpp
     src/service_monitor_utils.h
 )
 
@@ -19,7 +19,7 @@ target_link_libraries(service_monitor
 
 # Add service monitor test executable
 add_executable(service_monitor_test
-    test/service_monitor_test.cc
+    test/service_monitor_test.cpp
 )
 
 target_link_libraries(service_monitor_test

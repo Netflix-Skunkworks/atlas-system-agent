@@ -15,7 +15,7 @@ add_library(spectator
 )
 
 #-- generator tools
-add_executable(gen_valid_chars "tools/gen_valid_chars.cc")
+add_executable(gen_valid_chars "tools/gen_valid_chars.cpp")
 
 #-- file generators, must exist where the outputs are referenced
 set(VALID_CHARS_OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/spectator/valid_chars.inc")

@@ -13,7 +13,7 @@ target_link_libraries(ntp
 
 # Add ntp test executable
 add_executable(ntp_test
-    test/ntp_test.cc
+    test/ntp_test.cpp
 )
 
 target_link_libraries(ntp_test

@@ -13,7 +13,7 @@ target_link_libraries(perfmetrics
 
 # Add perfmetrics test executable
 add_executable(perfmetrics_test
-    test/perfmetrics_test.cc
+    test/perfmetrics_test.cpp
 )
 
 target_link_libraries(perfmetrics_test

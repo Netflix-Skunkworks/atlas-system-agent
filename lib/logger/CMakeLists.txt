@@ -1,5 +1,5 @@
 add_library(logger
-  src/logger.cc
+  src/logger.cpp
   src/logger.h
 )
 

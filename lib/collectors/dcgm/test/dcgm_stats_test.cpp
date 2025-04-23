@@ -1,4 +1,4 @@
-#include "../src/dcgm_stats.cc"
+#include "../src/dcgm_stats.cpp"
 #include <lib/util/src/util.h>
 
 

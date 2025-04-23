@@ -15,7 +15,7 @@ target_link_libraries(cgroup
 
 # Add cgroup test executable
 add_executable(cgroup_test
-    test/cgroup_test.cc
+    test/cgroup_test.cpp
 )
 
 target_link_libraries(cgroup_test
