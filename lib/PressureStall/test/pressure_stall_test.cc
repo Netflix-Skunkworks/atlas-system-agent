@@ -1,5 +1,5 @@
 #include <lib/MeasurementUtils/src/measurement_utils.h>
-#include "../src/pressure_stall.h"
+#include <lib/PressureStall/src/pressure_stall.h>
 #include <gtest/gtest.h>
 
 namespace {

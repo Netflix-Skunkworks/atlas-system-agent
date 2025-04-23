@@ -1,5 +1,5 @@
 #include <lib/Logger/src/logger.h>
-#include "../src/gpumetrics.h"
+#include <lib/NVML/src/gpumetrics.h>
 #include <lib/MeasurementUtils/src/measurement_utils.h>
 #include <gtest/gtest.h>
 

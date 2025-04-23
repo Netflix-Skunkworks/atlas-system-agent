@@ -1,4 +1,4 @@
-#include "../src/cpufreq.h"
+#include <lib/CPUFreq/src/cpufreq.h>
 #include <lib/Logger/src/logger.h>
 #include <lib/MeasurementUtils/src/measurement_utils.h>
 

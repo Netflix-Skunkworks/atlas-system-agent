@@ -1,4 +1,4 @@
-#include "../src/perfmetrics.h"
+#include <lib/Perfmetrics/src/perfmetrics.h>
 #include <gtest/gtest.h>
 
 namespace {

@@ -1,6 +1,6 @@
 #include <lib/Logger/src/logger.h>
 #include <lib/MeasurementUtils/src/measurement_utils.h>
-#include "../src/proc.h"
+#include <lib/Proc/src/proc.h>
 
 #include <fmt/ostream.h>
 #include <gtest/gtest.h>

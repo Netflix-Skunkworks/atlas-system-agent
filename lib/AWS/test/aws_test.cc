@@ -1,4 +1,4 @@
-#include "../src/aws.h"
+#include <lib/AWS/src/aws.h>
 #include <lib/MeasurementUtils/src/measurement_utils.h>
 
 #include <gtest/gtest.h>

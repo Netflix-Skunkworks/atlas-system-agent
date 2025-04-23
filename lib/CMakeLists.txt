@@ -63,37 +63,3 @@ add_subdirectory(MonotonicTimer)
 add_subdirectory(NTP)
 add_subdirectory(Perfmetrics)
 add_subdirectory(PressureStall)
-
-#-- sysagent library
-add_library(sysagent
-    "Config/config.h"
-    "Config/sample_config.cc"
-)
-
-target_link_libraries(sysagent
-    spectator
-    abseil::abseil
-    CURL::libcurl
-    fmt::fmt
-    rapidjson
-    spdlog::spdlog
-    util
-    tagging
-    measurement_utils
-    HttpClient
-    cgroup
-    service_monitor
-    dcgm
-    proc
-    disk
-    nvml
-    aws
-    cpufreq
-    ethtool
-    files
-    logger
-    monotonic_timer
-    ntp
-    perfmetrics
-    pressurestall
-)

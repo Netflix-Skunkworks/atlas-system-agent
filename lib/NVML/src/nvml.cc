@@ -1,5 +1,5 @@
 #include "nvml.h"
-#include "../../Config/config.h"
+#include "config.h"
 #include <lib/Logger/src/logger.h>
 #include <dlfcn.h>
 

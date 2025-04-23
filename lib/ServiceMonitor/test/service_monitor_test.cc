@@ -1,4 +1,4 @@
-#include "../src/service_monitor_utils.cc"
+#include <lib/ServiceMonitor/src/service_monitor_utils.cc>
 #include <lib/Util/src/util.h>
 
 

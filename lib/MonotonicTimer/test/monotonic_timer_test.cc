@@ -1,5 +1,6 @@
 #include <lib/MeasurementUtils/src/measurement_utils.h>
 #include "../src/monotonic_timer.h"
+#include <lib/MonotonicTimer/src/monotonic_timer.h>
 #include <gtest/gtest.h>
 
 namespace {
