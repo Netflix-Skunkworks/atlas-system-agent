@@ -1,19 +1,19 @@
 #ifdef __linux__
 #include <sys/vfs.h>
 #endif
-#include <lib/AWS/src/aws.h>
-#include <lib/CGroup/src/cgroup.h>
-#include <lib/CPUFreq/src/cpufreq.h>
-#include <lib/DCGM/src/dcgm_stats.h>
-#include <lib/Disk/src/disk.h>
-#include <lib/Ethtool/src/ethtool.h>
-#include <lib/NVML/src/gpumetrics.h>
-#include <lib/NTP/src/ntp.h>
-#include <lib/Perfmetrics/src/perfmetrics.h>
-#include <lib/PressureStall/src/pressure_stall.h>
-#include <lib/Proc/src/proc.h>
-#include <lib/ServiceMonitor/src/service_monitor.h>
-#include <lib/Util/src/util.h>
+#include <lib/collectors/aws/src/aws.h>
+#include <lib/collectors/cgroup/src/cgroup.h>
+#include <lib/collectors/cpu_freq/src/cpufreq.h>
+#include <lib/collectors/dcgm/src/dcgm_stats.h>
+#include <lib/collectors/disk/src/disk.h>
+#include <lib/collectors/ethtool/src/ethtool.h>
+#include <lib/collectors/nvml/src/gpumetrics.h>
+#include <lib/collectors/ntp/src/ntp.h>
+#include <lib/collectors/perf_metrics/src/perfmetrics.h>
+#include <lib/collectors/pressure_stall/src/pressure_stall.h>
+#include <lib/collectors/proc/src/proc.h>
+#include <lib/collectors/service_monitor/src/service_monitor.h>
+#include <lib/util/src/util.h>
 
 #include "backward.hpp"
 #include <condition_variable>
