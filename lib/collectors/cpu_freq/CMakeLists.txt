@@ -9,6 +9,7 @@ target_include_directories(cpufreq
 target_link_libraries(cpufreq
     INTERFACE
     fmt::fmt
+    tagging
 )
 
 # Add cpufreq test executable

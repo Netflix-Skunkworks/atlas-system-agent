@@ -8,7 +8,9 @@ target_include_directories(pressurestall
 
 target_link_libraries(pressurestall
     INTERFACE
+    abseil::abseil
     fmt::fmt
+    tagging
 )
 
 # Add pressure stall test executable

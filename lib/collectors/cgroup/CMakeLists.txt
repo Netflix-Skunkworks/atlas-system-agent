@@ -11,6 +11,7 @@ target_include_directories(cgroup
 target_link_libraries(cgroup
     fmt::fmt
     abseil::abseil
+    tagging
 )
 
 # Add cgroup test executable

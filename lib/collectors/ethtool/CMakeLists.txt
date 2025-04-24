@@ -8,8 +8,10 @@ target_include_directories(ethtool
 
 target_link_libraries(ethtool
     INTERFACE
+    abseil::abseil
     fmt::fmt
     measurement_utils
+    tagging
 )
 
 # Add ethtool test executable

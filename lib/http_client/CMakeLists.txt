@@ -15,4 +15,5 @@ target_link_libraries(HttpClient
     fmt::fmt
     CURL::libcurl
     spectator
+    tagging
 )

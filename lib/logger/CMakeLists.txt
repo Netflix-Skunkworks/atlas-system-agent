@@ -10,4 +10,6 @@ target_include_directories(logger
 target_link_libraries(logger
     PUBLIC
     fmt::fmt
+    spdlog::spdlog
+    abseil::abseil
 )

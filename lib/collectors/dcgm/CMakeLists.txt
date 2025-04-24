@@ -12,6 +12,7 @@ target_link_libraries(dcgm
     fmt::fmt
     abseil::abseil
     spectator
+    tagging
 )
 
 # Add dcgm test executable

@@ -1,7 +1,7 @@
 #include <iostream>
 #include <fstream>
 
-#include "absl/strings/str_split.h"
+#include <absl/strings/str_split.h>
 #include "dcgm_stats.h"
 #include <lib/util/src/util.h>
 

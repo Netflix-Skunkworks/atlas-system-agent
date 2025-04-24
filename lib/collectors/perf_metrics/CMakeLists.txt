@@ -9,6 +9,7 @@ target_include_directories(perfmetrics
 target_link_libraries(perfmetrics
     INTERFACE
     fmt::fmt
+    tagging
 )
 
 # Add perfmetrics test executable

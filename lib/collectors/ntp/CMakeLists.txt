@@ -8,7 +8,9 @@ target_include_directories(ntp
 
 target_link_libraries(ntp
     INTERFACE
+    abseil::abseil
     fmt::fmt
+    tagging
 )
 
 # Add ntp test executable

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "absl/strings/str_split.h"
+#include <absl/strings/str_split.h>
 #include <lib/tagging/src/tagging_registry.h>
 #include <lib/util/src/util.h>
 
