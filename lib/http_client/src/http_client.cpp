@@ -1,7 +1,7 @@
 #include "http_client.h"
+#include "log_entry.h"
 #include <lib/logger/src/logger.h>
 #include <lib/tagging/src/tagging_registry.h>
-#include "log_entry.h"
 
 #include <algorithm>
 #include <utility>
