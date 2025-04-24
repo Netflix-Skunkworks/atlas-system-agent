@@ -4,12 +4,12 @@ add_library(tagging INTERFACE
 )
 
 target_include_directories(tagging
-INTERFACE ${CMAKE_SOURCE_DIR}
+    INTERFACE ${CMAKE_SOURCE_DIR}
 )
 
 # Add any dependencies if needed
 target_link_libraries(tagging
-INTERFACE
+    INTERFACE
     fmt::fmt
     rapidjson
     spectator

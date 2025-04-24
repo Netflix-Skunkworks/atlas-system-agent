@@ -24,7 +24,8 @@ target_link_libraries(atlas_system_agent
     dcgm
     service_monitor
     HttpClient
-    logger)
+    logger
+)
 
 # required to allow running on older systems, such as bionic
 target_link_options(atlas_system_agent PRIVATE "-static-libstdc++")

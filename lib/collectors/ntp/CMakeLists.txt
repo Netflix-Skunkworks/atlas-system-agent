@@ -1,13 +1,13 @@
 add_library(ntp INTERFACE
-  src/ntp.h
+	src/ntp.h
 )
 
 target_include_directories(ntp
-  INTERFACE ${CMAKE_SOURCE_DIR}
+	INTERFACE ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(ntp
-  INTERFACE
+	INTERFACE
     fmt::fmt
 )
 
