@@ -1,13 +1,13 @@
 add_library(ethtool INTERFACE
-	src/ethtool.h
+    src/ethtool.h
 )
 
 target_include_directories(ethtool
-	INTERFACE ${CMAKE_SOURCE_DIR}
+    INTERFACE ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(ethtool
-	INTERFACE
+    INTERFACE
     fmt::fmt
     measurement_utils
 )
