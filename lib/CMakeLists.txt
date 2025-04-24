@@ -15,26 +15,14 @@ add_library(spectator
 )
 
 #-- generator tools
-add_executable(gen_valid_chars "tools/gen_valid_chars.cpp")
+add_executable(gen_valid_chars "tools/gen_valid_chars.cc")
 
 #-- file generators, must exist where the outputs are referenced
-set(VALID_CHARS_OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/spectator/valid_chars.inc")
 add_custom_command(
-    OUTPUT ${VALID_CHARS_OUTPUT}
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/spectator"
-    COMMAND "$<TARGET_FILE:gen_valid_chars>" > ${VALID_CHARS_OUTPUT}
+    OUTPUT "spectator/valid_chars.inc"
+    COMMAND "${CMAKE_BINARY_DIR}/bin/gen_valid_chars" > "${CMAKE_SOURCE_DIR}/lib/spectator/valid_chars.inc"
     DEPENDS gen_valid_chars
-    COMMENT "Generating valid_chars.inc"
-    VERBATIM
 )
-
-# Create a custom target to guarantee the file gets created
-add_custom_target(generate_valid_chars ALL
-    DEPENDS ${VALID_CHARS_OUTPUT}
-)
-
-# Make spectator depend on the file generation
-add_dependencies(spectator generate_valid_chars)
 
 target_link_libraries(spectator
     abseil::abseil
