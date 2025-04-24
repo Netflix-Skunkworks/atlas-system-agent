@@ -1,7 +1,6 @@
 add_library(HttpClient
     src/http_client.cpp
     src/http_client.h
-    src/http_client_instantiations.cpp
     src/log_entry.h
 )
 

@@ -2,7 +2,6 @@
 
 #include <lib/tagging/src/tagging_registry.h>
 
-
 namespace atlasagent {
 
 template <typename Reg = TaggingRegistry>

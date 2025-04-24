@@ -1,7 +1,6 @@
 #include "disk.h"
 #include <lib/util/src/util.h>
 #include "absl/strings/str_split.h"
-#include <fmt/format.h>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -13,6 +12,9 @@ namespace atlasagent {
 using spectator::IdPtr;
 using spectator::Registry;
 using spectator::Tags;
+
+template class Disk<atlasagent::TaggingRegistry>;
+template class Disk<spectator::TestRegistry>;
 
 inline std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix) {
   std::unordered_set<std::string> res;
@@ -322,21 +324,4 @@ void Disk<Reg>::set_prefix(const std::string& new_prefix) noexcept {
   path_prefix_ = new_prefix;
 }
 
-}  // namespace atlasagent
-
-// for debugging
-template <> struct fmt::formatter<atlasagent::MountPoint>: formatter<std::string_view> {
-  static auto format(const atlasagent::MountPoint& mp, format_context& ctx) -> format_context::iterator {
-    return fmt::format_to(ctx.out(), "MP{{dev#={}:{},mp={},dev={},type={}}}", mp.device_major,
-                          mp.device_minor, mp.mount_point, mp.device, mp.fs_type);
-  }
-};
-
-// Explicit template instantiations
-namespace atlasagent {
-  // Instantiate for TestRegistry (for tests)
-  template class Disk<spectator::TestRegistry>;
-  
-  // Instantiate for SpectatordRegistry (used by atlas-agent)
-  template class Disk<base_tagging_registry<spectator::SpectatordRegistry>>;
 }  // namespace atlasagent

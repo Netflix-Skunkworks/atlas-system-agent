@@ -18,6 +18,9 @@ using spectator::Id;
 using spectator::IdPtr;
 using spectator::Tags;
 
+template class Proc<atlasagent::TaggingRegistry>;
+template class Proc<spectator::TestRegistry>;
+
 template <typename Reg>
 void Proc<Reg>::handle_line(FILE* fp) noexcept {
   char iface[4096];
@@ -912,13 +915,3 @@ void Proc<Reg>::process_stats() noexcept {
 }
 
 }  // namespace atlasagent
-
-// Explicit template instantiation for TestRegistry
-namespace atlasagent {
-  // Instead of instantiating each method individually, instantiate the entire class template
-  template class Proc<spectator::TestRegistry>;
-  
-  // Add explicit instantiation for SpectatordRegistry used by atlas-agent
-  template class Proc<base_tagging_registry<spectator::SpectatordRegistry>>;
-}  // namespace atlasagent
-

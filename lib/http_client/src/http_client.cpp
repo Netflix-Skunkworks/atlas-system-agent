@@ -1,5 +1,6 @@
 #include "http_client.h"
 #include <lib/logger/src/logger.h>
+#include <lib/tagging/src/tagging_registry.h>
 #include "log_entry.h"
 
 #include <algorithm>
@@ -9,6 +10,10 @@
 #include <curl/curl.h>
 
 namespace atlasagent {
+
+  template class HttpClient<atlasagent::TaggingRegistry>;
+  template class HttpClient<spectator::SpectatordRegistry>;
+
 
 class CurlHeaders {
  public:

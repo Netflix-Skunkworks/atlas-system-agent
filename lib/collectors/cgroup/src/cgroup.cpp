@@ -11,6 +11,9 @@ using spectator::Tags;
 
 constexpr auto MICROS = 1000 * 1000.0;
 
+template class CGroup<atlasagent::TaggingRegistry>;
+template class CGroup<spectator::TestRegistry>;
+
 template <typename Reg>
 void CGroup<Reg>::network_stats() noexcept {
   auto megabits = std::getenv("TITUS_NUM_NETWORK_BANDWIDTH");
@@ -295,12 +298,3 @@ void CGroup<Reg>::do_cpu_peak_stats(absl::Time now) noexcept {
 }
 
 }  // namespace atlasagent
-
-
-// Explicit template instantiation for TestRegistry
-namespace atlasagent {
-  // Instead of instantiating each method individually, instantiate the entire class template
-  template class CGroup<spectator::TestRegistry>;
-  
-}  // namespace atlasagent
-

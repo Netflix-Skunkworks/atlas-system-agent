@@ -2,11 +2,12 @@
 
 #include <lib/monotonic_timer/src/monotonic_timer.h>
 #include <lib/tagging/src/tagging_registry.h>
-
 #include <string>
 #include <sys/types.h>
+#include <fmt/format.h>
 #include <unordered_map>
 #include <vector>
+#include <unordered_set>
 
 namespace atlasagent {
 struct MountPoint {
@@ -33,6 +34,11 @@ struct DiskIo {
   u_long ms_doing_io;
   u_long weighted_ms_doing_io;
 };
+
+// Helper functions
+std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix);
+std::string get_id_from_mountpoint(const std::string& mp);
+std::string get_dev_from_device(const std::string& device);
 
 template <typename Reg = TaggingRegistry>
 class Disk {
@@ -65,3 +71,11 @@ class Disk {
 };
 
 }  // namespace atlasagent
+
+// for debugging
+template <> struct fmt::formatter<atlasagent::MountPoint>: formatter<std::string_view> {
+  static auto format(const atlasagent::MountPoint& mp, format_context& ctx) -> format_context::iterator {
+    return fmt::format_to(ctx.out(), "MP{{dev#={}:{},mp={},dev={},type={}}}", mp.device_major,
+                          mp.device_minor, mp.mount_point, mp.device, mp.fs_type);
+  }
+};
