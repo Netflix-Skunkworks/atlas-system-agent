@@ -32,31 +32,4 @@ else()
 endif()
 
 add_subdirectory(lib)
-
-#-- sysagent_test test executable
-file(GLOB sysagent_test_source_files
-    "bin/runtests.cc"
-    "lib/*test.cc"
-    "lib/sample_config.cc"
-    "lib/measurement_utils.*"
-)
-add_executable(sysagent_test ${sysagent_test_source_files})
-target_link_libraries(sysagent_test
-    sysagent
-    gtest::gtest
-)
-add_test(
-    NAME sysagent_test
-    COMMAND sysagent_test
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-
-#-- atlas_system_agent executable
-add_executable(atlas_system_agent "bin/atlas-agent.cc")
-target_link_libraries(atlas_system_agent sysagent)
-# required to allow running on older systems, such as bionic
-target_link_options(atlas_system_agent PRIVATE "-static-libstdc++")
-
-#-- test_nvml executable
-add_executable(test_nvml "bin/test_nvml.cc")
-target_link_libraries(test_nvml sysagent)
+add_subdirectory(AtlasAgent)

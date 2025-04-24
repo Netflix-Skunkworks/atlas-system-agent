@@ -13,13 +13,6 @@ add_library(spectator
     "spectator/stateless_meters.h"
     "spectator/valid_chars.inc"
 )
-target_link_libraries(spectator
-    abseil::abseil
-    asio::asio
-    Backward::Backward
-    fmt::fmt
-    spdlog::spdlog
-)
 
 #-- generator tools
 add_executable(gen_valid_chars "tools/gen_valid_chars.cc")
@@ -31,50 +24,19 @@ add_custom_command(
     DEPENDS gen_valid_chars
 )
 
-
-#-- sysagent library
-add_library(sysagent
-    "aws.h"
-    "cgroup.h"
-    "config.h"
-    "cpufreq.h"
-    "dcgm_stats.h"
-    "dcgm_stats.cc"
-    "disk.h"
-    "ethtool.h"
-    "files.h"
-    "gpumetrics.h"
-    "http_client.h"
-    "internal/cgroup.inc"
-    "internal/disk.inc"
-    "internal/http_client.inc"
-    "internal/proc.inc"
-    "log_entry.h"
-    "logger.cc"
-    "logger.h"
-    "monotonic_timer.h"
-    "ntp.h"
-    "nvml.cc"
-    "nvml.h"
-    "perfmetrics.h"
-    "pressure_stall.h"
-    "proc.h"
-    "sample_config.cc"
-    "service_monitor.cc"
-    "service_monitor.h"
-    "service_monitor_utils.cc"
-    "service_monitor_utils.h"
-    "tagger.h"
-    "tagging_registry.h"
-    "util.cc"
-    "util.h"
-)
-target_link_libraries(sysagent
-    spectator
+target_link_libraries(spectator
     abseil::abseil
-    CURL::libcurl
+    asio::asio
+    Backward::Backward
     fmt::fmt
-    rapidjson
-    SDBusCpp::sdbus-c++
     spdlog::spdlog
 )
+
+add_subdirectory(collectors)
+add_subdirectory(files)
+add_subdirectory(http_client)
+add_subdirectory(logger)
+add_subdirectory(measurement_utils)
+add_subdirectory(monotonic_timer)
+add_subdirectory(tagging)
+add_subdirectory(util)
