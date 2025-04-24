@@ -2,7 +2,6 @@
 
 #include <lib/tagging/src/tagging_registry.h>
 #include <lib/util/src/util.h>
-
 #include "absl/strings/str_split.h"
 #include <sys/timex.h>
 

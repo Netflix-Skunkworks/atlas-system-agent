@@ -14,7 +14,6 @@ namespace atlasagent {
   template class HttpClient<atlasagent::TaggingRegistry>;
   template class HttpClient<spectator::SpectatordRegistry>;
 
-
 class CurlHeaders {
  public:
   CurlHeaders() = default;

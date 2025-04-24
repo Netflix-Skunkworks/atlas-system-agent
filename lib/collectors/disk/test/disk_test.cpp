@@ -4,7 +4,6 @@
 #include <gtest/gtest.h>
 #include <unordered_set>
 
-
 namespace {
 using Registry = spectator::TestRegistry;
 using atlasagent::Disk;

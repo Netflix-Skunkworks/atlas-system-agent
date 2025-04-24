@@ -1,7 +1,6 @@
 #include "../src/dcgm_stats.cpp"
 #include <lib/util/src/util.h>
 
-
 #include <gtest/gtest.h>
 
 TEST(DCGMTest, ParseLinesValidInput) {

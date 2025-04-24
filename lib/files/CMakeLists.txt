@@ -8,5 +8,5 @@ target_include_directories(files
 
 target_link_libraries(files
   INTERFACE
-    fmt::fmt
+  fmt::fmt
 )

@@ -4,7 +4,6 @@
 #include <lib/tagging/src/tagging_registry.h>
 #include <lib/util/src/util.h>
 
-
 namespace atlasagent {
 
 using spectator::Id;

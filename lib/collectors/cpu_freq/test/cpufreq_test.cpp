@@ -2,7 +2,6 @@
 #include <lib/logger/src/logger.h>
 #include <lib/measurement_utils/src/measurement_utils.h>
 
-
 #include <gtest/gtest.h>
 
 namespace {

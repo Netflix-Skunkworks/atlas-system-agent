@@ -1,7 +1,6 @@
 #include "service_monitor.h"
 #include <lib/util/src/util.h>
 
-
 template class ServiceMonitor<atlasagent::TaggingRegistry>;
 
 // The constructor takes a registry, a vector of regex patterns, and a maximum number of services to monitor.

@@ -4,7 +4,6 @@
 #include "service_monitor_utils.h"
 #include <lib/util/src/util.h>
 
-
 // The function returns a vector of Unit structs, which contain information about each unit.
 std::optional<std::vector<Unit>> list_all_units() try {
   // Create system bus connection

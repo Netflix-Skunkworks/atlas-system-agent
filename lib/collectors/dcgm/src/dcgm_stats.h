@@ -1,6 +1,4 @@
-
 #include <lib/tagging/src/tagging_registry.h>
-
 #include <lib/spectator/registry.h>
 
 #include "string.h"

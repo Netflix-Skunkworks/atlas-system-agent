@@ -2,7 +2,6 @@
 
 #include <lib/files/src/files.h>
 #include <lib/tagging/src/tagging_registry.h>
-
 #include <lib/util/src/util.h>
 #include <sys/stat.h>
 

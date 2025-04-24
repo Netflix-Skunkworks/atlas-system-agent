@@ -5,7 +5,6 @@
 #include "dcgm_stats.h"
 #include <lib/util/src/util.h>
 
-
 using atlasagent::GetLogger;
 using atlasagent::Logger;
 
