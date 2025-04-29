@@ -9,6 +9,9 @@
 #include <stdexcept>
 #include <iomanip>
 
+#include <lib/tagging/src/tagging_registry.h>
+#include <lib/spectator/registry.h>
+
 // Constants for NVMe commands
 #define NVME_GET_LOG_PAGE 0x02
 #define NVME_IOCTL_ADMIN_CMD 0xC0484E41
@@ -70,7 +73,9 @@ struct nvme_get_amzn_stats_logpage {
 };
 #pragma pack(pop)
 
-class EbsStatsCollector {
+
+template <typename Reg = atlasagent::TaggingRegistry>
+class EBSCollector {
  private:
   std::string device;
 
@@ -79,13 +84,11 @@ class EbsStatsCollector {
   nvme_get_amzn_stats_logpage query_stats_from_device();
 
  public:
-  EbsStatsCollector(const std::string& dev) : device(dev) {}
-
-  std::vector<nvme_get_amzn_stats_logpage> collect_stats(int count = 1, int interval_ms = 0);
+  EBSCollector(const std::string& dev) : device(dev) {}
 
   static void print_stats(const nvme_get_amzn_stats_logpage& stats, int sample_num = -1);
 
   static void print_histogram(const ebs_nvme_histogram& histogram);
 
-  static void driver(const std::string& device);
+  bool gather_metrics();
 };

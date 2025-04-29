@@ -1,6 +1,7 @@
 #include "ebs.h"
 
-void EbsStatsCollector::nvme_ioctl(nvme_admin_command& admin_cmd) {
+template <typename Reg>
+void EBSCollector<Reg>::nvme_ioctl(nvme_admin_command& admin_cmd) {
   int fd = open(device.c_str(), O_RDONLY);
   if (fd < 0) {
     throw std::runtime_error("Failed to open device: " + device);
@@ -14,7 +15,8 @@ void EbsStatsCollector::nvme_ioctl(nvme_admin_command& admin_cmd) {
   }
 }
 
-nvme_get_amzn_stats_logpage EbsStatsCollector::query_stats_from_device() {
+template <typename Reg>
+nvme_get_amzn_stats_logpage EBSCollector<Reg>::query_stats_from_device() {
   nvme_get_amzn_stats_logpage stats;
   memset(&stats, 0, sizeof(stats));
 
@@ -34,22 +36,8 @@ nvme_get_amzn_stats_logpage EbsStatsCollector::query_stats_from_device() {
   return stats;
 }
 
-std::vector<nvme_get_amzn_stats_logpage> EbsStatsCollector::collect_stats(int count = 1,
-                                                                          int interval_ms = 0) {
-  std::vector<nvme_get_amzn_stats_logpage> stats_vector;
-
-  for (int i = 0; i < count; ++i) {
-    stats_vector.push_back(query_stats_from_device());
-
-    if (i < count - 1 && interval_ms > 0) {
-      usleep(interval_ms * 1000);
-    }
-  }
-
-  return stats_vector;
-}
-
-void EbsStatsCollector::print_stats(const nvme_get_amzn_stats_logpage& stats, int sample_num = -1) {
+template <class Reg>
+void EBSCollector<Reg>::print_stats(const nvme_get_amzn_stats_logpage& stats, int sample_num) {
   if (sample_num >= 0) {
     std::cout << "\n===== Sample " << sample_num + 1 << " =====" << std::endl;
   }
@@ -83,7 +71,8 @@ void EbsStatsCollector::print_stats(const nvme_get_amzn_stats_logpage& stats, in
   print_histogram(stats.write_io_latency_histogram);
 }
 
-void EbsStatsCollector::print_histogram(const ebs_nvme_histogram& histogram) {
+template <typename Reg>
+void EBSCollector<Reg>::print_histogram(const ebs_nvme_histogram& histogram) {
   std::cout << "Number of bins: " << histogram.num_bins << std::endl;
   std::cout << "=================================" << std::endl;
   std::cout << "Lower       Upper        IO Count" << std::endl;
@@ -96,28 +85,13 @@ void EbsStatsCollector::print_histogram(const ebs_nvme_histogram& histogram) {
   }
 }
 
-void EbsStatsCollector::driver(const std::string& device) {
-    // if (argc < 2) {
-    //     std::cerr << "Usage: " << argv[0] << " <device>" << std::endl;
-    //     return 1;
-    // }
 
-    // std::string device = argv[1];
 
-    try {
-        EbsStatsCollector collector(device);
-        // Collect 3 samples, 1 second apart
-        std::vector<nvme_get_amzn_stats_logpage> stats = collector.collect_stats(3, 1000);
-        
-        std::cout << "Collected " << stats.size() << " stats samples" << std::endl;
-        
-        // Print all collected samples
-        for (size_t i = 0; i < stats.size(); i++) {
-            EbsStatsCollector::print_stats(stats[i], i);
-        }
-        
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return;
-    }
+template <typename Reg>
+bool EBSCollector<Reg>::gather_metrics()
+{
+    nvme_get_amzn_stats_logpage stats = query_stats_from_device();
+
+    print_stats(stats);
+    return true;
 }
