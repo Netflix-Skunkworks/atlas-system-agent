@@ -16,6 +16,7 @@ target_link_libraries(atlas_system_agent
     nvml
     proc
     disk
+    ebs
     ethtool
     ntp
     perfmetrics

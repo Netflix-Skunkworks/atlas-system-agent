@@ -6,6 +6,7 @@
 #include <lib/collectors/cpu_freq/src/cpufreq.h>
 #include <lib/collectors/dcgm/src/dcgm_stats.h>
 #include <lib/collectors/disk/src/disk.h>
+#include <lib/collectors/ebs/src/ebs.h>
 #include <lib/collectors/ethtool/src/ethtool.h>
 #include <lib/collectors/nvml/src/gpumetrics.h>
 #include <lib/collectors/ntp/src/ntp.h>
@@ -262,7 +263,7 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
     gpuDCGM.emplace(registry);
   }
 
-  // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
+  // TODO: DCGM, EBS, and ServiceMonitor have Dynamic metric collection. During each iteration we have to
   // check if these optionals have a set value. lets improve how we handle this
   
   // Create a ServiceMonitor object to monitor Systemd services if any configs are valid
@@ -273,6 +274,16 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
   }
   else{
     Logger()->info("Service Monitoring is disabled.");
+  }
+
+  // Create an EBS collector object to monitor EBS devices if any configs are valid
+  std::optional<EBSCollector<TaggingRegistry> > ebsMetrics{};
+  std::optional<std::unordered_set<std::string> > ebsConfig{parse_ebs_config_directory(EBSConstants::ConfigPath)};
+  if (ebsConfig.has_value()) {
+    ebsMetrics.emplace(registry, ebsConfig.value());
+  }
+  else{
+    Logger()->info("EBS Monitoring is disabled.");
   }
 
   if (gpuDCGM.has_value()) {
@@ -315,6 +326,10 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
         if (gpuDCGM.value().gather_metrics() == false) {
           Logger()->error("Failed to gather DCGM metrics");
         }
+      }
+      
+      if (ebsMetrics.has_value() && ebsMetrics.value().gather_metrics() == false) {
+        Logger()->error("Failed to gather EBS metrics");
       }
 
       if (serviceMetrics.has_value() && serviceMetrics.value().gather_metrics() == false) {

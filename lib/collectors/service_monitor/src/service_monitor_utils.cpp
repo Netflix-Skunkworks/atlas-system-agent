@@ -147,7 +147,7 @@ std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(co
 
   // If no regex patterns were found in the directory, log the error and return nullopt
   if (allRegexPatterns.empty()) {
-    atlasagent::Logger()->info("No regex patterns found in directory {}", directoryPath);
+    atlasagent::Logger()->info("No service monitor regex patterns found in directory {}", directoryPath);
     return std::nullopt;
   }
   

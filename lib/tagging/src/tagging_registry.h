@@ -58,6 +58,10 @@ class base_tagging_registry {
     return registry_->GetPercentileTimer(id, min, max);
   }
 
+  auto GetPercentileDistributionSummary(absl::string_view name, spectator::Tags tags,int64_t min, int64_t max) {
+    return registry_->GetPercentileDistributionSummary(tagger_.GetId(name, std::move(tags)), min, max);
+  }
+
   // types
   using counter_t = typename Reg::counter_t;
   using counter_ptr = std::shared_ptr<counter_t>;

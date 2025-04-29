@@ -1,23 +1,19 @@
-#include <iostream>
-#include <string>
-#include <cstring>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <vector>
-#include <cstdint>
-#include <stdexcept>
-#include <iomanip>
-
 #include <lib/tagging/src/tagging_registry.h>
 #include <lib/spectator/registry.h>
 
-// Constants for NVMe commands
-#define NVME_GET_LOG_PAGE 0x02
-#define NVME_IOCTL_ADMIN_CMD 0xC0484E41
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
-#define AMZN_NVME_STATS_LOGPAGE_ID 0xD0
-#define AMZN_NVME_STATS_MAGIC 0x3C23B510
+// Constants for NVMe commands
+struct NVMeCommands {
+  static constexpr auto GetLogPage = 0x02;
+  static constexpr auto AdminCommand = 0xC0484E41;
+  static constexpr auto StatsLogPageId = 0xD0;
+  static constexpr auto StatsMagic = 0x3C23B510;
+};
 
 // Structures
 #pragma pack(push, 1)
@@ -73,22 +69,92 @@ struct nvme_get_amzn_stats_logpage {
 };
 #pragma pack(pop)
 
+static const std::vector<std::string> AtlasNamingConvention = {
+  "B_0000_0001",
+  "B_0001_0002",
+  "B_0002_0004",
+  "B_0004_0008",
+  "B_0008_0016",
+  "B_0016_0032",
+  "B_0032_0064",
+  "B_0064_0128",
+  "B_0128_0256",
+  "B_0256_0512",
+  "B_0512_1024",
+  "KB_0001_0002",
+  "KB_0002_0004",
+  "KB_0004_0008",
+  "KB_0008_0016",
+  "KB_0016_0032",
+  "KB_0032_0064",
+  "KB_0064_0128",
+  "KB_0128_0256",
+  "KB_0256_0512",
+  "KB_0512_1024",
+  "MB_001_002",
+  "MB_002_004",
+  "MB_004_008",
+  "MB_008_016",
+  "MB_016_032",
+  "MB_032_064",
+  "MB_064_MAX"
+};
+
+namespace detail {
+  template <typename Reg>
+  inline auto ebsGauge(Reg* registry, const std::string_view name, const std::string_view deviceName) {
+    auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}};
+    return registry->GetGauge(name, tags);
+  }
+  
+  template <typename Reg>
+  inline auto ebsMonocounter(Reg* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id) {
+    auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}};
+    tags.add("id", id);
+    return registry->GetMonotonicCounter(name, tags);
+  }
+
+  template <typename Reg>
+  inline auto ebsHistogram(Reg* registry, const char* name, const char* deviceName, const char *id, const char *bin) {
+    auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}};
+    if (id != nullptr) {
+      tags.add("id", id);
+    }
+    if (bin != nullptr) {
+      tags.add("bin", bin);
+    }
+    return registry->GetMonotonicCounter(name, tags);
+  }
+}  // namespace detail
+  
 
 template <typename Reg = atlasagent::TaggingRegistry>
 class EBSCollector {
  private:
   std::string device;
-
-  void nvme_ioctl(nvme_admin_command& admin_cmd);
-
-  nvme_get_amzn_stats_logpage query_stats_from_device();
+  // TODO: Change config to a vector to improve performance
+  // PreReq: Break collect_system_metrics into more functions
+  std::unordered_set<std::string> config;
+  Reg* registry_;
+  bool query_stats_from_device(const std::string& device, nvme_get_amzn_stats_logpage& stats);
+  bool update_metrics(const std::string &devicePath, const nvme_get_amzn_stats_logpage &stats);
 
  public:
-  EBSCollector(const std::string& dev) : device(dev) {}
+ EBSCollector(Reg* registry, std::unordered_set<std::string> config);
 
-  static void print_stats(const nvme_get_amzn_stats_logpage& stats, int sample_num = -1);
+  void print_stats(const nvme_get_amzn_stats_logpage& stats, int sample_num = -1);
 
-  static void print_histogram(const ebs_nvme_histogram& histogram);
+  void print_histogram(const ebs_nvme_histogram& histogram);
+
+  bool handleHistogram(const ebs_nvme_histogram& histogram, const std::string& devicePath, const std::string& id);
 
   bool gather_metrics();
 };
+
+struct EBSConstants {
+  static constexpr auto ConfigPath{"/etc/atlas-system-agent/conf.d"};
+  static constexpr auto ConfigFileExtPattern = ".*\\.ebs-devices$";
+};
+
+std::optional<std::vector<std::string>> ebs_parse_regex_config_file(const char* configFilePath);
+std::optional<std::unordered_set<std::string>> parse_ebs_config_directory(const char* directoryPath);
