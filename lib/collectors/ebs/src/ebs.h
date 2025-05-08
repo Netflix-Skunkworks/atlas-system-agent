@@ -70,34 +70,34 @@ struct nvme_get_amzn_stats_logpage {
 #pragma pack(pop)
 
 static const std::vector<std::string> AtlasNamingConvention = {
-  "B_0000_0001",
-  "B_0001_0002",
-  "B_0002_0004",
-  "B_0004_0008",
-  "B_0008_0016",
-  "B_0016_0032",
-  "B_0032_0064",
-  "B_0064_0128",
-  "B_0128_0256",
-  "B_0256_0512",
-  "B_0512_1024",
-  "KB_0001_0002",
-  "KB_0002_0004",
-  "KB_0004_0008",
-  "KB_0008_0016",
-  "KB_0016_0032",
-  "KB_0032_0064",
-  "KB_0064_0128",
-  "KB_0128_0256",
-  "KB_0256_0512",
-  "KB_0512_1024",
-  "MB_001_002",
-  "MB_002_004",
-  "MB_004_008",
-  "MB_008_016",
-  "MB_016_032",
-  "MB_032_064",
-  "MB_064_MAX"
+  "US_00000000_00000001",
+  "US_00000001_00000002",
+  "US_00000002_00000004",
+  "US_00000004_00000008",
+  "US_00000008_00000016",
+  "US_00000016_00000032",
+  "US_00000032_00000064",
+  "US_00000064_00000128",
+  "US_00000128_00000256",
+  "US_00000256_00000512",
+  "US_00000512_00001024",
+  "US_00001024_00002048",
+  "US_00002048_00004096",
+  "US_00004096_00008192",
+  "US_00008192_00016384",
+  "US_00016384_00032768",
+  "US_00032768_00065536",
+  "US_00065536_00131072",
+  "US_00131072_00262144",
+  "US_00262144_00524288",
+  "US_00524288_01048576",
+  "US_01048576_02097152",
+  "US_02097152_04194304",
+  "US_04194304_08388608",
+  "US_08388608_16777216",
+  "US_16777216_33554432",
+  "US_33554432_67108864",
+  "US_67108864_MAX"
 };
 
 namespace detail {
@@ -115,14 +115,10 @@ namespace detail {
   }
 
   template <typename Reg>
-  inline auto ebsHistogram(Reg* registry, const char* name, const char* deviceName, const char *id, const char *bin) {
+  inline auto ebsHistogram(Reg* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id, const std::string_view bin) {
     auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}};
-    if (id != nullptr) {
-      tags.add("id", id);
-    }
-    if (bin != nullptr) {
-      tags.add("bin", bin);
-    }
+    tags.add("id", id);
+    tags.add("bin", bin);
     return registry->GetMonotonicCounter(name, tags);
   }
 }  // namespace detail
@@ -131,22 +127,16 @@ namespace detail {
 template <typename Reg = atlasagent::TaggingRegistry>
 class EBSCollector {
  private:
-  std::string device;
   // TODO: Change config to a vector to improve performance
   // PreReq: Break collect_system_metrics into more functions
   std::unordered_set<std::string> config;
   Reg* registry_;
   bool query_stats_from_device(const std::string& device, nvme_get_amzn_stats_logpage& stats);
   bool update_metrics(const std::string &devicePath, const nvme_get_amzn_stats_logpage &stats);
+  bool handle_histogram(const ebs_nvme_histogram& histogram, const std::string& devicePath, const std::string& id);
 
  public:
  EBSCollector(Reg* registry, const std::unordered_set<std::string>& config);
-
-  void print_stats(const nvme_get_amzn_stats_logpage& stats, int sample_num = -1);
-
-  void print_histogram(const ebs_nvme_histogram& histogram);
-
-  bool handleHistogram(const ebs_nvme_histogram& histogram, const std::string& devicePath, const std::string& id);
 
   bool gather_metrics();
 };
