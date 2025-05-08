@@ -140,7 +140,7 @@ class EBSCollector {
   bool update_metrics(const std::string &devicePath, const nvme_get_amzn_stats_logpage &stats);
 
  public:
- EBSCollector(Reg* registry, std::unordered_set<std::string> config);
+ EBSCollector(Reg* registry, const std::unordered_set<std::string>& config);
 
   void print_stats(const nvme_get_amzn_stats_logpage& stats, int sample_num = -1);
 

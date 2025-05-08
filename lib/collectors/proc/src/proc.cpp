@@ -412,7 +412,7 @@ void Proc<Reg>::loadavg_stats() noexcept {
 }
 
 namespace proc {
-inline int get_pid_from_sched(const char* sched_line) noexcept {
+int get_pid_from_sched(const char* sched_line) noexcept {
   auto parens = strchr(sched_line, '(');
   if (parens == nullptr) {
     return -1;

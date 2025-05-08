@@ -254,6 +254,7 @@ bool EBSCollector<Reg>::gather_metrics() {
       success = false;
       continue;
     }
+    this->print_stats(stats, 0);
     // Push the metrics to spectatorD
     if (update_metrics(device, stats) == false) {
       atlasagent::Logger()->error("Failed to update metrics for device {}", device);
