@@ -18,17 +18,18 @@ struct EBSMetricConstants {
   static constexpr auto Instance{"instance"};
 
   // Metric types
-  static constexpr auto ebsOperations{"ebs.totalOperations"};
-  static constexpr auto ebsBytes{"ebs.totalBytes"};
-  static constexpr auto ebsTime{"ebs.totalTime"};
-  static constexpr auto ebsIOPS{"ebs.PerformanceExceededIOPS"};
-  static constexpr auto ebsTP{"ebs.PerformanceExceededTP"};
-  static constexpr auto ebsQueueLength{"ebs.volumeQueueLength"};
-  static constexpr auto ebsHistogram{"ebs.IOLatencyHistogram"};
+  static constexpr auto ebsOperations{"aws.ebs.totalOperations"};
+  static constexpr auto ebsBytes{"aws.ebs.totalBytes"};
+  static constexpr auto ebsTime{"aws.ebs.totalTime"};
+  static constexpr auto ebsIOPS{"aws.ebs.perfExceededIOPS"};
+  static constexpr auto ebsTP{"aws.ebs.perfExceededTput"};
+  static constexpr auto ebsQueueLength{"aws.ebs.volumeQueueLength"};
+  static constexpr auto ebsHistogram{"aws.ebs.ioLatencyHistogram"};
 
   // Conversion Constants
   static constexpr auto ebsMicrosecondsToSeconds{.000001};
 };
+using EBSMC = EBSMetricConstants;
 
 template class EBSCollector<atlasagent::TaggingRegistry>;
 
@@ -151,7 +152,7 @@ bool EBSCollector<Reg>::handle_histogram(const ebs_nvme_histogram& histogram, co
     return false;
   }
   for (uint64_t i = 0; i < histogram.num_bins; i++) {
-    detail::ebsHistogram(registry_, EBSMetricConstants::ebsHistogram, devicePath, type, AtlasNamingConvention.at(i))->Set(histogram.bins[i].count);
+    ebsHistogram(registry_, EBSMC::ebsHistogram, devicePath, type, AtlasNamingConvention.at(i))->Set(histogram.bins[i].count);
   }
   return true;
 }
@@ -162,30 +163,30 @@ bool EBSCollector<Reg>::update_metrics(const std::string &devicePath, const nvme
     return false;
   }
   
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsOperations, devicePath, EBSMetricConstants::ReadOp)->Set(stats.total_read_ops);
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsOperations, devicePath, EBSMetricConstants::WriteOp)->Set(stats.total_write_ops);
+  ebsMonocounter(registry_, EBSMC::ebsOperations, devicePath, EBSMC::ReadOp)->Set(stats.total_read_ops);
+  ebsMonocounter(registry_, EBSMC::ebsOperations, devicePath, EBSMC::WriteOp)->Set(stats.total_write_ops);
   
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsBytes, devicePath, EBSMetricConstants::ReadOp)->Set(stats.total_read_bytes);
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsBytes, devicePath, EBSMetricConstants::WriteOp)->Set(stats.total_write_bytes);
+  ebsMonocounter(registry_, EBSMC::ebsBytes, devicePath, EBSMC::ReadOp)->Set(stats.total_read_bytes);
+  ebsMonocounter(registry_, EBSMC::ebsBytes, devicePath, EBSMC::WriteOp)->Set(stats.total_write_bytes);
 
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsTime, devicePath, EBSMetricConstants::ReadOp)->Set(stats.total_read_time * EBSMetricConstants::ebsMicrosecondsToSeconds);
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsTime, devicePath, EBSMetricConstants::WriteOp)->Set(stats.total_write_time * EBSMetricConstants::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsTime, devicePath, EBSMC::ReadOp)->Set(stats.total_read_time * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsTime, devicePath, EBSMC::WriteOp)->Set(stats.total_write_time * EBSMC::ebsMicrosecondsToSeconds);
   
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsIOPS, devicePath, EBSMetricConstants::Volume)->Set(stats.ebs_volume_performance_exceeded_iops * EBSMetricConstants::ebsMicrosecondsToSeconds);
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsIOPS, devicePath, EBSMetricConstants::Instance)->Set(stats.ec2_instance_ebs_performance_exceeded_iops * EBSMetricConstants::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Volume)->Set(stats.ebs_volume_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Instance)->Set(stats.ec2_instance_ebs_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
 
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsTP, devicePath, EBSMetricConstants::Volume)->Set(stats.ebs_volume_performance_exceeded_tp * EBSMetricConstants::ebsMicrosecondsToSeconds);
-  detail::ebsMonocounter(registry_, EBSMetricConstants::ebsTP, devicePath, EBSMetricConstants::Instance)->Set(stats.ec2_instance_ebs_performance_exceeded_tp * EBSMetricConstants::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsTP, devicePath, EBSMC::Volume)->Set(stats.ebs_volume_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsTP, devicePath, EBSMC::Instance)->Set(stats.ec2_instance_ebs_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
 
-  detail::ebsGauge(registry_, EBSMetricConstants::ebsQueueLength, devicePath)->Set(stats.volume_queue_length);
+  ebsGauge(registry_, EBSMC::ebsQueueLength, devicePath)->Set(stats.volume_queue_length);
   
   bool success {true};
-  if (false == handle_histogram(stats.read_io_latency_histogram, devicePath, EBSMetricConstants::ReadOp)) {
+  if (false == handle_histogram(stats.read_io_latency_histogram, devicePath, EBSMC::ReadOp)) {
     atlasagent::Logger()->error("Failed to handle read histogram for device {}", devicePath);
     success = false;
   }
   
-  if (false == handle_histogram(stats.write_io_latency_histogram, devicePath, EBSMetricConstants::WriteOp)) {
+  if (false == handle_histogram(stats.write_io_latency_histogram, devicePath, EBSMC::WriteOp)) {
     atlasagent::Logger()->error("Failed to handle write histogram for device {}", devicePath);
     success = false;
   }

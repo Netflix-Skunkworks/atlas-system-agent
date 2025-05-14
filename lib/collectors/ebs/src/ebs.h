@@ -70,58 +70,54 @@ struct nvme_get_amzn_stats_logpage {
 #pragma pack(pop)
 
 static const std::vector<std::string> AtlasNamingConvention = {
-  "US_00000000_00000001",
-  "US_00000001_00000002",
-  "US_00000002_00000004",
-  "US_00000004_00000008",
-  "US_00000008_00000016",
-  "US_00000016_00000032",
-  "US_00000032_00000064",
-  "US_00000064_00000128",
-  "US_00000128_00000256",
-  "US_00000256_00000512",
-  "US_00000512_00001024",
-  "US_00001024_00002048",
-  "US_00002048_00004096",
-  "US_00004096_00008192",
-  "US_00008192_00016384",
-  "US_00016384_00032768",
-  "US_00032768_00065536",
-  "US_00065536_00131072",
-  "US_00131072_00262144",
-  "US_00262144_00524288",
-  "US_00524288_01048576",
-  "US_01048576_02097152",
-  "US_02097152_04194304",
-  "US_04194304_08388608",
-  "US_08388608_16777216",
-  "US_16777216_33554432",
-  "US_33554432_67108864",
-  "US_67108864_MAX"
+  "us_00000000_00000001",
+  "us_00000001_00000002",
+  "us_00000002_00000004",
+  "us_00000004_00000008",
+  "us_00000008_00000016",
+  "us_00000016_00000032",
+  "us_00000032_00000064",
+  "us_00000064_00000128",
+  "us_00000128_00000256",
+  "us_00000256_00000512",
+  "us_00000512_00001024",
+  "us_00001024_00002048",
+  "us_00002048_00004096",
+  "us_00004096_00008192",
+  "us_00008192_00016384",
+  "us_00016384_00032768",
+  "us_00032768_00065536",
+  "us_00065536_00131072",
+  "us_00131072_00262144",
+  "us_00262144_00524288",
+  "us_00524288_01048576",
+  "us_01048576_02097152",
+  "us_02097152_04194304",
+  "us_04194304_08388608",
+  "us_08388608_16777216",
+  "us_16777216_33554432",
+  "us_33554432_67108864",
+  "us_67108864_MAX"
 };
 
-namespace detail {
-  template <typename Reg>
-  inline auto ebsGauge(Reg* registry, const std::string_view name, const std::string_view deviceName) {
-    auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}};
-    return registry->GetGauge(name, tags);
-  }
-  
-  template <typename Reg>
-  inline auto ebsMonocounter(Reg* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id) {
-    auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}};
-    tags.add("id", id);
-    return registry->GetMonotonicCounter(name, tags);
-  }
 
-  template <typename Reg>
-  inline auto ebsHistogram(Reg* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id, const std::string_view bin) {
-    auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}};
-    tags.add("id", id);
-    tags.add("bin", bin);
-    return registry->GetMonotonicCounter(name, tags);
-  }
-}  // namespace detail
+template <typename Reg>
+inline auto ebsGauge(Reg* registry, const std::string_view name, const std::string_view deviceName) {
+  auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}};
+  return registry->GetGauge(name, tags);
+}
+
+template <typename Reg>
+inline auto ebsMonocounter(Reg* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id) {
+  auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}, {"id", fmt::format("{}", id)}};
+  return registry->GetMonotonicCounter(name, tags);
+}
+
+template <typename Reg>
+inline auto ebsHistogram(Reg* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id, const std::string_view bin) {
+  auto tags = spectator::Tags{{"dev", fmt::format("{}", deviceName)}, {"id", fmt::format("{}", id)}, {"bin", fmt::format("{}", bin)}};
+  return registry->GetMonotonicCounter(name, tags);
+}
   
 
 template <typename Reg = atlasagent::TaggingRegistry>
