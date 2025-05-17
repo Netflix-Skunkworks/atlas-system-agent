@@ -1,13 +1,14 @@
-add_library(perfmetrics INTERFACE
+add_library(perfmetrics
     src/perfmetrics.h
+    src/perfmetrics.cpp
 )
 
 target_include_directories(perfmetrics
-    INTERFACE ${CMAKE_SOURCE_DIR}
+    PUBLIC ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(perfmetrics
-    INTERFACE
+    PUBLIC
     fmt::fmt
     tagging
 )
