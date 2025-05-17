@@ -13,6 +13,7 @@ target_link_libraries(disk
     abseil::abseil
     spectator
     tagging
+    monotonic_timer
 )
 
 # Add disk test executable
