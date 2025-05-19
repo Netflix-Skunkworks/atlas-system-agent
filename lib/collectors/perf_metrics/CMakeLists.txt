@@ -1,24 +1,24 @@
-add_library(perfmetrics INTERFACE
-    src/perfmetrics.h
+add_library(perf_metrics
+    src/perf_metrics.h
+    src/perf_metrics.cpp
 )
 
-target_include_directories(perfmetrics
-    INTERFACE ${CMAKE_SOURCE_DIR}
+target_include_directories(perf_metrics
+    PUBLIC ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(perfmetrics
-    INTERFACE
+target_link_libraries(perf_metrics
+    PUBLIC
     fmt::fmt
     tagging
 )
 
-# Add perfmetrics test executable
-add_executable(perfmetrics_test
-    test/perfmetrics_test.cpp
+add_executable(perf_metrics_test
+    test/perf_metrics_test.cpp
 )
 
-target_link_libraries(perfmetrics_test
-    perfmetrics
+target_link_libraries(perf_metrics_test
+    perf_metrics
     util
     spectator
     measurement_utils
@@ -26,9 +26,8 @@ target_link_libraries(perfmetrics_test
     gtest::gtest
 )
 
-# Register the test with CTest
 add_test(
-    NAME perfmetrics_test
-    COMMAND perfmetrics_test
+    NAME perf_metrics_test
+    COMMAND perf_metrics_test
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
