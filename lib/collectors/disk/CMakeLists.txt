@@ -9,11 +9,11 @@ target_include_directories(disk
 
 # Add dependencies
 target_link_libraries(disk
-    fmt::fmt
     abseil::abseil
+    fmt::fmt
+    monotonic_timer
     spectator
     tagging
-    monotonic_timer
 )
 
 # Add disk test executable
