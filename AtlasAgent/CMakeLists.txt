@@ -20,7 +20,7 @@ target_link_libraries(atlas_system_agent
     ethtool
     ntp
     perf_metrics
-    pressurestall
+    pressure_stall
     util
     dcgm
     service_monitor

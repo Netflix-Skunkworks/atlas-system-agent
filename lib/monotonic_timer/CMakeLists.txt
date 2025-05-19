@@ -1,15 +1,17 @@
-add_library(monotonic_timer INTERFACE
+add_library(monotonic_timer
     src/monotonic_timer.h
+    src/monotonic_timer.cpp
 )
 
 target_include_directories(monotonic_timer
-    INTERFACE ${CMAKE_SOURCE_DIR}
+    PUBLIC ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(monotonic_timer
-    INTERFACE
+    PUBLIC
     fmt::fmt
     spectator
+    tagging
 )
 
 # Add monotonic_timer test executable

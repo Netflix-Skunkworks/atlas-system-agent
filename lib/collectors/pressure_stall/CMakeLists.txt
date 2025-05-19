@@ -1,13 +1,13 @@
-add_library(pressurestall INTERFACE
+add_library(pressure_stall
     src/pressure_stall.h
+    src/pressure_stall.cpp
 )
 
-target_include_directories(pressurestall
-    INTERFACE ${CMAKE_SOURCE_DIR}
+target_include_directories(pressure_stall
+    PUBLIC ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(pressurestall
-    INTERFACE
+target_link_libraries(pressure_stall
     abseil::abseil
     fmt::fmt
     tagging
@@ -19,7 +19,7 @@ add_executable(pressure_stall_test
 )
 
 target_link_libraries(pressure_stall_test
-    pressurestall
+    pressure_stall
     util
     logger
     measurement_utils
