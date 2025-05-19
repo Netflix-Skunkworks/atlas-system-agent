@@ -10,7 +10,7 @@
 #include <lib/collectors/ethtool/src/ethtool.h>
 #include <lib/collectors/nvml/src/gpumetrics.h>
 #include <lib/collectors/ntp/src/ntp.h>
-#include <lib/collectors/perf_metrics/src/perfmetrics.h>
+#include <lib/collectors/perf_metrics/src/perf_metrics.h>
 #include <lib/collectors/pressure_stall/src/pressure_stall.h>
 #include <lib/collectors/proc/src/proc.h>
 #include <lib/collectors/service_monitor/src/service_monitor.h>
