@@ -12,7 +12,7 @@ target_link_libraries(atlas_system_agent
     abseil::abseil
     aws
     cgroup
-    cpufreq
+    cpu_freq
     nvml
     proc
     disk

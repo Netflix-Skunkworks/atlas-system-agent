@@ -3,7 +3,7 @@
 #endif
 #include <lib/collectors/aws/src/aws.h>
 #include <lib/collectors/cgroup/src/cgroup.h>
-#include <lib/collectors/cpu_freq/src/cpufreq.h>
+#include <lib/collectors/cpu_freq/src/cpu_freq.h>
 #include <lib/collectors/dcgm/src/dcgm_stats.h>
 #include <lib/collectors/disk/src/disk.h>
 #include <lib/collectors/ebs/src/ebs.h>

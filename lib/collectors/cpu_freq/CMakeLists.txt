@@ -1,34 +1,32 @@
-add_library(cpufreq INTERFACE
-    src/cpufreq.h
+add_library(cpu_freq
+    src/cpu_freq.h
+    src/cpu_freq.cpp
 )
 
-target_include_directories(cpufreq
-    INTERFACE ${CMAKE_SOURCE_DIR}
+target_include_directories(cpu_freq
+    PUBLIC ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(cpufreq
-    INTERFACE
+target_link_libraries(cpu_freq
     fmt::fmt
     tagging
 )
 
-# Add cpufreq test executable
-add_executable(cpufreq_test
-    test/cpufreq_test.cpp
+add_executable(cpu_freq_test
+    test/cpu_freq_test.cpp
 )
 
-target_link_libraries(cpufreq_test
-    cpufreq
-    util
-    spectator
-    measurement_utils
-    logger
+target_link_libraries(cpu_freq_test
+    cpu_freq
     gtest::gtest
+    logger
+    measurement_utils
+    spectator
+    util    
 )
 
-# Register the test with CTest
 add_test(
-    NAME cpufreq_test
-    COMMAND cpufreq_test
+    NAME cpu_freq_test
+    COMMAND cpu_freq_test
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
