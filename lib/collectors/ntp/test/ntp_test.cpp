@@ -8,13 +8,6 @@ using atlasagent::Logger;
 using atlasagent::Ntp;
 using Registry = spectator::TestRegistry;
 
-struct TestClock {
-  static absl::Time now() {
-    static auto fixed = absl::Now();
-    return fixed;
-  }
-};
-
 class NtpTest : public Ntp<Registry, TestClock> {
  public:
   explicit NtpTest(Registry* registry) : Ntp{registry} {}
