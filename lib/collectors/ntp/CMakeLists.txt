@@ -1,33 +1,32 @@
-add_library(ntp INTERFACE
+add_library(ntp 
     src/ntp.h
+    src/ntp.cpp
 )
 
 target_include_directories(ntp
-    INTERFACE ${CMAKE_SOURCE_DIR}
+    PUBLIC ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(ntp
-    INTERFACE
     abseil::abseil
     fmt::fmt
+    logger
     tagging
 )
 
-# Add ntp test executable
 add_executable(ntp_test
     test/ntp_test.cpp
 )
 
 target_link_libraries(ntp_test
-    ntp
-    util
-    spectator
-    measurement_utils
-    logger
     gtest::gtest
+    logger
+    measurement_utils
+    ntp
+    spectator
+    util
 )
 
-# Register the test with CTest
 add_test(
     NAME ntp_test
     COMMAND ntp_test
