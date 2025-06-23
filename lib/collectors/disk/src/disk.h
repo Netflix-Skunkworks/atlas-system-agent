@@ -1,7 +1,5 @@
 #pragma once
 
-#include <lib/monotonic_timer/src/monotonic_timer.h>
-#include <lib/tagging/src/tagging_registry.h>
 #include <string>
 #include <sys/types.h>
 #include <fmt/format.h>
@@ -40,7 +38,7 @@ std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
 std::string get_id_from_mountpoint(const std::string& mp);
 std::string get_dev_from_device(const std::string& device);
 
-template <typename Reg = TaggingRegistry>
+
 class Disk {
  public:
   explicit Disk(Reg* registry, std::string path_prefix = "") noexcept

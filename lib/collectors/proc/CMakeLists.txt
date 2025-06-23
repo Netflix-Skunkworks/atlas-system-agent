@@ -12,7 +12,6 @@ target_link_libraries(proc
     fmt::fmt
     abseil::abseil
     spectator
-    tagging
 )
 
 # Add proc test executable
@@ -23,7 +22,6 @@ add_executable(proc_test
 target_link_libraries(proc_test
     proc
     logger
-    measurement_utils
     util
     gtest::gtest
 )

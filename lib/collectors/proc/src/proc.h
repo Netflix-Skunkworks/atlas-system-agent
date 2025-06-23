@@ -1,12 +1,13 @@
 #pragma once
 
-#include <lib/tagging/src/tagging_registry.h>
+
+#include <thirdparty/spectator-cpp/spectator/registry.h>
 
 namespace atlasagent {
-template <typename Reg = TaggingRegistry>
+
 class Proc {
  public:
-  Proc(Reg* registry, spectator::Tags net_tags, std::string path_prefix = "/proc") noexcept
+  Proc(Registry registry, std::unordered_map<std::string, std::string> net_tags, std::string path_prefix = "/proc") noexcept
       : registry_(registry), net_tags_{std::move(net_tags)}, path_prefix_(std::move(path_prefix)) {}
   void network_stats() noexcept;
   void arp_stats() noexcept;
@@ -25,8 +26,9 @@ class Proc {
   void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
  private:
-  Reg* registry_;
-  const spectator::Tags net_tags_;
+  Registry registry_;
+  //const spectator::Tags net_tags_;
+  std::unordered_map<std::string, std::string> net_tags_;
   std::string path_prefix_;
 
   void handle_line(FILE* fp) noexcept;
