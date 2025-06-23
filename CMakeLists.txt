@@ -31,5 +31,14 @@ else()
     message(STATUS "building atlas-system-agent")
 endif()
 
+# Add spectator-cpp include directories globally
+include_directories("${CMAKE_SOURCE_DIR}/thirdparty/spectator-cpp")
+
+# Add spectator-cpp as an imported library
+add_library(spectator STATIC IMPORTED)
+set_target_properties(spectator PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/thirdparty/spectator-cpp/cmake-build/spectator/libregistry.a"
+)
+
 add_subdirectory(lib)
-add_subdirectory(AtlasAgent)
+#add_subdirectory(AtlasAgent)

@@ -1,13 +1,13 @@
 #pragma once
 
-#include <lib/tagging/src/tagging_registry.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+#include "absl/time/clock.h"
 
 namespace atlasagent {
 
-template <typename Reg = TaggingRegistry>
 class CGroup {
  public:
-  explicit CGroup(Reg* registry, std::string path_prefix = "/sys/fs/cgroup",
+  explicit CGroup(Registry registry, std::string path_prefix = "/sys/fs/cgroup",
                   absl::Duration update_interval = absl::Seconds(60)) noexcept
       : registry_(registry),
         path_prefix_(std::move(path_prefix)),
@@ -22,7 +22,7 @@ class CGroup {
   void set_prefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
  private:
-  Reg* registry_;
+  Registry registry_;
   std::string path_prefix_;
   absl::Duration update_interval_;
 

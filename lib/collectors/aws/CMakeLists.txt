@@ -22,7 +22,6 @@ target_link_libraries(aws_test
     aws
     util
     spectator
-    measurement_utils
     logger
     gtest::gtest
 )

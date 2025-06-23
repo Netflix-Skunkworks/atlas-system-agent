@@ -225,21 +225,21 @@ bool can_execute(const std::string& program) {
   return false;
 }
 
-spectator::Tags parse_tags(const char* s) {
-  spectator::Tags tags{};
-  auto fields = absl::StrSplit(s, absl::ByAnyChar(", "));
-  for (const auto& f : fields) {
-    auto pos = f.find('=');
-    if (pos != std::string::npos) {
-      auto key = f.substr(0, pos);
-      auto value = f.substr(pos + 1, f.length());
-      if (!key.empty() && !value.empty()) {
-        tags.add(key, value);
-      }
-    }
-  }
-  return tags;
-}
+// spectator::Tags parse_tags(const char* s) {
+//   spectator::Tags tags{};
+//   auto fields = absl::StrSplit(s, absl::ByAnyChar(", "));
+//   for (const auto& f : fields) {
+//     auto pos = f.find('=');
+//     if (pos != std::string::npos) {
+//       auto key = f.substr(0, pos);
+//       auto value = f.substr(pos + 1, f.length());
+//       if (!key.empty() && !value.empty()) {
+//         tags.add(key, value);
+//       }
+//     }
+//   }
+//   return tags;
+// }
 
 bool is_service_running(const char* serviceName) {
   std::string command =

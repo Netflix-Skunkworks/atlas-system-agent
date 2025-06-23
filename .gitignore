@@ -6,4 +6,5 @@ cmake-build-debug/
 cmake-build/
 lib/spectator/
 lib/tools/
+thirdparty/
 venv/

@@ -2,7 +2,7 @@
 
 #include <lib/files/src/files.h>
 #include <lib/logger/src/logger.h>
-#include <lib/spectator/id.h>
+//#include <lib/spectator/id.h>
 #include <fmt/format.h>
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
