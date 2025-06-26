@@ -1,20 +1,21 @@
 #pragma once
 
-#include <lib/spectator/registry.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+#include "absl/time/time.h"
 
 namespace atlasagent {
-template <typename Reg>
+
 class MonotonicTimer {
  public:
-  MonotonicTimer(Reg* registry, const spectator::Id& id);
+  MonotonicTimer(Registry* registry, const MeterId& id);
 
   void update(absl::Duration monotonic_time, int64_t monotonic_count);
 
  private:
   absl::Duration prev_time;
   int64_t prev_count{};
-  typename Reg::counter_ptr count_;
-  typename Reg::counter_ptr total_time_;
+  Counter* count_;
+  Counter* total_time_;
 };
 
 }  // namespace atlasagent

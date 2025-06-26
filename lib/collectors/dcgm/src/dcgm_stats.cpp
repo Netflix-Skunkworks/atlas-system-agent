@@ -8,8 +8,7 @@
 using atlasagent::GetLogger;
 using atlasagent::Logger;
 
-template class GpuMetricsDCGM<atlasagent::TaggingRegistry>;
-template class GpuMetricsDCGM<spectator::TestRegistry>;
+
 
 bool parse_lines(const std::vector<std::string>& lines,
                  std::map<int, std::vector<double>>& dataMap) try {
@@ -49,47 +48,47 @@ inline std::vector<std::string> execute_dcgmi() try {
   return std::vector<std::string>();
 }
 
-template <class Reg>
-bool GpuMetricsDCGM<Reg>::update_metrics(std::map<int, std::vector<double>>& dataMap) {
-  if (this->registry_ == nullptr) {
-    return false;
-  }
+
+bool GpuMetricsDCGM::update_metrics(std::map<int, std::vector<double>>& dataMap) {
+  // if (this->registry_ == nullptr) {
+  //   return false;
+  // }
   for (const auto& [gpuId, data] : dataMap) {
     for (unsigned int i = 0; i < data.size(); i++) {
       double value = data.at(i);
       switch (i) {
         case 0:
-          detail::gauge(registry_, "gpu.dcgm.graphicsEngineActivity", gpuId)->Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(&registry_, "gpu.dcgm.graphicsEngineActivity", gpuId).Set(value * DCGMConstants::PercentileConversion);
           break;
         case 1:
-          detail::gauge(registry_, "gpu.dcgm.sm", gpuId, "activity")->Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(&registry_, "gpu.dcgm.sm", gpuId, "activity").Set(value * DCGMConstants::PercentileConversion);
           break;
         case 2:
-          detail::gauge(registry_, "gpu.dcgm.sm", gpuId, "occupancy")->Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(&registry_, "gpu.dcgm.sm", gpuId, "occupancy").Set(value * DCGMConstants::PercentileConversion);
           break;
         case 3:
-          detail::gauge(registry_, "gpu.dcgm.tensorCoresUtilization", gpuId)->Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(&registry_, "gpu.dcgm.tensorCoresUtilization", gpuId).Set(value * DCGMConstants::PercentileConversion);
           break;
         case 4:
-          detail::gauge(registry_, "gpu.dcgm.memoryBandwidthUtilization", gpuId)->Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(&registry_, "gpu.dcgm.memoryBandwidthUtilization", gpuId).Set(value * DCGMConstants::PercentileConversion);
           break;
         case 5:
-          detail::gauge(registry_, "gpu.dcgm.pipeUtilization", gpuId, "fp32")->Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(&registry_, "gpu.dcgm.pipeUtilization", gpuId, "fp32").Set(value * DCGMConstants::PercentileConversion);
           break;
         case 6:
-          detail::gauge(registry_, "gpu.dcgm.pipeUtilization", gpuId, "fp16")->Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(&registry_, "gpu.dcgm.pipeUtilization", gpuId, "fp16").Set(value * DCGMConstants::PercentileConversion);
           break;
         case 7:
-          detail::counter(registry_, "gpu.dcgm.pcie.bytes", gpuId, "out")->Add(value * DCGMConstants::BytesConversion);
+          detail::counter(&registry_, "gpu.dcgm.pcie.bytes", gpuId, "out").Increment(value * DCGMConstants::BytesConversion);
           break;
         case 8:
-          detail::counter(registry_, "gpu.dcgm.pcie.bytes", gpuId, "in")->Add(value * DCGMConstants::BytesConversion);
+          detail::counter(&registry_, "gpu.dcgm.pcie.bytes", gpuId, "in").Increment(value * DCGMConstants::BytesConversion);
           break;
         case 9:
-          detail::counter(registry_, "gpu.dcgm.nvlink.bytes", gpuId, "out")->Add(value * DCGMConstants::BytesConversion);
+          detail::counter(&registry_, "gpu.dcgm.nvlink.bytes", gpuId, "out").Increment(value * DCGMConstants::BytesConversion);
           break;
         case 10:
-          detail::counter(registry_, "gpu.dcgm.nvlink.bytes", gpuId, "in")->Add(value * DCGMConstants::BytesConversion);
+          detail::counter(&registry_, "gpu.dcgm.nvlink.bytes", gpuId, "in").Increment(value * DCGMConstants::BytesConversion);
           break;
         default:
           Logger()->error("Unhandled field type provided in update_metrics.");
@@ -100,8 +99,7 @@ bool GpuMetricsDCGM<Reg>::update_metrics(std::map<int, std::vector<double>>& dat
   return true;
 }
 
-template <class Reg>
-bool GpuMetricsDCGM<Reg>::gather_metrics() {
+bool GpuMetricsDCGM::gather_metrics() {
   Logger()->debug("Attempting to gather DCGM metrics");
 
   auto lines = execute_dcgmi();

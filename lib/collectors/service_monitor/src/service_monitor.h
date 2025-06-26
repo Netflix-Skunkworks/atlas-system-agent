@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lib/tagging/src/tagging_registry.h>
-#include <lib/spectator/registry.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+
 #include "service_monitor_utils.h"
 
 struct ServiceMonitorConstants {
@@ -15,24 +15,23 @@ struct ServiceMonitorConstants {
 };
 
 namespace detail {
-template <typename Reg>
-inline auto gauge(Reg* registry, const std::string_view name, const std::string_view serviceName) {
-  auto tags = spectator::Tags{{"service.name", fmt::format("{}", serviceName)}};
-  return registry->GetGaugeTTL(name, ServiceMonitorConstants::GaugeTTLSeconds, tags);
+
+inline auto gauge(Registry registry, const std::string_view name, const std::string_view serviceName) {
+  auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)}};
+  return registry.gauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
 }
 
-template <typename Reg>
-inline auto gaugeServiceState(Reg* registry, const std::string_view name, const std::string_view serviceName, const std::string_view state) {
-  auto tags = spectator::Tags{{"service.name", fmt::format("{}", serviceName)}};
-  tags.add("state", state);
-  return registry->GetGaugeTTL(name, ServiceMonitorConstants::GaugeTTLSeconds, tags);
+inline auto gaugeServiceState(Registry registry, const std::string_view name, const std::string_view serviceName, const std::string_view state) {
+  auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)}};
+  tags.emplace("state", fmt::format("{}", state));
+  return registry.gauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
 }
 }  // namespace detail
 
-template <typename Reg = atlasagent::TaggingRegistry>
+
 class ServiceMonitor {
  public:
-  ServiceMonitor(Reg* registry, std::vector<std::regex> config, unsigned int max_services);
+  ServiceMonitor(Registry registry, std::vector<std::regex> config, unsigned int max_services);
   ~ServiceMonitor(){};
 
   // Abide by the C++ rule of 5
@@ -46,7 +45,7 @@ class ServiceMonitor {
   bool init_monitored_services();
   bool update_metrics();
 
-  Reg* registry_;
+  Registry registry_;
   std::vector<std::regex> config_;
   unsigned int maxMonitoredServices{};
   unsigned long long currentCpuTime{0};

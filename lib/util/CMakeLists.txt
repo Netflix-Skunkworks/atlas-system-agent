@@ -12,6 +12,7 @@ target_link_libraries(util
     fmt::fmt
     abseil::abseil
     spectator
+    logger
 )
 
 # Add utils test executable

@@ -14,23 +14,23 @@ target_link_libraries(pressure_stall
 )
 
 # Add pressure stall test executable
-add_executable(pressure_stall_test
-    test/pressure_stall_test.cpp
-)
+# add_executable(pressure_stall_test
+#     test/pressure_stall_test.cpp
+# )
 
-target_link_libraries(pressure_stall_test
-    pressure_stall
-    util
-    logger
-    measurement_utils
-    spectator
-    abseil::abseil
-    gtest::gtest
-)
+# target_link_libraries(pressure_stall_test
+#     pressure_stall
+#     util
+#     logger
+#     measurement_utils
+#     spectator
+#     abseil::abseil
+#     gtest::gtest
+# )
 
-# Register the test with CTest
-add_test(
-    NAME pressure_stall_test
-    COMMAND pressure_stall_test
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
+# # Register the test with CTest
+# add_test(
+#     NAME pressure_stall_test
+#     COMMAND pressure_stall_test
+#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+# )

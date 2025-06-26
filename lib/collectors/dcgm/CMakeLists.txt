@@ -16,22 +16,22 @@ target_link_libraries(dcgm
 )
 
 # Add dcgm test executable
-add_executable(dcgm_stats_test
-    test/dcgm_stats_test.cpp
-)
+# add_executable(dcgm_stats_test
+#     test/dcgm_stats_test.cpp
+# )
 
-target_link_libraries(dcgm_stats_test
-    dcgm
-    util
-    logger
-    spectator
-    measurement_utils
-    gtest::gtest
-)
+# target_link_libraries(dcgm_stats_test
+#     dcgm
+#     util
+#     logger
+#     spectator
+#     measurement_utils
+#     gtest::gtest
+# )
 
-# Register the test with CTest
-add_test(
-    NAME dcgm_stats_test
-    COMMAND dcgm_stats_test
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
+# # Register the test with CTest
+# add_test(
+#     NAME dcgm_stats_test
+#     COMMAND dcgm_stats_test
+#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+# )

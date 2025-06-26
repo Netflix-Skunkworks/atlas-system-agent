@@ -9,12 +9,6 @@
 
 namespace atlasagent {
 
-using spectator::IdPtr;
-using spectator::Registry;
-using spectator::Tags;
-
-template class Disk<atlasagent::TaggingRegistry>;
-template class Disk<spectator::TestRegistry>;
 
 inline std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix) {
   std::unordered_set<std::string> res;
@@ -40,8 +34,7 @@ inline std::unordered_set<std::string> get_nodev_filesystems(const std::string& 
 }
 
 // parse /proc/self/mountinfo
-template <typename Reg>
-std::vector<MountPoint> Disk<Reg>::get_mount_points() const noexcept {
+std::vector<MountPoint> Disk::get_mount_points() const noexcept {
   auto unwanted_filesystems = get_nodev_filesystems(path_prefix_);
   unwanted_filesystems.erase("tmpfs");
 #if defined(TITUS_SYSTEM_SERVICE)
@@ -95,8 +88,7 @@ static constexpr int kMultipleDevice = 9;
 static constexpr int kLoopDevice = 7;
 static constexpr int kRamDevice = 1;
 
-template <typename Reg>
-std::vector<MountPoint> Disk<Reg>::filter_interesting_mount_points(
+std::vector<MountPoint> Disk::filter_interesting_mount_points(
     const std::vector<MountPoint>& mount_points) const noexcept {
   std::vector<MountPoint> interesting;
   std::unordered_map<uint64_t, const MountPoint*> candidates;
@@ -153,8 +145,7 @@ std::string get_dev_from_device(const std::string& device) {
   return device;
 }
 
-template <typename Reg>
-void Disk<Reg>::stats_for_interesting_mps(
+void Disk::stats_for_interesting_mps(
     std::function<void(Disk*, const MountPoint&)> stats_fn) noexcept {
   auto mount_points = filter_interesting_mount_points(get_mount_points());
   for (const auto& mp : mount_points) {
@@ -162,13 +153,12 @@ void Disk<Reg>::stats_for_interesting_mps(
   }
 }
 
-template <typename Reg>
-void Disk<Reg>::disk_stats() noexcept {
+
+void Disk::disk_stats() noexcept {
   do_disk_stats(absl::Now());
 }
 
-template <typename Reg>
-void Disk<Reg>::do_disk_stats(absl::Time start) noexcept {
+void Disk::do_disk_stats(absl::Time start) noexcept {
   stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
 
   diskio_stats(start);
@@ -176,8 +166,7 @@ void Disk<Reg>::do_disk_stats(absl::Time start) noexcept {
 }
 
 // parse /proc/diskstats
-template <typename Reg>
-std::vector<DiskIo> Disk<Reg>::get_disk_stats() const noexcept {
+std::vector<DiskIo> Disk::get_disk_stats() const noexcept {
   std::vector<DiskIo> res;
   std::ostringstream os;
   os << path_prefix_ << "/proc/diskstats";
@@ -219,15 +208,14 @@ std::vector<DiskIo> Disk<Reg>::get_disk_stats() const noexcept {
   return res;
 }
 
-inline IdPtr id_for(const char* name, const char* id, const std::string& dev) {
-  return spectator::Id::of(name, {{"id", id}, {"dev", dev.c_str()}});
-}
+// inline IdPtr id_for(const char* name, const char* id, const std::string& dev) {
+//   return spectator::Id::of(name, {{"id", id}, {"dev", dev.c_str()}});
+// }
 
 static constexpr const char* kRead = "read";
 static constexpr const char* kWrite = "write";
 
-template <typename Reg>
-void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
+void Disk::diskio_stats(absl::Time start) noexcept {
   const auto& stats = get_disk_stats();
 
   for (const auto& st : stats) {
@@ -235,19 +223,34 @@ void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
       continue;  // ignore loop and ram devices
     }
 
-    registry_->GetMonotonicCounter(id_for("disk.io.bytes", kRead, st.device))->Set(st.rsect * 512);
-    registry_->GetMonotonicCounter(id_for("disk.io.bytes", kWrite, st.device))->Set(st.wsect * 512);
+    auto readTags = std::unordered_map<std::string, std::string>{
+        {"id", kRead},
+        {"dev", st.device}};
+    auto writeTags = std::unordered_map<std::string, std::string>{
+        {"id", kWrite},
+        {"dev", st.device}};
+
+
+    registry_.monotonic_counter("disk.io.bytes", readTags).Set(st.rsect * 512);
+    registry_.monotonic_counter("disk.io.bytes", writeTags).Set(st.wsect * 512);
+
 
     if (st.major == kMultipleDevice) {
       continue;  // ignore multiple devices for disk.io.ops and disk.percentBusy - they do not provide timing stats
     }
 
-    auto mono_read_id = id_for("disk.io.ops", kRead, st.device);
-    auto mono_write_id = id_for("disk.io.ops", kWrite, st.device);
-    auto busy_gauge_id = spectator::Id::of("disk.percentBusy", {{"dev", st.device}});
 
-    std::shared_ptr<MonotonicTimer<Reg>> read_timer;
-    std::shared_ptr<MonotonicTimer<Reg>> write_timer;
+    //auto mono_read_id = id_for("disk.io.ops", kRead, st.device);
+    //auto mono_write_id = id_for("disk.io.ops", kWrite, st.device);
+    
+    MeterId mono_read_id = MeterId("disk.io.ops", readTags);
+    MeterId mono_write_id = MeterId("disk.io.ops", writeTags);
+    
+    
+    MeterId busy_gauge_id = MeterId("disk.percentBusy", {{"dev", st.device}});
+
+    std::shared_ptr<MonotonicTimer> read_timer;
+    std::shared_ptr<MonotonicTimer> write_timer;
 
     auto it = monotonic_timers_.find(mono_read_id);
 
@@ -255,8 +258,8 @@ void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
       read_timer = it->second;
       write_timer = monotonic_timers_[mono_write_id];
     } else {
-      read_timer.reset(new MonotonicTimer<Reg>(registry_, *mono_read_id));
-      write_timer.reset(new MonotonicTimer<Reg>(registry_, *mono_write_id));
+      read_timer.reset(new MonotonicTimer(&registry_, mono_read_id));
+      write_timer.reset(new MonotonicTimer(&registry_, mono_write_id));
 
       monotonic_timers_[mono_read_id] = read_timer;
       monotonic_timers_[mono_write_id] = write_timer;
@@ -273,7 +276,7 @@ void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
       auto last_time = last_ms_doing_io[st.device];
       if (st.ms_doing_io >= last_time) {
         auto delta_time_doing_io = st.ms_doing_io - last_time;
-        registry_->GetGauge(busy_gauge_id)->Set(100.0 * delta_time_doing_io / delta_millis);
+        registry_.gauge_with_id(busy_gauge_id).Set(100.0 * delta_time_doing_io / delta_millis);
       }
     }
 
@@ -281,13 +284,11 @@ void Disk<Reg>::diskio_stats(absl::Time start) noexcept {
   }
 }
 
-template <typename Reg>
-void Disk<Reg>::titus_disk_stats() noexcept {
+void Disk::titus_disk_stats() noexcept {
   stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
 }
 
-template <typename Reg>
-void Disk<Reg>::update_stats_for(const MountPoint& mp) noexcept {
+void Disk::update_stats_for(const MountPoint& mp) noexcept {
   struct statvfs st;
   if (statvfs(mp.mount_point.c_str(), &st) != 0) {
     // do not generate warnings for tmpfs mount points. On some systems
@@ -300,29 +301,28 @@ void Disk<Reg>::update_stats_for(const MountPoint& mp) noexcept {
   }
 
   auto id = get_id_from_mountpoint(mp.mount_point);
-  Tags tags{{"id", id.c_str()}, {"dev", get_dev_from_device(mp.device).c_str()}};
+  std::unordered_map<std::string, std::string> tags = { {"id", id}, {"dev", get_dev_from_device(mp.device)}};
 
   auto bytes_total = st.f_blocks * st.f_bsize;
   auto bytes_free = st.f_bfree * st.f_bsize;
   auto bytes_used = bytes_total - bytes_free;
   auto bytes_percent = 100.0 * bytes_used / bytes_total;
-  registry_->GetGauge("disk.bytesFree", tags)->Set(bytes_free);
-  registry_->GetGauge("disk.bytesUsed", tags)->Set(bytes_used);
-  registry_->GetGauge("disk.bytesMax", tags)->Set(bytes_total);
-  registry_->GetGauge("disk.bytesPercentUsed", tags)->Set(bytes_percent);
+  registry_.gauge("disk.bytesFree", tags).Set(bytes_free);
+  registry_.gauge("disk.bytesUsed", tags).Set(bytes_used);
+  registry_.gauge("disk.bytesMax", tags).Set(bytes_total);
+  registry_.gauge("disk.bytesPercentUsed", tags).Set(bytes_percent);
 
   if (st.f_files > 0) {
     auto inodes_free = st.f_ffree;
     auto inodes_used = st.f_files - st.f_ffree;
     auto inodes_percent = 100.0 * inodes_used / st.f_files;
-    registry_->GetGauge("disk.inodesFree", tags)->Set(inodes_free);
-    registry_->GetGauge("disk.inodesUsed", tags)->Set(inodes_used);
-    registry_->GetGauge("disk.inodesPercentUsed", tags)->Set(inodes_percent);
+    registry_.gauge("disk.inodesFree", tags).Set(inodes_free);
+    registry_.gauge("disk.inodesUsed", tags).Set(inodes_used);
+    registry_.gauge("disk.inodesPercentUsed", tags).Set(inodes_percent);
   }
 }
 
-template <typename Reg>
-void Disk<Reg>::set_prefix(const std::string& new_prefix) noexcept {
+void Disk::set_prefix(const std::string& new_prefix) noexcept {
   path_prefix_ = new_prefix;
 }
 

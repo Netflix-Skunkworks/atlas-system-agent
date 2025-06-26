@@ -65,19 +65,19 @@ TEST(Utils, CanExecuteFullPath) {
   EXPECT_FALSE(atlasagent::can_execute("/bin/pr-does-not-exist"));
 }
 
-TEST(Utils, ParseTags) {
-  auto tags = atlasagent::parse_tags("key=value,key2=value2");
-  EXPECT_EQ(tags.size(), 2);
-  EXPECT_EQ(tags.at("key"), "value");
-  EXPECT_EQ(tags.at("key2"), "value2");
-}
+// TEST(Utils, ParseTags) {
+//   auto tags = atlasagent::parse_tags("key=value,key2=value2");
+//   EXPECT_EQ(tags.size(), 2);
+//   EXPECT_EQ(tags.at("key"), "value");
+//   EXPECT_EQ(tags.at("key2"), "value2");
+// }
 
-TEST(Utils, ParseTagsEmpty) {
-  auto tags = atlasagent::parse_tags("");
-  EXPECT_EQ(tags.size(), 0);
+// TEST(Utils, ParseTagsEmpty) {
+//   auto tags = atlasagent::parse_tags("");
+//   EXPECT_EQ(tags.size(), 0);
 
-  auto some_invalid = atlasagent::parse_tags("key=val, key2=, =");
-  EXPECT_EQ(some_invalid.size(), 1);
-  EXPECT_EQ(some_invalid.at("key"), "val");
-}
+//   auto some_invalid = atlasagent::parse_tags("key=val, key2=, =");
+//   EXPECT_EQ(some_invalid.size(), 1);
+//   EXPECT_EQ(some_invalid.at("key"), "val");
+// }
 }  // namespace

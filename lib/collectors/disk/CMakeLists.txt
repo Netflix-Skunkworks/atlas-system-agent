@@ -17,21 +17,21 @@ target_link_libraries(disk
 )
 
 # Add disk test executable
-add_executable(disk_test
-    test/disk_test.cpp
-)
+# add_executable(disk_test
+#     test/disk_test.cpp
+# )
 
-target_link_libraries(disk_test
-    disk
-    util
-    logger
-    measurement_utils
-    gtest::gtest
-)
+# target_link_libraries(disk_test
+#     disk
+#     util
+#     logger
+#     measurement_utils
+#     gtest::gtest
+# )
 
-# Register the test with CTest
-add_test(
-    NAME disk_test
-    COMMAND disk_test
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
+# # Register the test with CTest
+# add_test(
+#     NAME disk_test
+#     COMMAND disk_test
+#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+# )

@@ -1,31 +1,31 @@
 #pragma once
 
 #include "nvml.h"
-#include <lib/spectator/registry.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+
 
 namespace atlasagent {
 
 namespace detail {
-template <typename Reg>
-inline auto gauge(Reg* registry, const char* name, unsigned int gpu, const char* id = nullptr) {
-  auto tags = spectator::Tags{{"gpu", fmt::format("{}", gpu)}};
+inline auto gauge(Registry registry, const char* name, unsigned int gpu, const char* id = nullptr) {
+  std::unordered_map<std::string, std::string> tags = {{"gpu", fmt::format("{}", gpu)}};
   if (id != nullptr) {
-    tags.add("id", id);
+    tags["id"] = id;
   }
-  return registry->GetGauge(name, tags);
+  return registry.gauge(name, tags);
 }
 
 }  // namespace detail
 
-template <typename Reg, typename Lib>
+template <typename Lib>
 class GpuMetrics {
  public:
-  GpuMetrics(Reg* registry, std::unique_ptr<Lib> nvml) noexcept
+  GpuMetrics(Registry registry, std::unique_ptr<Lib> nvml) noexcept
       : registry_(registry), nvml_(std::move(nvml)) {}
 
   void gpu_metrics() noexcept {
-    static auto gpuCountGauge = registry_->GetGauge("gpu.count");
-    static auto gpuTemperature = registry_->GetDistributionSummary("gpu.temperature");
+    static auto gpuCountGauge = registry_.gauge("gpu.count");
+    static auto gpuTemperature = registry_.distribution_summary("gpu.temperature");
 
     unsigned count;
     if (!nvml_->get_count(&count)) {
@@ -63,7 +63,7 @@ class GpuMetrics {
   }
 
  private:
-  Reg* registry_;
+  Registry registry_;
   std::unique_ptr<Lib> nvml_;
 };
 

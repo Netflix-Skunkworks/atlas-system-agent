@@ -1,15 +1,12 @@
 
 #include "monotonic_timer.h"
-#include <lib/tagging/src/tagging_registry.h>
 
 
 namespace atlasagent {
     
-template class MonotonicTimer<atlasagent::TaggingRegistry>;
-template class MonotonicTimer<spectator::TestRegistry>;
 
 template <typename Reg>
-MonotonicTimer<Reg>::MonotonicTimer(Reg* registry, const spectator::Id& id)
+MonotonicTimer<Reg>::MonotonicTimer(Registry* registry, const spectator::Id& id)
     : count_{registry->GetCounter(id.WithStat("count"))},
       total_time_{registry->GetCounter(id.WithStat("totalTime"))} {}
 

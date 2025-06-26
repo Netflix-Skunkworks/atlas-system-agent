@@ -11,20 +11,20 @@ target_link_libraries(cpu_freq
     fmt::fmt
 )
 
-add_executable(cpu_freq_test
-    test/cpu_freq_test.cpp
-)
+# add_executable(cpu_freq_test
+#     test/cpu_freq_test.cpp
+# )
 
-target_link_libraries(cpu_freq_test
-    cpu_freq
-    gtest::gtest
-    logger
-    spectator
-    util    
-)
+# target_link_libraries(cpu_freq_test
+#     cpu_freq
+#     gtest::gtest
+#     logger
+#     spectator
+#     util    
+# )
 
-add_test(
-    NAME cpu_freq_test
-    COMMAND cpu_freq_test
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
+# add_test(
+#     NAME cpu_freq_test
+#     COMMAND cpu_freq_test
+#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+# )

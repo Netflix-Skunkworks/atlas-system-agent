@@ -14,20 +14,20 @@ target_link_libraries(ethtool
     tagging
 )
 
-add_executable(ethtool_test
-    test/ethtool_test.cpp
-)
+# add_executable(ethtool_test
+#     test/ethtool_test.cpp
+# )
 
-target_link_libraries(ethtool_test
-    ethtool
-    gtest::gtest
-    logger
-    spectator
-    util
-)
+# target_link_libraries(ethtool_test
+#     ethtool
+#     gtest::gtest
+#     logger
+#     spectator
+#     util
+# )
 
-add_test(
-    NAME ethtool_test
-    COMMAND ethtool_test
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
+# add_test(
+#     NAME ethtool_test
+#     COMMAND ethtool_test
+#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+# )

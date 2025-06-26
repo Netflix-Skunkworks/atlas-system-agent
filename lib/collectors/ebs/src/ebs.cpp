@@ -31,7 +31,6 @@ struct EBSMetricConstants {
 };
 using EBSMC = EBSMetricConstants;
 
-template class EBSCollector<atlasagent::TaggingRegistry>;
 
 std::optional<std::vector<std::string>> ebs_parse_regex_config_file(const char* configFilePath) try {
   // Read the all the device paths in the config file
@@ -104,13 +103,11 @@ std::optional<std::unordered_set<std::string>> parse_ebs_config_directory(const 
   return std::nullopt;
 }
 
-template <typename Reg>
-EBSCollector<Reg>::EBSCollector(Reg* registry, const std::unordered_set<std::string>& config)
+EBSCollector::EBSCollector(Registry registry, const std::unordered_set<std::string>& config)
     : config{config},
       registry_{registry} {}
 
-template <typename Reg>
-bool EBSCollector<Reg>::query_stats_from_device(const std::string& device, nvme_get_amzn_stats_logpage& stats) try {
+bool EBSCollector::query_stats_from_device(const std::string& device, nvme_get_amzn_stats_logpage& stats) try {
   nvme_admin_command admin_cmd = {};
   admin_cmd.opcode = NVMeCommands::GetLogPage;
   admin_cmd.addr = (uint64_t)&stats;
@@ -145,40 +142,38 @@ bool EBSCollector<Reg>::query_stats_from_device(const std::string& device, nvme_
   return false;
 }
 
-template <typename Reg>
-bool EBSCollector<Reg>::handle_histogram(const ebs_nvme_histogram& histogram, const std::string& devicePath, const std::string& type) {
+bool EBSCollector::handle_histogram(const ebs_nvme_histogram& histogram, const std::string& devicePath, const std::string& type) {
   if (histogram.num_bins > AtlasNamingConvention.size()) {
     atlasagent::Logger()->error("Histogram has more bins than expected: {} > {}", histogram.num_bins, AtlasNamingConvention.size());
     return false;
   }
   for (uint64_t i = 0; i < histogram.num_bins; i++) {
-    ebsHistogram(registry_, EBSMC::ebsHistogram, devicePath, type, AtlasNamingConvention.at(i))->Set(histogram.bins[i].count);
+    ebsHistogram(&registry_, EBSMC::ebsHistogram, devicePath, type, AtlasNamingConvention.at(i)).Set(histogram.bins[i].count);
   }
   return true;
 }
 
-template <class Reg>
-bool EBSCollector<Reg>::update_metrics(const std::string &devicePath, const nvme_get_amzn_stats_logpage &stats) {
-  if (this->registry_ == nullptr) {
-    return false;
-  }
+bool EBSCollector::update_metrics(const std::string &devicePath, const nvme_get_amzn_stats_logpage &stats) {
+  // if (this->registry_ == nullptr) {
+  //   return false;
+  // }
   
-  ebsMonocounter(registry_, EBSMC::ebsOperations, devicePath, EBSMC::ReadOp)->Set(stats.total_read_ops);
-  ebsMonocounter(registry_, EBSMC::ebsOperations, devicePath, EBSMC::WriteOp)->Set(stats.total_write_ops);
+  ebsMonocounter(&registry_, EBSMC::ebsOperations, devicePath, EBSMC::ReadOp).Set(stats.total_read_ops);
+  ebsMonocounter(&registry_, EBSMC::ebsOperations, devicePath, EBSMC::WriteOp).Set(stats.total_write_ops);
   
-  ebsMonocounter(registry_, EBSMC::ebsBytes, devicePath, EBSMC::ReadOp)->Set(stats.total_read_bytes);
-  ebsMonocounter(registry_, EBSMC::ebsBytes, devicePath, EBSMC::WriteOp)->Set(stats.total_write_bytes);
+  ebsMonocounter(&registry_, EBSMC::ebsBytes, devicePath, EBSMC::ReadOp).Set(stats.total_read_bytes);
+  ebsMonocounter(&registry_, EBSMC::ebsBytes, devicePath, EBSMC::WriteOp).Set(stats.total_write_bytes);
 
-  ebsMonocounter(registry_, EBSMC::ebsTime, devicePath, EBSMC::ReadOp)->Set(stats.total_read_time * EBSMC::ebsMicrosecondsToSeconds);
-  ebsMonocounter(registry_, EBSMC::ebsTime, devicePath, EBSMC::WriteOp)->Set(stats.total_write_time * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(&registry_, EBSMC::ebsTime, devicePath, EBSMC::ReadOp).Set(stats.total_read_time * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(&registry_, EBSMC::ebsTime, devicePath, EBSMC::WriteOp).Set(stats.total_write_time * EBSMC::ebsMicrosecondsToSeconds);
   
-  ebsMonocounter(registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Volume)->Set(stats.ebs_volume_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
-  ebsMonocounter(registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Instance)->Set(stats.ec2_instance_ebs_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(&registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Volume).Set(stats.ebs_volume_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(&registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Instance).Set(stats.ec2_instance_ebs_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
 
-  ebsMonocounter(registry_, EBSMC::ebsTP, devicePath, EBSMC::Volume)->Set(stats.ebs_volume_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
-  ebsMonocounter(registry_, EBSMC::ebsTP, devicePath, EBSMC::Instance)->Set(stats.ec2_instance_ebs_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(&registry_, EBSMC::ebsTP, devicePath, EBSMC::Volume).Set(stats.ebs_volume_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(&registry_, EBSMC::ebsTP, devicePath, EBSMC::Instance).Set(stats.ec2_instance_ebs_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
 
-  ebsGauge(registry_, EBSMC::ebsQueueLength, devicePath)->Set(stats.volume_queue_length);
+  ebsGauge(&registry_, EBSMC::ebsQueueLength, devicePath).Set(stats.volume_queue_length);
   
   bool success {true};
   if (false == handle_histogram(stats.read_io_latency_histogram, devicePath, EBSMC::ReadOp)) {
@@ -194,8 +189,7 @@ bool EBSCollector<Reg>::update_metrics(const std::string &devicePath, const nvme
   return success;
 }
 
-template <typename Reg>
-bool EBSCollector<Reg>::gather_metrics() {
+bool EBSCollector::gather_metrics() {
   bool success{true};
   // Iterate through all the devices in the config
   for (const auto& device : config) {
