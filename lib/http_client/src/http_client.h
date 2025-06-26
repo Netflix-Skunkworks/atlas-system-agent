@@ -1,7 +1,7 @@
 #pragma once
 
 #include <absl/time/time.h>
-// #include <lib/spectator/registry.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <map>
 #include <memory>
 #include <string>
@@ -26,7 +26,7 @@ struct HttpResponse {
 
 class HttpClient {
  public:
-  HttpClient(HttpClientConfig config) : config_{config} {}
+  HttpClient(Registry* registry,HttpClientConfig config) : config_{config}, registry_{registry} {}
 
   [[nodiscard]] HttpResponse Get(const std::string& url) const {
     return perform("GET", url, std::make_shared<CurlHeaders>(), nullptr, 0u, 0);
@@ -47,6 +47,7 @@ class HttpClient {
 
  private:
   HttpClientConfig config_;
+  Registry* registry_{nullptr};
 
   HttpResponse perform(const char* method, const std::string& url,
                        std::shared_ptr<CurlHeaders> headers, const char* payload, size_t size,

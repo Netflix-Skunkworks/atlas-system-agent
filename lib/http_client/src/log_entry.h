@@ -1,7 +1,9 @@
 #pragma once
 
-#include <lib/spectator/registry.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+
 #include <absl/time/clock.h>
+#include <absl/strings/str_cat.h>
 
 namespace atlasagent {
 
@@ -34,44 +36,44 @@ inline absl::string_view path_from(absl::string_view url) noexcept {
 
 }  // namespace detail
 
-template <typename Reg>
 class LogEntry {
  public:
-  LogEntry(Reg* registry, const std::string& method, const std::string& url)
+  LogEntry(Registry* registry, const std::string& method, const std::string& url)
       : registry_{registry},
         start_{absl::Now()},
-        id_{spectator::Id::of("ipc.client.call", {{"owner", "spectator-cpp"},
-                                                  {"ipc.endpoint", detail::path_from(url)},
+        id_{"ipc.client.call", {{"owner", "spectator-cpp"},
+                                                  {"ipc.endpoint", std::string(detail::path_from(url))},
                                                   {"http.method", method},
-                                                  {"http.status", "-1"}})} {}
+                                                  {"http.status", "-1"}}} {}
 
   [[nodiscard]] absl::Time start() const { return start_; }
 
   void log() {
-    auto timer = registry_->GetPercentileTimer(id_, absl::Milliseconds(1), absl::Seconds(10));
-    timer->Record(absl::Now() - start_);
+    // REVIEW: do we needed a restricted percentile timer here
+    auto timer = registry_->pct_timer_with_id(id_);
+    timer.Record(absl::ToDoubleSeconds(absl::Now() - start_));
   }
 
-  void set_status_code(int code) { id_ = id_->WithTag("http.status", absl::StrCat(code)); }
+  void set_status_code(int code) { id_ = id_.WithTag("http.status", absl::StrCat(code)); }
 
   void set_attempt(int attempt_number, bool is_final) {
-    id_ = id_->WithTag("ipc.attempt", attempt(attempt_number))
-              ->WithTag("ipc.attempt.final", is_final ? "true" : "false");
+    id_ = id_.WithTag("ipc.attempt", attempt(attempt_number))
+              .WithTag("ipc.attempt.final", is_final ? "true" : "false");
   }
 
   void set_error(const std::string& error) {
-    id_ = id_->WithTag("ipc.result", "failure")->WithTag("ipc.status", error);
+    id_ = id_.WithTag("ipc.result", "failure").WithTag("ipc.status", error);
   }
 
   void set_success() {
     static std::string ipc_success("success");
-    id_ = id_->WithTag("ipc.status", ipc_success)->WithTag("ipc.result", ipc_success);
+    id_ = id_.WithTag("ipc.status", ipc_success).WithTag("ipc.result", ipc_success);
   }
 
  private:
-  Reg* registry_;
+  Registry* registry_;
   absl::Time start_;
-  spectator::IdPtr id_;
+  MeterId id_;
 
   static const std::string& attempt(int attempt_number) {
     static std::string initial = "initial";

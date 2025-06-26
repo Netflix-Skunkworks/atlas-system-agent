@@ -4,21 +4,18 @@
 
 namespace atlasagent {
     
+MonotonicTimer::MonotonicTimer(Registry* registry, const MeterId& id)
+    : count_{registry->counter_with_id(id.WithStat("count"))},
+      total_time_{registry->counter_with_id(id.WithStat("totalTime"))} {}
 
-template <typename Reg>
-MonotonicTimer<Reg>::MonotonicTimer(Registry* registry, const spectator::Id& id)
-    : count_{registry->GetCounter(id.WithStat("count"))},
-      total_time_{registry->GetCounter(id.WithStat("totalTime"))} {}
-
-template <typename Reg>
-void MonotonicTimer<Reg>::update(absl::Duration monotonic_time, int64_t monotonic_count) {
+void MonotonicTimer::update(absl::Duration monotonic_time, int64_t monotonic_count) {
   if (prev_count > 0) {
     auto delta_count = monotonic_count - prev_count;
     if (delta_count > 0) {
       auto seconds = absl::ToDoubleSeconds(monotonic_time - prev_time);
       if (seconds >= 0) {
-        total_time_->Add(seconds);
-        count_->Add(delta_count);
+        total_time_.Increment(seconds);
+        count_.Increment(delta_count);
       }
     }
   }

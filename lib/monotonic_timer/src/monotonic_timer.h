@@ -14,8 +14,8 @@ class MonotonicTimer {
  private:
   absl::Duration prev_time;
   int64_t prev_count{};
-  Counter* count_;
-  Counter* total_time_;
+  Counter count_;
+  Counter total_time_;
 };
 
 }  // namespace atlasagent

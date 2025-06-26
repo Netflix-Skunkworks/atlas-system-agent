@@ -1,7 +1,6 @@
 #include "http_client.h"
 #include "log_entry.h"
 #include <lib/logger/src/logger.h>
-#include <lib/tagging/src/tagging_registry.h>
 
 #include <algorithm>
 #include <utility>
@@ -10,9 +9,6 @@
 #include <curl/curl.h>
 
 namespace atlasagent {
-
-  template class HttpClient<atlasagent::TaggingRegistry>;
-  template class HttpClient<spectator::SpectatordRegistry>;
 
 class CurlHeaders {
  public:
@@ -150,8 +146,7 @@ class CurlHandle {
 
 }  // namespace detail
 
-template <typename Reg>
-HttpResponse HttpClient<Reg>::method_header(const char* method, const std::string& url,
+HttpResponse HttpClient::method_header(const char* method, const std::string& url,
                                             const std::vector<std::string>& headers) const {
   auto curl_headers = std::make_shared<CurlHeaders>();
   for (const auto& h : headers) {
@@ -162,8 +157,7 @@ HttpResponse HttpClient<Reg>::method_header(const char* method, const std::strin
 
 inline bool is_retryable_error(int http_code) { return http_code == 429 || (http_code / 100) == 5; }
 
-template <typename Reg>
-HttpResponse HttpClient<Reg>::perform(const char* method, const std::string& url,
+HttpResponse HttpClient::perform(const char* method, const std::string& url,
                                       std::shared_ptr<CurlHeaders> headers, const char* payload,
                                       size_t size, uint32_t attempt_number) const {
   LogEntry entry{registry_, method, url};
@@ -242,8 +236,8 @@ HttpResponse HttpClient<Reg>::perform(const char* method, const std::string& url
   return HttpResponse{http_code, std::move(resp), std::move(resp_headers)};
 }
 
-template <typename Reg>
-void HttpClient<Reg>::GlobalInit() noexcept {
+
+void HttpClient::GlobalInit() noexcept {
   static bool init = false;
   if (init) {
     return;
@@ -253,8 +247,7 @@ void HttpClient<Reg>::GlobalInit() noexcept {
   curl_global_init(CURL_GLOBAL_ALL);
 }
 
-template <typename Reg>
-void HttpClient<Reg>::GlobalShutdown() noexcept {
+void HttpClient::GlobalShutdown() noexcept {
   static bool shutdown = false;
   if (shutdown) {
     return;
