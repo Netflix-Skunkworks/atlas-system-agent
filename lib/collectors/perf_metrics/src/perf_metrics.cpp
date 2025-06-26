@@ -2,12 +2,15 @@
 
 namespace atlasagent {
 
-template class PerfMetrics<atlasagent::TaggingRegistry>;
-template class PerfMetrics<spectator::TestRegistry>;
 
-template <typename Reg>
-PerfMetrics<Reg>::PerfMetrics(Reg* registry, const std::string path_prefix)
-    : registry_(registry), path_prefix_(std::move(path_prefix)) {
+
+PerfMetrics::PerfMetrics(Registry registry, const std::string path_prefix)
+    : registry_(registry), path_prefix_(std::move(path_prefix)),
+    instructions_ds_{registry_.distribution_summary("sys.cpu.instructions")},
+    cycles_ds_{registry_.distribution_summary("sys.cpu.cycles")},
+    cache_ds_{registry_.distribution_summary("sys.cpu.cacheMissRate")},
+    branch_ds_{registry_.distribution_summary("sys.cpu.branchMispredictionRate")}
+{
   static constexpr const char* kEnableEnvVar = "ATLAS_ENABLE_PMU_METRICS";
   auto enabled_var = std::getenv(kEnableEnvVar);
   if (enabled_var != nullptr && std::strcmp(enabled_var, "true") == 0) {
@@ -31,15 +34,10 @@ PerfMetrics<Reg>::PerfMetrics(Reg* registry, const std::string path_prefix)
   if (!open_perf_counters_if_needed()) {
     return;
   }
-
-  instructions_ds = registry_->GetDistributionSummary("sys.cpu.instructions");
-  cycles_ds = registry_->GetDistributionSummary("sys.cpu.cycles");
-  cache_ds = registry_->GetDistributionSummary("sys.cpu.cacheMissRate");
-  branch_ds = registry_->GetDistributionSummary("sys.cpu.branchMispredictionRate");
 }
 
-template <typename Reg>
-bool PerfMetrics<Reg>::open_perf_counters_if_needed() {
+
+bool PerfMetrics::open_perf_counters_if_needed() {
   auto new_online_cpus = get_online_cpus();
   if (new_online_cpus == online_cpus_) {
     Logger()->trace("Online CPUs have not changed. No need to reopen perf events.");
@@ -62,8 +60,8 @@ bool PerfMetrics<Reg>::open_perf_counters_if_needed() {
   return true;
 }
 
-template <typename Reg>
-std::vector<bool> PerfMetrics<Reg>::get_online_cpus() {
+
+std::vector<bool> PerfMetrics::get_online_cpus() {
   auto fp = open_file(path_prefix_, "sys/devices/system/cpu/online");
   auto num_cpus = static_cast<size_t>(sysconf(_SC_NPROCESSORS_ONLN));
   std::vector<bool> res;
@@ -81,35 +79,33 @@ std::vector<bool> PerfMetrics<Reg>::get_online_cpus() {
   return res;
 }
 
-template <typename Reg>
-void PerfMetrics<Reg>::collect() {
+void PerfMetrics::collect() {
   if (disabled_) {
     return;
   }
 
-  update_ds(instructions, instructions_ds.get(), "instructions");
-  update_ds(cycles, cycles_ds.get(), "cycles");
-  update_rate(cache_misses, cache_refs, cache_ds.get(), "cache miss rate");
-  update_rate(branch_misses, branch_insts, branch_ds.get(), "branch misprediction rate");
+  update_ds(instructions, instructions_ds_, "instructions");
+  update_ds(cycles, cycles_ds_, "cycles");
+  update_rate(cache_misses, cache_refs, cache_ds_, "cache miss rate");
+  update_rate(branch_misses, branch_insts, branch_ds_, "branch misprediction rate");
 
   // refresh online CPUs and reopen perf counters so we can capture when CPUs are disabled
   // after we started running
   open_perf_counters_if_needed();
 }
 
-template <typename Reg>
-void PerfMetrics<Reg>::update_ds(PerfCounter& a, typename Reg::dist_summary_t* ds,
+void PerfMetrics::update_ds(PerfCounter& a, DistributionSummary ds,
                                  const char* name) {
   auto a_values = a.read_delta();
   // update our distribution summary with values from each CPU
   for (auto v : a_values) {
     Logger()->trace("Updating {} with {}", name, v);
-    ds->Record(v);
+    ds.Record(v);
   }
 }
 
-template <typename Reg>
-void PerfMetrics<Reg>::update_rate(PerfCounter& a, PerfCounter& b, typename Reg::dist_summary_t* ds,
+
+void PerfMetrics::update_rate(PerfCounter& a, PerfCounter& b, DistributionSummary ds,
                                    const char* name) {
   auto a_values = a.read_delta();
   auto b_values = b.read_delta();
@@ -123,7 +119,7 @@ void PerfMetrics<Reg>::update_rate(PerfCounter& a, PerfCounter& b, typename Reg:
     auto numerator = a_values[i];
     auto rate = static_cast<double>(numerator) / denominator;
     Logger()->trace("Updating {} with {}/{}={}", name, numerator, denominator, rate);
-    ds->Record(rate);
+    ds.Record(rate);
   }
 }
 
