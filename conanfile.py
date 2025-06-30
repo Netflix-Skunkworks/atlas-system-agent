@@ -11,6 +11,7 @@ class AtlasSystemAgentConan(ConanFile):
         "abseil/20240116.2",
         "asio/1.32.0",
         "backward-cpp/1.6",
+        "boost/1.83.0",
         "fmt/11.0.2",
         "gtest/1.15.0",
         "libcurl/8.10.1",

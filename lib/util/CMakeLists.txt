@@ -11,7 +11,7 @@ target_include_directories(util
 target_link_libraries(util
     fmt::fmt
     abseil::abseil
-    spectator
+    registry
     logger
 )
 

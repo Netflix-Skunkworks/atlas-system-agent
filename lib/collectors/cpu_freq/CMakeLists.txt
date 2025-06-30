@@ -8,7 +8,9 @@ target_include_directories(cpu_freq
 )
 
 target_link_libraries(cpu_freq
+    abseil::abseil
     fmt::fmt
+    registry
 )
 
 # add_executable(cpu_freq_test

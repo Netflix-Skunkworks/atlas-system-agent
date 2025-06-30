@@ -13,7 +13,7 @@ target_link_libraries(nvml
     fmt::fmt
     absl::time
     spdlog::spdlog
-    spectator
+    registry
 )
 
 # Add nvml test executable

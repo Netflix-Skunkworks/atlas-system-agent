@@ -11,7 +11,7 @@ target_link_libraries(ntp
     abseil::abseil
     fmt::fmt
     logger
-    tagging
+    registry
 )
 
 # add_executable(ntp_test

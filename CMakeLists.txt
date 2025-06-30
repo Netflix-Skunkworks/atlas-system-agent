@@ -9,11 +9,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_compile_options(-pedantic -Werror -Wall -Wno-missing-braces -fno-omit-frame-pointer "$<$<CONFIG:Debug>:-fsanitize=address>")
 
+# Apply sanitizer flags globally in Debug mode
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_options(-fsanitize=address)
+    add_link_options(-fsanitize=address)
+endif()
+
 include(CTest)
 
 find_package(absl REQUIRED)
 find_package(asio REQUIRED)
 find_package(Backward REQUIRED)
+find_package(Boost REQUIRED)
 find_package(fmt REQUIRED)
 find_package(GTest REQUIRED)
 find_package(CURL REQUIRED)
@@ -31,14 +38,8 @@ else()
     message(STATUS "building atlas-system-agent")
 endif()
 
-# Add spectator-cpp include directories globally
-include_directories("${CMAKE_SOURCE_DIR}/thirdparty/spectator-cpp")
-
-# Add spectator-cpp as an imported library
-add_library(spectator STATIC IMPORTED)
-set_target_properties(spectator PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/thirdparty/spectator-cpp/cmake-build/spectator/libregistry.a"
-)
+# Add spectator-cpp as a subdirectory (CMake-ified)
+add_subdirectory(thirdparty/spectator-cpp)
 
 add_subdirectory(lib)
 #add_subdirectory(AtlasAgent)

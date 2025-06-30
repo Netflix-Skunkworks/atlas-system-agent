@@ -34,17 +34,17 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   fi
 fi
 
-echo -e "${BLUE}==== check thirdparty dependencies ====${NC}"
-if [[ ! -d "thirdparty" ]]; then
-  echo "thirdparty directory not found, cloning spectator-cpp..."
-  git clone https://github.com/Netflix/spectator-cpp.git thirdparty
-  cd thirdparty
-  git checkout 823be6829165d168b55c4b61b7881a1374a831f8
-  cd ..
-  echo "spectator-cpp cloned and checked out to specified commit"
-else
-  echo "thirdparty directory already exists, skipping clone"
-fi
+# echo -e "${BLUE}==== check thirdparty dependencies ====${NC}"
+# if [[ ! -d "thirdparty" ]]; then
+#   echo "thirdparty directory not found, cloning spectator-cpp..."
+#   git clone https://github.com/Netflix/spectator-cpp.git thirdparty
+#   cd thirdparty
+#   git checkout 823be6829165d168b55c4b61b7881a1374a831f8
+#   cd ..
+#   echo "spectator-cpp cloned and checked out to specified commit"
+# else
+#   echo "thirdparty directory already exists, skipping clone"
+# fi
 
 if [[ ! -f "$HOME/.conan2/profiles/default" ]]; then
   echo -e "${BLUE}==== create default profile ====${NC}"
@@ -54,7 +54,7 @@ fi
 if [[ ! -d $BUILD_DIR ]]; then
   echo -e "${BLUE}==== install required dependencies ====${NC}"
   if [[ "$BUILD_TYPE" == "Debug" ]]; then
-    conan install . --output-folder="$BUILD_DIR" --build="*" --settings=build_type="$BUILD_TYPE" --profile=./sanitized
+    conan install . --output-folder="$BUILD_DIR" --build="*" --settings=build_type="$BUILD_TYPE"
   else
     conan install . --output-folder="$BUILD_DIR" --build=missing
   fi

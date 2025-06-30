@@ -11,7 +11,7 @@ target_include_directories(proc
 target_link_libraries(proc
     fmt::fmt
     abseil::abseil
-    spectator
+    registry
 )
 
 # Add proc test executable

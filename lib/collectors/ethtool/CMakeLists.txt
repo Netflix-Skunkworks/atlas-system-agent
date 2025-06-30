@@ -11,7 +11,7 @@ target_link_libraries(ethtool
     abseil::abseil
     fmt::fmt
     measurement_utils
-    tagging
+    registry
 )
 
 # add_executable(ethtool_test

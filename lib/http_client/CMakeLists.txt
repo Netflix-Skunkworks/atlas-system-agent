@@ -14,6 +14,5 @@ target_link_libraries(HttpClient
     abseil::abseil
     fmt::fmt
     CURL::libcurl
-    spectator
-    tagging
+    registry
 )

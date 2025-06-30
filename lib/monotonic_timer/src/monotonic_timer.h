@@ -1,7 +1,7 @@
 #pragma once
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
-#include "absl/time/time.h"
+#include <absl/time/time.h>
 
 namespace atlasagent {
 
