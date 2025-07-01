@@ -28,9 +28,7 @@ class HttpClient {
  public:
   HttpClient(Registry* registry,HttpClientConfig config) : config_{config}, registry_{registry} {}
 
-  [[nodiscard]] HttpResponse Get(const std::string& url) const {
-    return perform("GET", url, std::make_shared<CurlHeaders>(), nullptr, 0u, 0);
-  }
+  [[nodiscard]] HttpResponse Get(const std::string& url) const;
 
   [[nodiscard]] HttpResponse Get(const std::string& url,
                                  const std::vector<std::string>& headers) const {

@@ -146,6 +146,10 @@ class CurlHandle {
 
 }  // namespace detail
 
+HttpResponse HttpClient::Get(const std::string& url) const {
+  return perform("GET", url, std::make_shared<CurlHeaders>(), nullptr, 0u, 0);
+}
+
 HttpResponse HttpClient::method_header(const char* method, const std::string& url,
                                             const std::vector<std::string>& headers) const {
   auto curl_headers = std::make_shared<CurlHeaders>();

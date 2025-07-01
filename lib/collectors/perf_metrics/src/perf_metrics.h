@@ -186,7 +186,7 @@ class PerfCounter {
 
 class PerfMetrics {
  public:
-  PerfMetrics(Registry registry, const std::string path_prefix);
+  PerfMetrics(Registry* registry, const std::string path_prefix);
 
   bool open_perf_counters_if_needed();
 
@@ -197,7 +197,7 @@ class PerfMetrics {
 
  private:
   bool disabled_ = true;
-  Registry registry_;
+  Registry* registry_;
   std::string path_prefix_;
   std::vector<bool> online_cpus_;
   UnixFile pid_{-1};

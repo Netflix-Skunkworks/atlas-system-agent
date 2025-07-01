@@ -14,21 +14,21 @@ target_link_libraries(aws
 )
 
 # Add aws test executable
-# add_executable(aws_test
-#     test/aws_test.cpp
-# )
+add_executable(aws_test
+    test/aws_test.cpp
+)
 
-# target_link_libraries(aws_test
-#     aws
-#     util
-#     spectator
-#     logger
-#     gtest::gtest
-# )
+target_link_libraries(aws_test
+    aws
+    util
+    registry
+    logger
+    gtest::gtest
+)
 
-# # Register the test with CTest
-# add_test(
-#     NAME aws_test
-#     COMMAND aws_test
-#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-# )
+# Register the test with CTest
+add_test(
+    NAME aws_test
+    COMMAND aws_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
