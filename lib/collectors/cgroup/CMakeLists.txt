@@ -15,21 +15,21 @@ target_link_libraries(cgroup
 )
 
 # Add cgroup test executable
-# add_executable(cgroup_test
-#     test/cgroup_test.cpp
-# )
+add_executable(cgroup_test
+    test/cgroup_test.cpp
+)
 
-# target_link_libraries(cgroup_test
-#     cgroup
-#     util
-#     spectator
-#     logger
-#     gtest::gtest
-# )
+target_link_libraries(cgroup_test
+    cgroup
+    util
+    registry
+    logger
+    gtest::gtest
+)
 
-# # Register the test with CTest
-# add_test(
-#     NAME cgroup_test
-#     COMMAND cgroup_test
-#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-# )
+# Register the test with CTest
+add_test(
+    NAME cgroup_test
+    COMMAND cgroup_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

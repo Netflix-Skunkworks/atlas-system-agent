@@ -1,26 +1,24 @@
-// #include <lib/collectors/cgroup/src/cgroup.h>
-// #include <lib/measurement_utils/src/measurement_utils.h>
-// #include <gtest/gtest.h>
+#include <lib/collectors/cgroup/src/cgroup.h>
+#include <lib/measurement_utils/src/measurement_utils.h>
+#include <gtest/gtest.h>
 
-// #include <utility>
+#include <utility>
 
-// namespace {
-// using Registry = spectator::TestRegistry;
-// using atlasagent::Logger;
 
-// class CGroupTest : public atlasagent::CGroup<Registry> {
-//  public:
-//   explicit CGroupTest(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
-//                       absl::Duration update_interval = absl::Seconds(60)) noexcept
-//       : CGroup(registry, std::move(path_prefix), update_interval) {}
 
-//   void cpu_stats(absl::Time now) { CGroup::do_cpu_stats(now); }
-//   void cpu_peak_stats(absl::Time now) { CGroup::do_cpu_peak_stats(now); }
-// };
+class CGroupTest : public atlasagent::CGroup {
+ public:
+  explicit CGroupTest(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
+                      absl::Duration update_interval = absl::Seconds(60)) noexcept
+      : CGroup(registry, std::move(path_prefix), update_interval) {}
 
-// inline long megabits2bytes(int mbits) { return mbits * 125000; }
+  void cpu_stats(absl::Time now) { CGroup::do_cpu_stats(now); }
+  void cpu_peak_stats(absl::Time now) { CGroup::do_cpu_peak_stats(now); }
+};
 
-// TEST(CGroup, Net) {
+inline long megabits2bytes(int mbits) { return mbits * 125000; }
+
+TEST(CGroup, Net) {
 //   Registry registry;
 //   CGroupTest cGroup{&registry};
 
@@ -39,9 +37,9 @@
 //   ms = my_measurements(&registry);
 //   auto map = measurements_to_map(ms, "");
 //   EXPECT_EQ(map["cgroup.net.bandwidthBytes|gauge"], megabits2bytes(128));
-// }
+}
 
-// TEST(CGroup, PressureStall) {
+TEST(CGroup, PressureStall) {
 //   Registry registry;
 //   CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
 
@@ -61,9 +59,9 @@
 //   expect_value(&map, "sys.pressure.full|count|io", 0.5);
 //   expect_value(&map, "sys.pressure.full|count|memory", 0.5);
 //   EXPECT_TRUE(map.empty());
-// }
+}
 
-// TEST(CGroup, ParseCpuV2) {
+TEST(CGroup, ParseCpuV2) {
 //   Registry registry;
 //   CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
 
@@ -99,9 +97,9 @@
 //   expect_value(&map, "sys.cpu.utilization|gauge|user", 1200);
 //   expect_value(&map, "titus.cpu.requested|gauge", 1);
 //   EXPECT_TRUE(map.empty());
-// }
+}
 
-// TEST(CGroup, ParseMemoryV2) {
+TEST(CGroup, ParseMemoryV2) {
 //   Registry registry;
 //   CGroupTest cGroup{&registry, "testdata/resources"};
 
@@ -133,5 +131,4 @@
 //   expect_value(&values, "mem.totalReal|gauge", 8589934592);
 //   expect_value(&values, "mem.totalSwap|gauge", 536870912);
 //   EXPECT_TRUE(values.empty());
-// }
-// }  // namespace
+}
