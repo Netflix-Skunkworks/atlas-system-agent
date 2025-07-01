@@ -19,20 +19,20 @@ target_link_libraries(service_monitor
 )
 
 # Add service monitor test executable
-# add_executable(service_monitor_test
-#     test/service_monitor_test.cpp
-# )
+add_executable(service_monitor_test
+    test/service_monitor_test.cpp
+)
 
-# target_link_libraries(service_monitor_test
-#     service_monitor
-#     util
-#     logger
-#     gtest::gtest
-# )
+target_link_libraries(service_monitor_test
+    service_monitor
+    util
+    logger
+    gtest::gtest
+)
 
-# # Register the test with CTest
-# add_test(
-#     NAME service_monitor_test
-#     COMMAND service_monitor_test
-#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-# )
+# Register the test with CTest
+add_test(
+    NAME service_monitor_test
+    COMMAND service_monitor_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

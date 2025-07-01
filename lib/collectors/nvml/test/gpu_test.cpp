@@ -70,44 +70,24 @@ class TestNvml {
 };
 
 struct GpuTestingConstants {
-  static constexpr auto expectedMessage1 = {};
-  static constexpr auto expectedMessage2 = {};
-  static constexpr auto expectedMessage3 = {};
-  static constexpr auto expectedMessage4 = {};
-  static constexpr auto expectedMessage5 = {};
-  static constexpr auto expectedMessage6 = {};
-  static constexpr auto expectedMessage7 = {};
-  static constexpr auto expectedMessage8 = {};
-  static constexpr auto expectedMessage9 = {};
-  static constexpr auto expectedMessage10 = {};
-  static constexpr auto expectedMessage11= {};
-  static constexpr auto expectedMessage12 = {};
-  static constexpr auto expectedMessage13 = {};
-  static constexpr auto expectedMessage14 = {};
-  static constexpr auto expectedMessage15 = {};
+  static constexpr auto expectedMessage1 = "g:gpu.count:2.000000\n";
+  static constexpr auto expectedMessage2 = "g:gpu.usedMemory,gpu=0:2900.000000\n";
+  static constexpr auto expectedMessage3 = "g:gpu.freeMemory,gpu=0:100.000000\n";
+  static constexpr auto expectedMessage4 = "g:gpu.totalMemory,gpu=0:3000.000000\n";
+  static constexpr auto expectedMessage5 = "g:gpu.utilization,gpu=0:0.000000\n";
+  static constexpr auto expectedMessage6 = "g:gpu.memoryActivity,gpu=0:0.000000\n";
+  static constexpr auto expectedMessage7 = "g:gpu.perfState,gpu=0:-1.000000\n";
+  static constexpr auto expectedMessage8 = "d:gpu.temperature:42\n";
+  static constexpr auto expectedMessage9 = "g:gpu.usedMemory,gpu=1:2000.000000\n";
+  static constexpr auto expectedMessage10 = "g:gpu.freeMemory,gpu=1:1000.000000\n";
+  static constexpr auto expectedMessage11= "g:gpu.totalMemory,gpu=1:3000.000000\n";
+  static constexpr auto expectedMessage12 = "g:gpu.utilization,gpu=1:100.000000\n";
+  static constexpr auto expectedMessage13 = "g:gpu.memoryActivity,gpu=1:25.000000\n";
+  static constexpr auto expectedMessage14 = "g:gpu.perfState,gpu=1:-1.000000\n";
+  static constexpr auto expectedMessage15 = "d:gpu.temperature:72\n";
 };
 
 TEST(Gpu, Metrics) {
-  // using GpuMetrics = atlasagent::GpuMetrics<Registry, TestNvml>;
-  // Registry registry;
-  // auto metrics = GpuMetrics(&registry, std::make_unique<TestNvml>());
-  // metrics.gpu_metrics();
-  // const auto& ms = registry.Measurements();
-  // EXPECT_EQ(17, ms.size());
-  // auto values = measurements_to_map(ms, "gpu");
-  // expect_value(&values, "gpu.count|gauge", 2);
-  // expect_value(&values, "gpu.usedMemory|gauge|0", 2900);
-  // expect_value(&values, "gpu.freeMemory|gauge|0", 100);
-  // expect_value(&values, "gpu.totalMemory|gauge|0", 3000);
-  // expect_value(&values, "gpu.usedMemory|gauge|1", 2000);
-  // expect_value(&values, "gpu.freeMemory|gauge|1", 1000);
-  // expect_value(&values, "gpu.totalMemory|gauge|1", 3000);
-  // expect_value(&values, "gpu.utilization|gauge|0", 0);
-  // expect_value(&values, "gpu.utilization|gauge|1", 100);
-  // expect_value(&values, "gpu.memoryActivity|gauge|0", 0);
-  // expect_value(&values, "gpu.memoryActivity|gauge|1", 25);
-
-  // expect_dist_summary(ms, "gpu.temperature", 72 + 42, 2, 72, 72 * 72.0 + 42 * 42);
 
   auto config = Config(WriterConfig(WriterTypes::Memory));
   auto r = Registry(config);
@@ -121,6 +101,22 @@ TEST(Gpu, Metrics) {
   for (const auto& msg : messages) {
     std::cout << msg << std::endl;
   }
+  EXPECT_EQ(messages.at(0), GpuTestingConstants::expectedMessage1);
+  EXPECT_EQ(messages.at(1), GpuTestingConstants::expectedMessage2);
+  EXPECT_EQ(messages.at(2), GpuTestingConstants::expectedMessage3);
+  EXPECT_EQ(messages.at(3), GpuTestingConstants::expectedMessage4);
+  EXPECT_EQ(messages.at(4), GpuTestingConstants::expectedMessage5);
+  EXPECT_EQ(messages.at(5), GpuTestingConstants::expectedMessage6);
+  EXPECT_EQ(messages.at(6), GpuTestingConstants::expectedMessage7);
+  EXPECT_EQ(messages.at(7), GpuTestingConstants::expectedMessage8);
+  EXPECT_EQ(messages.at(8), GpuTestingConstants::expectedMessage9);
+  EXPECT_EQ(messages.at(9), GpuTestingConstants::expectedMessage10);
+  EXPECT_EQ(messages.at(10), GpuTestingConstants::expectedMessage11);
+  EXPECT_EQ(messages.at(11), GpuTestingConstants::expectedMessage12);
+  EXPECT_EQ(messages.at(12), GpuTestingConstants::expectedMessage13);
+  EXPECT_EQ(messages.at(13), GpuTestingConstants::expectedMessage14);
+  EXPECT_EQ(messages.at(14), GpuTestingConstants::expectedMessage15);
+
 }
 
 }  // namespace
