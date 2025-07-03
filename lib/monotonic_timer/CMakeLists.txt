@@ -12,26 +12,24 @@ target_link_libraries(monotonic_timer
     abseil::abseil
     fmt::fmt
     registry
-    tagging
 )
 
 # Add monotonic_timer test executable
-# add_executable(monotonic_timer_test
-#     test/monotonic_timer_test.cpp
-# )
+add_executable(monotonic_timer_test
+    test/monotonic_timer_test.cpp
+)
 
-# target_link_libraries(monotonic_timer_test
-#     monotonic_timer
-#     util
-#     logger
-#     spectator
-#     measurement_utils
-#     gtest::gtest
-# )
+target_link_libraries(monotonic_timer_test
+    monotonic_timer
+    util
+    logger
+    registry
+    gtest::gtest
+)
 
-# # Register the test with CTest
-# add_test(
-#     NAME monotonic_timer_test
-#     COMMAND monotonic_timer_test
-#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-# )
+# Register the test with CTest
+add_test(
+    NAME monotonic_timer_test
+    COMMAND monotonic_timer_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

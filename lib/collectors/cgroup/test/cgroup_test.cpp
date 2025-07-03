@@ -1,5 +1,4 @@
 #include <lib/collectors/cgroup/src/cgroup.h>
-#include <lib/measurement_utils/src/measurement_utils.h>
 #include <gtest/gtest.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>

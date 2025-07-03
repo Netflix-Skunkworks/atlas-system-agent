@@ -7,7 +7,7 @@ namespace atlasagent {
 
 class Proc {
  public:
-  Proc(Registry registry, std::unordered_map<std::string, std::string> net_tags, std::string path_prefix = "/proc") noexcept
+  Proc(Registry* registry, std::unordered_map<std::string, std::string> net_tags, std::string path_prefix = "/proc") noexcept
       : registry_(registry), net_tags_{std::move(net_tags)}, path_prefix_(std::move(path_prefix)) {}
   void network_stats() noexcept;
   void arp_stats() noexcept;
@@ -26,7 +26,7 @@ class Proc {
   void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
  private:
-  Registry registry_;
+  Registry* registry_;
   //const spectator::Tags net_tags_;
   std::unordered_map<std::string, std::string> net_tags_;
   std::string path_prefix_;

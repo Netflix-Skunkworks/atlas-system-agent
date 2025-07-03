@@ -1,5 +1,6 @@
 #include <lib/logger/src/logger.h>
-#include <lib/measurement_utils/src/measurement_utils.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+#include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 #include <lib/collectors/proc/src/proc.h>
 
 #include <fmt/ostream.h>
@@ -133,25 +134,36 @@ TEST(Proc, ParseLoadAvg) {
   // for (const auto& m : ms) {
   //   Logger()->info("Got {}", m);
   // }
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+  proc.loadavg_stats();
+
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+  EXPECT_EQ(3, messages.size());
+    for (const auto& m : messages) {
+      Logger()->info("Got {}", m);
+    }
 }
 
 TEST(Proc, ParsePidFromSched) {
-  // using atlasagent::proc::get_pid_from_sched;
-  // const char* container = "init (95352, #threads: 1)";
-  // const char* host = "systemd (1, #threads: 1)";
+  using atlasagent::proc::get_pid_from_sched;
+  const char* container = "init (95352, #threads: 1)";
+  const char* host = "systemd (1, #threads: 1)";
 
-  // EXPECT_EQ(95352, get_pid_from_sched(container));
-  // EXPECT_EQ(1, get_pid_from_sched(host));
+  EXPECT_EQ(95352, get_pid_from_sched(container));
+  EXPECT_EQ(1, get_pid_from_sched(host));
 }
 
 TEST(Proc, IsContainer) {
-  // Registry registry;
-  // spectator::Tags extra{{"nf.test", "extra"}};
-  // Proc proc{&registry, extra, "testdata/resources/proc"};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
 
-  // EXPECT_TRUE(proc.is_container());
-  // proc.set_prefix("testdata/resources/proc-host");
-  // EXPECT_FALSE(proc.is_container());
+  EXPECT_TRUE(proc.is_container());
+  proc.set_prefix("testdata/resources/proc-host");
+  EXPECT_FALSE(proc.is_container());
 }
 
 TEST(Proc, CpuStats) {
@@ -171,14 +183,16 @@ TEST(Proc, CpuStats) {
 }
 
 TEST(Proc, UptimeStats) {
-  // Registry registry;
-  // spectator::Tags extra{{"nf.test", "extra"}};
-  // Proc proc{&registry, extra, "testdata/resources/proc"};
-  // proc.uptime_stats();
-  // auto ms = my_measurements(&registry);
-  // auto ms_map = measurements_to_map(ms, "proto");
-  // expect_value(&ms_map, "sys.uptime|gauge", 517407);
-  // EXPECT_TRUE(ms_map.empty());
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+  proc.uptime_stats();
+
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0), "g:sys.uptime:517407.000000\n");
 }
 
 TEST(Proc, VmStats) {
@@ -210,22 +224,24 @@ TEST(Proc, VmStats) {
 }
 
 TEST(Proc, MemoryStats) {
-  // Registry registry;
-  // spectator::Tags extra{{"nf.test", "extra"}};
-  // Proc proc{&registry, extra, "testdata/resources/proc"};
-  // proc.memory_stats();
-  // auto ms = my_measurements(&registry);
-  // auto ms_map = measurements_to_map(ms, "proto");
-  // expect_value(&ms_map, "mem.freeReal|gauge", 1024.0 * 9631224);
-  // expect_value(&ms_map, "mem.availReal|gauge", 1024.0 * 9557144);
-  // expect_value(&ms_map, "mem.totalReal|gauge", 1024.0 * 125898216);
-  // expect_value(&ms_map, "mem.totalSwap|gauge", 2 * 1024.0);
-  // expect_value(&ms_map, "mem.availSwap|gauge", 1 * 1024.0);
-  // expect_value(&ms_map, "mem.buffer|gauge", 97032 * 1024.0);
-  // expect_value(&ms_map, "mem.cached|gauge", 500404 * 1024.0);
-  // expect_value(&ms_map, "mem.shared|gauge", 34968 * 1024.0);
-  // expect_value(&ms_map, "mem.totalFree|gauge", 1024.0 * 9631225);
-  // EXPECT_TRUE(ms_map.empty());
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+  proc.memory_stats();
+
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+
+  EXPECT_EQ(messages.size(), 9);
+  EXPECT_EQ(messages.at(0), "g:mem.totalReal:128919773184.000000\n");
+  EXPECT_EQ(messages.at(1), "g:mem.freeReal:9862373376.000000\n");
+  EXPECT_EQ(messages.at(2), "g:mem.availReal:9786515456.000000\n");
+  EXPECT_EQ(messages.at(3), "g:mem.buffer:99360768.000000\n");
+  EXPECT_EQ(messages.at(4), "g:mem.cached:512413696.000000\n");
+  EXPECT_EQ(messages.at(5), "g:mem.totalSwap:2048.000000\n");
+  EXPECT_EQ(messages.at(6), "g:mem.availSwap:1024.000000\n");
+  EXPECT_EQ(messages.at(7), "g:mem.shared:35807232.000000\n");
+  EXPECT_EQ(messages.at(8), "g:mem.totalFree:9862374400.000000\n");
 }
 
 TEST(Proc, ParseNetstat) {
@@ -246,42 +262,49 @@ TEST(Proc, ParseNetstat) {
   // EXPECT_TRUE(values.empty());
 }
 
+// TODO: Check this test
 TEST(Proc, ParseSocketStats) {
-  // Registry registry;
-  // spectator::Tags extra{{"nf.test", "extra"}};
-  // Proc proc{&registry, extra, "testdata/resources/proc"};
+  // auto config = Config(WriterConfig(WriterTypes::Memory));
+  // auto r = Registry(config);
+  // atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
   // proc.socket_stats();
 
-  // auto ms = my_measurements(&registry);
-  // auto ms_map = measurements_to_map(ms, "proto");
+  // auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  // auto messages = memoryWriter->GetMessages();
+
   // auto pagesize = static_cast<size_t>(sysconf(_SC_PAGESIZE));
-  // expect_value(&ms_map, "net.tcp.memory|gauge", 4519.0 * pagesize);
-  // EXPECT_TRUE(ms_map.empty());
+  // auto expected = "g:net.tcp.memory:" + std::to_string(4519.0 * pagesize) + "\n";
+  // EXPECT_EQ(messages.size(), 1);
+  // EXPECT_EQ(messages.at(0), expected);
 }
 
 TEST(Proc, ArpStats) {
-  // Registry registry;
-  // spectator::Tags extra{{"nf.test", "extra"}};
-  // Proc proc{&registry, extra, "testdata/resources/proc"};
-  // proc.arp_stats();
-  // const auto ms = my_measurements(&registry);
-  // EXPECT_EQ(ms.size(), 1);
-  // const auto& m = ms.front();
-  // EXPECT_EQ(m.id->Name(), "net.arpCacheSize");
-  // EXPECT_EQ(m.id->GetTags().at("nf.test"), "extra");
-  // EXPECT_DOUBLE_EQ(m.value, 6);
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+
+  atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+  proc.arp_stats();
+
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0), "g:net.arpCacheSize,nf.test=extra:6.000000\n");
 }
 
 TEST(Proc, ProcessStats) {
-  // Registry registry;
-  // spectator::Tags extra{{"nf.test", "extra"}};
-  // Proc proc{&registry, extra, "testdata/resources/proc"};
-  // proc.process_stats();
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
 
-  // const auto& ms = my_measurements(&registry);
-  // auto map = measurements_to_map(ms, "");
-  // expect_value(&map, "sys.currentProcesses|gauge", 2.0);
-  // expect_value(&map, "sys.currentThreads|gauge", 1.0 + 4.0);
+  atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+  proc.process_stats();
+
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+
+  EXPECT_EQ(messages.size(), 2);
+  EXPECT_EQ(messages.at(0), "g:sys.currentProcesses:2.000000\n");
+  EXPECT_EQ(messages.at(1), "g:sys.currentThreads:5.000000\n");
 }
 
 }  // namespace

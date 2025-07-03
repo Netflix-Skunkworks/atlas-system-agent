@@ -12,5 +12,4 @@ target_link_libraries(ebs
     fmt::fmt
     abseil::abseil
     registry
-    tagging
 )
