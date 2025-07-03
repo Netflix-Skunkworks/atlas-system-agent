@@ -28,12 +28,12 @@ struct abseil_clock {
 template <typename Clock = detail::abseil_clock>
 class Ntp {
  public:
-  explicit Ntp(Registry registry) noexcept;
+  explicit Ntp(Registry* registry) noexcept;
 
   void update_stats() noexcept;
 
  private:
-  Registry registry_;
+  Registry* registry_;
   Gauge lastSampleAge_;
   Gauge estimatedError_;
   Gauge unsynchronized_;

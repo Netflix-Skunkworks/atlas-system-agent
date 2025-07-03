@@ -14,21 +14,20 @@ target_link_libraries(ntp
     registry
 )
 
-# add_executable(ntp_test
-#     test/ntp_test.cpp
-# )
+add_executable(ntp_test
+    test/ntp_test.cpp
+)
 
-# target_link_libraries(ntp_test
-#     gtest::gtest
-#     logger
-#     measurement_utils
-#     ntp
-#     spectator
-#     util
-# )
+target_link_libraries(ntp_test
+    gtest::gtest
+    logger
+    ntp
+    registry
+    util
+)
 
-# add_test(
-#     NAME ntp_test
-#     COMMAND ntp_test
-#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-# )
+add_test(
+    NAME ntp_test
+    COMMAND ntp_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
