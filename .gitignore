@@ -1,6 +1,7 @@
 **/*.inc
 .DS_Store
 .idea/
+.vscode/
 CMakeUserPresets.json
 cmake-build-debug/
 cmake-build/
