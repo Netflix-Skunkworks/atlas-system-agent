@@ -1,6 +1,8 @@
 #include <lib/collectors/cpu_freq/src/cpu_freq.h>
 #include <lib/logger/src/logger.h>
-#include <lib/measurement_utils/src/measurement_utils.h>
+
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+#include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
 #include <gtest/gtest.h>
 
@@ -8,31 +10,29 @@ namespace {
 using atlasagent::CpuFreq;
 
 TEST(CpuFreq, Stats) {
-  // Registry registry;
-  // CpuFreq<Registry> cpufreq{&registry, "testdata/resources/cpufreq"};
-  // cpufreq.Stats();
 
-  // auto min_ds = registry.GetDistributionSummary("sys.minCoreFrequency");
-  // auto max_ds = registry.GetDistributionSummary("sys.maxCoreFrequency");
-  // auto cur_ds = registry.GetDistributionSummary("sys.curCoreFrequency");
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
 
-  // EXPECT_EQ(min_ds->Count(), 4);
-  // EXPECT_EQ(max_ds->Count(), 4);
-  // EXPECT_EQ(cur_ds->Count(), 4);
+  CpuFreq cpuFreq{&r, "testdata/resources/cpufreq"};
+  cpuFreq.Stats();
 
-  // EXPECT_EQ(min_ds->TotalAmount(), 4 * 1200000);
-  // EXPECT_EQ(max_ds->TotalAmount(), 4 * 3500000);
-  // EXPECT_EQ(cur_ds->TotalAmount(), 1200188 + 1200484 + 2620000 + 3000000);
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
 
-  // std::vector<spectator::Measurement> measures;
-  // cur_ds->Measure(&measures);
-  // auto map = measurements_to_map(measures, "");
-  // auto it = map.find("sys.curCoreFrequency|max");
-  // if (it != map.end()) {
-  //   EXPECT_EQ(it->second, 3000000);
-  // } else {
-  //   FAIL() << "Unable to find max value";
-  // }
+  EXPECT_EQ(messages.size(), 12);
+  EXPECT_EQ(messages.at(0), "d:sys.minCoreFrequency:1200000\n");
+  EXPECT_EQ(messages.at(1), "d:sys.maxCoreFrequency:3500000\n");
+  EXPECT_EQ(messages.at(2), "d:sys.curCoreFrequency:1200188\n");
+  EXPECT_EQ(messages.at(3), "d:sys.minCoreFrequency:1200000\n");
+  EXPECT_EQ(messages.at(4), "d:sys.maxCoreFrequency:3500000\n");
+  EXPECT_EQ(messages.at(5), "d:sys.curCoreFrequency:3000000\n");
+  EXPECT_EQ(messages.at(6), "d:sys.minCoreFrequency:1200000\n");
+  EXPECT_EQ(messages.at(7), "d:sys.maxCoreFrequency:3500000\n");
+  EXPECT_EQ(messages.at(8), "d:sys.curCoreFrequency:2620000\n");
+  EXPECT_EQ(messages.at(9), "d:sys.minCoreFrequency:1200000\n");
+  EXPECT_EQ(messages.at(10), "d:sys.maxCoreFrequency:3500000\n");
+  EXPECT_EQ(messages.at(11), "d:sys.curCoreFrequency:1200484\n");
 }
 
 }  // namespace

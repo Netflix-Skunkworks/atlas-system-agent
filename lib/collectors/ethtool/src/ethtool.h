@@ -9,12 +9,12 @@ namespace atlasagent {
 
 class Ethtool {
  public:
-  explicit Ethtool(Registry registry, std::unordered_map<std::string, std::string> net_tags) noexcept;
+  explicit Ethtool(Registry* registry, std::unordered_map<std::string, std::string> net_tags = {}) noexcept;
 
   void update_stats() noexcept;
 
  private:
-  Registry registry_;
+  Registry* registry_;
   //const spectator::Tags net_tags_;
   std::unordered_map<std::string, std::string> net_tags_;
   std::vector<std::string> interfaces_;

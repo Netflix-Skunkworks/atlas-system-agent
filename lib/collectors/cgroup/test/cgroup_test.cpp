@@ -1,10 +1,10 @@
 #include <lib/collectors/cgroup/src/cgroup.h>
 #include <lib/measurement_utils/src/measurement_utils.h>
 #include <gtest/gtest.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+#include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
 #include <utility>
-
-
 
 class CGroupTest : public atlasagent::CGroup {
  public:
@@ -19,116 +19,98 @@ class CGroupTest : public atlasagent::CGroup {
 inline long megabits2bytes(int mbits) { return mbits * 125000; }
 
 TEST(CGroup, Net) {
-//   Registry registry;
-//   CGroupTest cGroup{&registry};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  CGroupTest cGroup{&r};
 
-//   unsetenv("TITUS_NUM_NETWORK_BANDWIDTH");
-//   cGroup.network_stats();
-//   auto ms = my_measurements(&registry);
-//   EXPECT_EQ(ms.size(), 0);
+  unsetenv("TITUS_NUM_NETWORK_BANDWIDTH");
+  cGroup.network_stats();
 
-//   setenv("TITUS_NUM_NETWORK_BANDWIDTH", "abc", 1);
-//   cGroup.network_stats();
-//   ms = my_measurements(&registry);
-//   EXPECT_EQ(ms.size(), 0);
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+  EXPECT_EQ(messages.size(), 0);
 
-//   setenv("TITUS_NUM_NETWORK_BANDWIDTH", "128", 1);
-//   cGroup.network_stats();
-//   ms = my_measurements(&registry);
-//   auto map = measurements_to_map(ms, "");
-//   EXPECT_EQ(map["cgroup.net.bandwidthBytes|gauge"], megabits2bytes(128));
+  setenv("TITUS_NUM_NETWORK_BANDWIDTH", "abc", 1);
+  cGroup.network_stats();
+  messages = memoryWriter->GetMessages();
+  EXPECT_EQ(messages.size(), 0);
+
+  setenv("TITUS_NUM_NETWORK_BANDWIDTH", "128", 1);
+  cGroup.network_stats();
+  messages = memoryWriter->GetMessages();
+  EXPECT_EQ(messages.size(), 1);
+
+  EXPECT_EQ(messages.at(0), "g:cgroup.net.bandwidthBytes:16000000.000000\n");
 }
 
 TEST(CGroup, PressureStall) {
-//   Registry registry;
-//   CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  Registry registry(config);
+  // TODO: move tesdata/resources2 to testdata/resources1
+  CGroupTest cGroup{&registry, "testdata/resources2", absl::Seconds(30)};
 
-//   cGroup.pressure_stall();
-//   auto initial = my_measurements(&registry);
-//   auto initial_map = measurements_to_map(initial, "");
-//   EXPECT_EQ(initial_map.size(), 0);
+  cGroup.pressure_stall();
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
 
-//   cGroup.set_prefix("testdata/resources2");
-//   cGroup.pressure_stall();
-//   const auto& ms = my_measurements(&registry);
-//   measurement_map map = measurements_to_map(ms, "");
-//   expect_value(&map, "sys.pressure.some|count|cpu", 1);
-//   expect_value(&map, "sys.pressure.some|count|io", 1);
-//   expect_value(&map, "sys.pressure.some|count|memory", 1);
-//   expect_value(&map, "sys.pressure.full|count|cpu", 0.5);
-//   expect_value(&map, "sys.pressure.full|count|io", 0.5);
-//   expect_value(&map, "sys.pressure.full|count|memory", 0.5);
-//   EXPECT_TRUE(map.empty());
+  EXPECT_EQ(messages.size(), 6);
+  EXPECT_EQ(messages.at(0), "C:sys.pressure.some,id=cpu:2.000000\n");
+  EXPECT_EQ(messages.at(1), "C:sys.pressure.full,id=cpu:1.500000\n");
+  EXPECT_EQ(messages.at(2), "C:sys.pressure.some,id=io:2.000000\n");
+  EXPECT_EQ(messages.at(3), "C:sys.pressure.full,id=io:1.500000\n");
+  EXPECT_EQ(messages.at(4), "C:sys.pressure.some,id=memory:2.000000\n");
+  EXPECT_EQ(messages.at(5), "C:sys.pressure.full,id=memory:1.500000\n");
 }
 
+// TODO: double check this test
 TEST(CGroup, ParseCpuV2) {
-//   Registry registry;
-//   CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  Registry registry(config);
+  CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
+  setenv("TITUS_NUM_CPU", "1", 1);
+  auto now = absl::Now();
+  cGroup.cpu_stats(now);
+  cGroup.cpu_peak_stats(now);
 
-//   auto now = absl::Now();
-//   // pick 1 here, so as not to disturb the existing cpu metrics
-//   setenv("TITUS_NUM_CPU", "1", 1);
-//   cGroup.cpu_stats(now);
-//   cGroup.cpu_peak_stats(now);
-//   auto initial = my_measurements(&registry);
-//   auto initial_map = measurements_to_map(initial, "");
-//   expect_value(&initial_map, "cgroup.cpu.processingCapacity|count", 30);
-//   expect_value(&initial_map, "cgroup.cpu.weight|gauge", 100);
-//   expect_value(&initial_map, "sys.cpu.numProcessors|gauge", 1);
-//   EXPECT_EQ(initial_map.size(), 1);
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
 
-//   cGroup.set_prefix("testdata/resources2");
-//   cGroup.cpu_stats(now + absl::Seconds(5));
-//   cGroup.cpu_peak_stats(now + absl::Seconds(5));
-
-//   const auto& ms = my_measurements(&registry);
-//   measurement_map map = measurements_to_map(ms, "proto");
-//   expect_value(&map, "cgroup.cpu.numThrottled|count", 2);
-//   expect_value(&map, "cgroup.cpu.processingCapacity|count", 5.0);
-//   expect_value(&map, "cgroup.cpu.processingTime|count", 30);
-//   expect_value(&map, "cgroup.cpu.weight|gauge", 100);
-//   expect_value(&map, "cgroup.cpu.throttledTime|count", 1);
-//   expect_value(&map, "cgroup.cpu.usageTime|count|system", 120);
-//   expect_value(&map, "cgroup.cpu.usageTime|count|user", 60);
-//   expect_value(&map, "sys.cpu.numProcessors|gauge", 1);
-//   expect_value(&map, "sys.cpu.peakUtilization|max|system", 2400);
-//   expect_value(&map, "sys.cpu.peakUtilization|max|user", 1200);
-//   expect_value(&map, "sys.cpu.utilization|gauge|system", 2400);
-//   expect_value(&map, "sys.cpu.utilization|gauge|user", 1200);
-//   expect_value(&map, "titus.cpu.requested|gauge", 1);
-//   EXPECT_TRUE(map.empty());
+  EXPECT_EQ(messages.size(), 5);
+  EXPECT_EQ(messages.at(0), "C:cgroup.cpu.numThrottled:2.000000\n");
+  EXPECT_EQ(messages.at(1), "g:cgroup.cpu.weight:100.000000\n");
+  EXPECT_EQ(messages.at(2), "c:cgroup.cpu.processingTime:30.000000\n");
+  EXPECT_EQ(messages.at(3), "g:sys.cpu.numProcessors:1.000000\n");
+  EXPECT_EQ(messages.at(4), "g:titus.cpu.requested:1.000000\n");
 }
 
+// TODO: double check this test
 TEST(CGroup, ParseMemoryV2) {
-//   Registry registry;
-//   CGroupTest cGroup{&registry, "testdata/resources"};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  Registry registry(config);
+  CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
 
-//   cGroup.memory_stats_v2();
-//   cGroup.memory_stats_std_v2();
-//   auto initial = my_measurements(&registry);
-//   EXPECT_EQ(initial.size(), 14);
+  cGroup.memory_stats_v2();
+  cGroup.memory_stats_std_v2();
 
-//   cGroup.set_prefix("testdata/resources2");
-//   cGroup.memory_stats_v2();
-//   cGroup.memory_stats_std_v2();
-//   auto ms = my_measurements(&registry);
-//   auto values = measurements_to_map(ms, "");
-//   expect_value(&values, "cgroup.mem.failures|count", 2);
-//   expect_value(&values, "cgroup.mem.limit|gauge", 8589934592);
-//   expect_value(&values, "cgroup.mem.pageFaults|count|major", 10);
-//   expect_value(&values, "cgroup.mem.pageFaults|count|minor", 1000);
-//   expect_value(&values, "cgroup.mem.processUsage|gauge|cache", 11218944);
-//   expect_value(&values, "cgroup.mem.processUsage|gauge|mapped_file", 3);
-//   expect_value(&values, "cgroup.mem.processUsage|gauge|rss", 1);
-//   expect_value(&values, "cgroup.mem.processUsage|gauge|rss_huge", 2);
-//   expect_value(&values, "cgroup.mem.used|gauge", 7841374208);
-//   expect_value(&values, "mem.availReal|gauge", 759779328);
-//   expect_value(&values, "mem.availSwap|gauge", 536870912);
-//   expect_value(&values, "mem.cached|gauge", 11218944);
-//   expect_value(&values, "mem.freeReal|gauge", 748560384);
-//   expect_value(&values, "mem.shared|gauge", 135168);
-//   expect_value(&values, "mem.totalFree|gauge", 1296650240);
-//   expect_value(&values, "mem.totalReal|gauge", 8589934592);
-//   expect_value(&values, "mem.totalSwap|gauge", 536870912);
-//   EXPECT_TRUE(values.empty());
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+
+  EXPECT_EQ(messages.size(), 17);
+  EXPECT_EQ(messages.at(0), "g:cgroup.mem.processUsage:7841374208.000000\n");
+  EXPECT_EQ(messages.at(1), "g:cgroup.mem.limit:8589934592.000000\n");
+  EXPECT_EQ(messages.at(2), "C:cgroup.mem.failures:0.000000\n");
+  EXPECT_EQ(messages.at(3), "g:cgroup.mem.processUsage,id=cache:11218944.000000\n");
+  EXPECT_EQ(messages.at(4), "g:cgroup.mem.processUsage,id=rss:1.000000\n");
+  EXPECT_EQ(messages.at(5), "g:cgroup.mem.processUsage,id=rss_huge:2.000000\n");
+  EXPECT_EQ(messages.at(6), "g:cgroup.mem.processUsage,id=mapped_file:0.000000\n");
+  EXPECT_EQ(messages.at(7), "C:cgroup.mem.pageFaults,id=minor:0.000000\n");
+  EXPECT_EQ(messages.at(8), "C:cgroup.mem.pageFaults,id=major:0.000000\n");
+  EXPECT_EQ(messages.at(9), "g:mem.cached:11218944.000000\n");
+  EXPECT_EQ(messages.at(10), "g:mem.shared:135168.000000\n");
+  EXPECT_EQ(messages.at(11), "g:mem.availReal:759779328.000000\n");
+  EXPECT_EQ(messages.at(12), "g:mem.freeReal:748560384.000000\n");
+  EXPECT_EQ(messages.at(13), "g:mem.totalReal:8589934592.000000\n");
+  EXPECT_EQ(messages.at(14), "g:mem.availSwap:536870912.000000\n");
+  EXPECT_EQ(messages.at(15), "g:mem.totalSwap:536870912.000000\n");
+  EXPECT_EQ(messages.at(16), "g:mem.totalFree:1296650240.000000\n");
 }

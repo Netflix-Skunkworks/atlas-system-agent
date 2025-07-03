@@ -2,7 +2,7 @@
 
 namespace atlasagent {
 
-CpuFreq::CpuFreq(Registry registry, std::string path_prefix) noexcept
+CpuFreq::CpuFreq(Registry* registry, std::string path_prefix) noexcept
     : registry_{registry},
       path_prefix_{std::move(path_prefix)},
       enabled_{detail::is_directory(path_prefix_)} {}
@@ -26,9 +26,9 @@ void CpuFreq::Stats() noexcept {
       if (cur < 0) continue;
 
 
-      registry_.distribution_summary("sys.minCoreFrequency").Record(min);
-      registry_.distribution_summary("sys.maxCoreFrequency").Record(max);
-      registry_.distribution_summary("sys.curCoreFrequency").Record(cur);
+      registry_->distribution_summary("sys.minCoreFrequency").Record(min);
+      registry_->distribution_summary("sys.maxCoreFrequency").Record(max);
+      registry_->distribution_summary("sys.curCoreFrequency").Record(cur);
     }
 }
 

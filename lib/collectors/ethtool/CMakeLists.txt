@@ -10,24 +10,23 @@ target_include_directories(ethtool
 target_link_libraries(ethtool
     abseil::abseil
     fmt::fmt
-    measurement_utils
     registry
 )
 
-# add_executable(ethtool_test
-#     test/ethtool_test.cpp
-# )
+add_executable(ethtool_test
+    test/ethtool_test.cpp
+)
 
-# target_link_libraries(ethtool_test
-#     ethtool
-#     gtest::gtest
-#     logger
-#     spectator
-#     util
-# )
+target_link_libraries(ethtool_test
+    ethtool
+    gtest::gtest
+    logger
+    registry
+    util
+)
 
-# add_test(
-#     NAME ethtool_test
-#     COMMAND ethtool_test
-#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-# )
+add_test(
+    NAME ethtool_test
+    COMMAND ethtool_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
