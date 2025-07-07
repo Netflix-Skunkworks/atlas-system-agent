@@ -58,37 +58,37 @@ bool GpuMetricsDCGM::update_metrics(std::map<int, std::vector<double>>& dataMap)
       double value = data.at(i);
       switch (i) {
         case 0:
-          detail::gauge(&registry_, "gpu.dcgm.graphicsEngineActivity", gpuId).Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(registry_, "gpu.dcgm.graphicsEngineActivity", gpuId).Set(value * DCGMConstants::PercentileConversion);
           break;
         case 1:
-          detail::gauge(&registry_, "gpu.dcgm.sm", gpuId, "activity").Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(registry_, "gpu.dcgm.sm", gpuId, "activity").Set(value * DCGMConstants::PercentileConversion);
           break;
         case 2:
-          detail::gauge(&registry_, "gpu.dcgm.sm", gpuId, "occupancy").Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(registry_, "gpu.dcgm.sm", gpuId, "occupancy").Set(value * DCGMConstants::PercentileConversion);
           break;
         case 3:
-          detail::gauge(&registry_, "gpu.dcgm.tensorCoresUtilization", gpuId).Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(registry_, "gpu.dcgm.tensorCoresUtilization", gpuId).Set(value * DCGMConstants::PercentileConversion);
           break;
         case 4:
-          detail::gauge(&registry_, "gpu.dcgm.memoryBandwidthUtilization", gpuId).Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(registry_, "gpu.dcgm.memoryBandwidthUtilization", gpuId).Set(value * DCGMConstants::PercentileConversion);
           break;
         case 5:
-          detail::gauge(&registry_, "gpu.dcgm.pipeUtilization", gpuId, "fp32").Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(registry_, "gpu.dcgm.pipeUtilization", gpuId, "fp32").Set(value * DCGMConstants::PercentileConversion);
           break;
         case 6:
-          detail::gauge(&registry_, "gpu.dcgm.pipeUtilization", gpuId, "fp16").Set(value * DCGMConstants::PercentileConversion);
+          detail::gauge(registry_, "gpu.dcgm.pipeUtilization", gpuId, "fp16").Set(value * DCGMConstants::PercentileConversion);
           break;
         case 7:
-          detail::counter(&registry_, "gpu.dcgm.pcie.bytes", gpuId, "out").Increment(value * DCGMConstants::BytesConversion);
+          detail::counter(registry_, "gpu.dcgm.pcie.bytes", gpuId, "out").Increment(value * DCGMConstants::BytesConversion);
           break;
         case 8:
-          detail::counter(&registry_, "gpu.dcgm.pcie.bytes", gpuId, "in").Increment(value * DCGMConstants::BytesConversion);
+          detail::counter(registry_, "gpu.dcgm.pcie.bytes", gpuId, "in").Increment(value * DCGMConstants::BytesConversion);
           break;
         case 9:
-          detail::counter(&registry_, "gpu.dcgm.nvlink.bytes", gpuId, "out").Increment(value * DCGMConstants::BytesConversion);
+          detail::counter(registry_, "gpu.dcgm.nvlink.bytes", gpuId, "out").Increment(value * DCGMConstants::BytesConversion);
           break;
         case 10:
-          detail::counter(&registry_, "gpu.dcgm.nvlink.bytes", gpuId, "in").Increment(value * DCGMConstants::BytesConversion);
+          detail::counter(registry_, "gpu.dcgm.nvlink.bytes", gpuId, "in").Increment(value * DCGMConstants::BytesConversion);
           break;
         default:
           Logger()->error("Unhandled field type provided in update_metrics.");

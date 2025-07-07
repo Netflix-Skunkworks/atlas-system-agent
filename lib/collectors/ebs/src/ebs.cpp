@@ -103,7 +103,7 @@ std::optional<std::unordered_set<std::string>> parse_ebs_config_directory(const 
   return std::nullopt;
 }
 
-EBSCollector::EBSCollector(Registry registry, const std::unordered_set<std::string>& config)
+EBSCollector::EBSCollector(Registry* registry, const std::unordered_set<std::string>& config)
     : config{config},
       registry_{registry} {}
 
@@ -148,7 +148,7 @@ bool EBSCollector::handle_histogram(const ebs_nvme_histogram& histogram, const s
     return false;
   }
   for (uint64_t i = 0; i < histogram.num_bins; i++) {
-    ebsHistogram(&registry_, EBSMC::ebsHistogram, devicePath, type, AtlasNamingConvention.at(i)).Set(histogram.bins[i].count);
+    ebsHistogram(registry_, EBSMC::ebsHistogram, devicePath, type, AtlasNamingConvention.at(i)).Set(histogram.bins[i].count);
   }
   return true;
 }
@@ -158,22 +158,22 @@ bool EBSCollector::update_metrics(const std::string &devicePath, const nvme_get_
   //   return false;
   // }
   
-  ebsMonocounter(&registry_, EBSMC::ebsOperations, devicePath, EBSMC::ReadOp).Set(stats.total_read_ops);
-  ebsMonocounter(&registry_, EBSMC::ebsOperations, devicePath, EBSMC::WriteOp).Set(stats.total_write_ops);
+  ebsMonocounter(registry_, EBSMC::ebsOperations, devicePath, EBSMC::ReadOp).Set(stats.total_read_ops);
+  ebsMonocounter(registry_, EBSMC::ebsOperations, devicePath, EBSMC::WriteOp).Set(stats.total_write_ops);
   
-  ebsMonocounter(&registry_, EBSMC::ebsBytes, devicePath, EBSMC::ReadOp).Set(stats.total_read_bytes);
-  ebsMonocounter(&registry_, EBSMC::ebsBytes, devicePath, EBSMC::WriteOp).Set(stats.total_write_bytes);
+  ebsMonocounter(registry_, EBSMC::ebsBytes, devicePath, EBSMC::ReadOp).Set(stats.total_read_bytes);
+  ebsMonocounter(registry_, EBSMC::ebsBytes, devicePath, EBSMC::WriteOp).Set(stats.total_write_bytes);
 
-  ebsMonocounter(&registry_, EBSMC::ebsTime, devicePath, EBSMC::ReadOp).Set(stats.total_read_time * EBSMC::ebsMicrosecondsToSeconds);
-  ebsMonocounter(&registry_, EBSMC::ebsTime, devicePath, EBSMC::WriteOp).Set(stats.total_write_time * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsTime, devicePath, EBSMC::ReadOp).Set(stats.total_read_time * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsTime, devicePath, EBSMC::WriteOp).Set(stats.total_write_time * EBSMC::ebsMicrosecondsToSeconds);
   
-  ebsMonocounter(&registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Volume).Set(stats.ebs_volume_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
-  ebsMonocounter(&registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Instance).Set(stats.ec2_instance_ebs_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Volume).Set(stats.ebs_volume_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsIOPS, devicePath, EBSMC::Instance).Set(stats.ec2_instance_ebs_performance_exceeded_iops * EBSMC::ebsMicrosecondsToSeconds);
 
-  ebsMonocounter(&registry_, EBSMC::ebsTP, devicePath, EBSMC::Volume).Set(stats.ebs_volume_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
-  ebsMonocounter(&registry_, EBSMC::ebsTP, devicePath, EBSMC::Instance).Set(stats.ec2_instance_ebs_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsTP, devicePath, EBSMC::Volume).Set(stats.ebs_volume_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
+  ebsMonocounter(registry_, EBSMC::ebsTP, devicePath, EBSMC::Instance).Set(stats.ec2_instance_ebs_performance_exceeded_tp * EBSMC::ebsMicrosecondsToSeconds);
 
-  ebsGauge(&registry_, EBSMC::ebsQueueLength, devicePath).Set(stats.volume_queue_length);
+  ebsGauge(registry_, EBSMC::ebsQueueLength, devicePath).Set(stats.volume_queue_length);
   
   bool success {true};
   if (false == handle_histogram(stats.read_io_latency_histogram, devicePath, EBSMC::ReadOp)) {

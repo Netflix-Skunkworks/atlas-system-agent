@@ -49,7 +49,7 @@ inline auto counter(Registry* registry, const char* name, unsigned int gpu, cons
 
 class GpuMetricsDCGM {
  public:
-  GpuMetricsDCGM(Registry registry) : registry_{registry} {};
+  GpuMetricsDCGM(Registry* registry) : registry_{registry} {};
   ~GpuMetricsDCGM(){};
 
   // Abide by the C++ rule of 5
@@ -61,5 +61,5 @@ class GpuMetricsDCGM {
 
  private:
   bool update_metrics(std::map<int, std::vector<double>>& dataMap);
-  Registry registry_;
+  Registry* registry_;
 };

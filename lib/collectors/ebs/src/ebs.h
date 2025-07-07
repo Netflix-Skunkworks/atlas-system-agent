@@ -101,20 +101,17 @@ static const std::vector<std::string> AtlasNamingConvention = {
 };
 
 
-template <typename Reg>
-inline auto ebsGauge(Reg* registry, const std::string_view name, const std::string_view deviceName) {
+inline auto ebsGauge(Registry* registry, const std::string_view name, const std::string_view deviceName) {
   std::unordered_map<std::string, std::string> tags = {{"dev", fmt::format("{}", deviceName)}};
   return registry->gauge(std::string(name), tags);
 }
 
-template <typename Reg>
-inline auto ebsMonocounter(Reg* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id) {
+inline auto ebsMonocounter(Registry* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id) {
   std::unordered_map<std::string, std::string> tags = {{"dev", fmt::format("{}", deviceName)}, {"id", fmt::format("{}", id)}};
   return registry->monotonic_counter(std::string(name), tags);
 }
 
-template <typename Reg>
-inline auto ebsHistogram(Reg* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id, const std::string_view bin) {
+inline auto ebsHistogram(Registry* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id, const std::string_view bin) {
   std::unordered_map<std::string, std::string> tags = {{"dev", fmt::format("{}", deviceName)}, {"id", fmt::format("{}", id)}, {"bin", fmt::format("{}", bin)}};
   return registry->monotonic_counter(std::string(name), tags);
 }
@@ -124,13 +121,13 @@ class EBSCollector {
   // TODO: Change config to a vector to improve performance
   // PreReq: Break collect_system_metrics into more functions
   std::unordered_set<std::string> config;
-  Registry registry_;
+  Registry* registry_;
   bool query_stats_from_device(const std::string& device, nvme_get_amzn_stats_logpage& stats);
   bool update_metrics(const std::string &devicePath, const nvme_get_amzn_stats_logpage &stats);
   bool handle_histogram(const ebs_nvme_histogram& histogram, const std::string& devicePath, const std::string& id);
 
  public:
- EBSCollector(Registry registry, const std::unordered_set<std::string>& config);
+ EBSCollector(Registry* registry, const std::unordered_set<std::string>& config);
 
   bool gather_metrics();
 };

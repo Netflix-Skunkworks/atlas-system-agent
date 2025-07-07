@@ -42,4 +42,4 @@ endif()
 # Disable tests in spectator-cpp
 add_subdirectory(thirdparty/spectator-cpp)
 add_subdirectory(lib)
-#add_subdirectory(AtlasAgent)
+add_subdirectory(AtlasAgent)

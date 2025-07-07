@@ -3,6 +3,7 @@
 namespace atlasagent {
 
 template class atlasagent::Ntp<TestClock>;
+template class Ntp<detail::abseil_clock>;
 
 template <typename Clock>
 Ntp<Clock>::Ntp(Registry* registry) noexcept

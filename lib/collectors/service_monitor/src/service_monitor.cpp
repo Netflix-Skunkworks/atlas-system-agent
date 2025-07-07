@@ -6,7 +6,7 @@
 // The constructor takes a registry, a vector of regex patterns, and a maximum number of services to monitor.
 // If the maximum number of services is not equal to the default value, it logs a message indicating the custom value.
 
-ServiceMonitor::ServiceMonitor(Registry registry, std::vector<std::regex> config, unsigned int max_services)
+ServiceMonitor::ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services)
     : registry_{registry},
       config_{std::move(config)},
       maxMonitoredServices{max_services == ServiceMonitorConstants::DefaultMonitoredServices ? ServiceMonitorConstants::DefaultMonitoredServices : max_services} {
