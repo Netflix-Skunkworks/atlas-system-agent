@@ -426,12 +426,11 @@ int main(int argc, char* const argv[]) {
   }
 #endif
 
-  auto spectator_logger = GetLogger("spectator");
+  // TODO: Add ability to set Spectator logger level
   auto logger = Logger();
-  if (options.verbose) {
-    spectator_logger->set_level(spdlog::level::debug);
+  //if (options.verbose) {
     logger->set_level(spdlog::level::debug);
-  }
+  //}
 
   std::unique_ptr<Nvml> nvidia_lib;
   try {
@@ -442,12 +441,7 @@ int main(int argc, char* const argv[]) {
   }
 
   atlasagent::HttpClient::GlobalInit();
-  // auto maybe_tagger = atlasagent::Tagger::FromConfigFile(options.cfg_file.c_str());
-  // if (!maybe_tagger) {
-  //   logger->warn("Unable to load Tagger from config file {}. Ignoring", options.cfg_file);
-  // }
   
-  // TODO: What is the tagger from config file used for and how is it used?
   Config config(WriterConfig(WriterTypes::Unix), common_tags);
   Registry registry(config);
 #if defined(TITUS_SYSTEM_SERVICE)

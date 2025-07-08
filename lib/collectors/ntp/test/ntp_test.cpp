@@ -61,7 +61,6 @@ TEST(Ntp, StatsEmpty) {
   EXPECT_EQ(messages.at(0), "g:sys.time.lastSampleAge:0.000000\n");
 }
 
-// TODO: Double Check this Test
 TEST(Ntp, StatsInvalid) {
   auto config = Config(WriterConfig(WriterTypes::Memory));
   auto r = Registry(config);
@@ -79,11 +78,13 @@ TEST(Ntp, StatsInvalid) {
 
   auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
   auto messages = memoryWriter->GetMessages();
-  std::cout << messages.at(0) << std::endl;
-  std::cout << get_default_sample_age(ntp) << std::endl;
+
+  auto expected_message = "g:sys.time.lastSampleAge:" + std::to_string(get_default_sample_age(ntp)) + "\n"; 
+  
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0), expected_message);
 }
 
-// TODO: Double check this test
 // ensure we deal properly when the server in tracking gets lost
 // (maybe a race between the commands ntpc tracking; ntpc sources)
 TEST(Ntp, NoSources) {
@@ -101,8 +102,11 @@ TEST(Ntp, NoSources) {
   ntp.stats(tracking, sources);
   auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
   auto messages = memoryWriter->GetMessages();
-  std::cout << messages.at(0) << std::endl;
-  std::cout << get_default_sample_age(ntp) << std::endl;
+  
+  auto expected_message = "g:sys.time.lastSampleAge:" + std::to_string(get_default_sample_age(ntp)) + "\n";
+
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0), expected_message);
 }
 
 TEST(Ntp, adjtime) {
