@@ -60,7 +60,7 @@ void Ethtool::ethtool_stats(const std::vector<std::string>& nic_stats,
       tags["iface"] = iface;
       tags["id"] = "in";
 
-      auto metric = registry_->monotonic_counter("net.perf.bwAllowanceExceeded", tags);
+      auto metric = registry_->CreateMonotonicCounter("net.perf.bwAllowanceExceeded", tags);
       update_metric(stat_line, metric);
       continue;
     }
@@ -70,7 +70,7 @@ void Ethtool::ethtool_stats(const std::vector<std::string>& nic_stats,
       auto tags = net_tags_;
       tags["iface"] = iface;
       tags["id"] = "out";
-      auto metric = registry_->monotonic_counter("net.perf.bwAllowanceExceeded", tags);
+      auto metric = registry_->CreateMonotonicCounter("net.perf.bwAllowanceExceeded", tags);
 
       update_metric(stat_line, metric);
       continue;
@@ -80,7 +80,7 @@ void Ethtool::ethtool_stats(const std::vector<std::string>& nic_stats,
     if (found != std::string::npos) {
       auto tags = net_tags_;
       tags["iface"] = iface;
-      auto metric = registry_->monotonic_counter("net.perf.conntrackAllowanceExceeded", tags);
+      auto metric = registry_->CreateMonotonicCounter("net.perf.conntrackAllowanceExceeded", tags);
       update_metric(stat_line, metric);
       continue;
     }
@@ -89,7 +89,7 @@ void Ethtool::ethtool_stats(const std::vector<std::string>& nic_stats,
     if (found != std::string::npos) {
       auto tags = net_tags_;
       tags["iface"] = iface;
-      auto metric = registry_->gauge("net.perf.conntrackAllowanceAvailable", tags);
+      auto metric = registry_->CreateGauge("net.perf.conntrackAllowanceAvailable", tags);
       
       
       
@@ -107,7 +107,7 @@ void Ethtool::ethtool_stats(const std::vector<std::string>& nic_stats,
     if (found != std::string::npos) {
       auto tags = net_tags_;
       tags["iface"] = iface;
-      auto metric = registry_->monotonic_counter("net.perf.linklocalAllowanceExceeded", tags);
+      auto metric = registry_->CreateMonotonicCounter("net.perf.linklocalAllowanceExceeded", tags);
       update_metric(stat_line, metric);
       continue;
     }
@@ -116,7 +116,7 @@ void Ethtool::ethtool_stats(const std::vector<std::string>& nic_stats,
     if (found != std::string::npos) {
       auto tags = net_tags_;
       tags["iface"] = iface;
-      auto metric = registry_->monotonic_counter("net.perf.ppsAllowanceExceeded", tags);
+      auto metric = registry_->CreateMonotonicCounter("net.perf.ppsAllowanceExceeded", tags);
       update_metric(stat_line, metric);
     }
   }

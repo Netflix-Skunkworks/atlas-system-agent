@@ -6,10 +6,10 @@ namespace atlasagent {
 
 PerfMetrics::PerfMetrics(Registry* registry, const std::string path_prefix)
     : registry_(registry), path_prefix_(std::move(path_prefix)),
-    instructions_ds_{registry_->distribution_summary("sys.cpu.instructions")},
-    cycles_ds_{registry_->distribution_summary("sys.cpu.cycles")},
-    cache_ds_{registry_->distribution_summary("sys.cpu.cacheMissRate")},
-    branch_ds_{registry_->distribution_summary("sys.cpu.branchMispredictionRate")}
+    instructions_ds_{registry_->CreateDistributionSummary("sys.cpu.instructions")},
+    cycles_ds_{registry_->CreateDistributionSummary("sys.cpu.cycles")},
+    cache_ds_{registry_->CreateDistributionSummary("sys.cpu.cacheMissRate")},
+    branch_ds_{registry_->CreateDistributionSummary("sys.cpu.branchMispredictionRate")}
 {
   static constexpr const char* kEnableEnvVar = "ATLAS_ENABLE_PMU_METRICS";
   auto enabled_var = std::getenv(kEnableEnvVar);

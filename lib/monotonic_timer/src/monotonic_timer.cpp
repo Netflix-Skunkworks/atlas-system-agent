@@ -5,8 +5,8 @@
 namespace atlasagent {
     
 MonotonicTimer::MonotonicTimer(Registry* registry, const MeterId& id)
-    : count_{registry->counter_with_id(id.WithStat("count"))},
-      total_time_{registry->counter_with_id(id.WithStat("totalTime"))} {}
+    : count_{registry->CreateCounter(id.WithStat("count"))},
+      total_time_{registry->CreateCounter(id.WithStat("totalTime"))} {}
 
 void MonotonicTimer::update(absl::Duration monotonic_time, int64_t monotonic_count) {
   if (prev_count > 0) {

@@ -231,8 +231,8 @@ void Disk::diskio_stats(absl::Time start) noexcept {
         {"dev", st.device}};
 
 
-    registry_->monotonic_counter("disk.io.bytes", readTags).Set(st.rsect * 512);
-    registry_->monotonic_counter("disk.io.bytes", writeTags).Set(st.wsect * 512);
+    registry_->CreateMonotonicCounter("disk.io.bytes", readTags).Set(st.rsect * 512);
+    registry_->CreateMonotonicCounter("disk.io.bytes", writeTags).Set(st.wsect * 512);
 
 
     if (st.major == kMultipleDevice) {
@@ -276,7 +276,7 @@ void Disk::diskio_stats(absl::Time start) noexcept {
       auto last_time = last_ms_doing_io[st.device];
       if (st.ms_doing_io >= last_time) {
         auto delta_time_doing_io = st.ms_doing_io - last_time;
-        registry_->gauge_with_id(busy_gauge_id).Set(100.0 * delta_time_doing_io / delta_millis);
+        registry_->CreateGauge(busy_gauge_id).Set(100.0 * delta_time_doing_io / delta_millis);
       }
     }
 
@@ -307,18 +307,18 @@ void Disk::update_stats_for(const MountPoint& mp) noexcept {
   auto bytes_free = st.f_bfree * st.f_bsize;
   auto bytes_used = bytes_total - bytes_free;
   auto bytes_percent = 100.0 * bytes_used / bytes_total;
-  registry_->gauge("disk.bytesFree", tags).Set(bytes_free);
-  registry_->gauge("disk.bytesUsed", tags).Set(bytes_used);
-  registry_->gauge("disk.bytesMax", tags).Set(bytes_total);
-  registry_->gauge("disk.bytesPercentUsed", tags).Set(bytes_percent);
+  registry_->CreateGauge("disk.bytesFree", tags).Set(bytes_free);
+  registry_->CreateGauge("disk.bytesUsed", tags).Set(bytes_used);
+  registry_->CreateGauge("disk.bytesMax", tags).Set(bytes_total);
+  registry_->CreateGauge("disk.bytesPercentUsed", tags).Set(bytes_percent);
 
   if (st.f_files > 0) {
     auto inodes_free = st.f_ffree;
     auto inodes_used = st.f_files - st.f_ffree;
     auto inodes_percent = 100.0 * inodes_used / st.f_files;
-    registry_->gauge("disk.inodesFree", tags).Set(inodes_free);
-    registry_->gauge("disk.inodesUsed", tags).Set(inodes_used);
-    registry_->gauge("disk.inodesPercentUsed", tags).Set(inodes_percent);
+    registry_->CreateGauge("disk.inodesFree", tags).Set(inodes_free);
+    registry_->CreateGauge("disk.inodesUsed", tags).Set(inodes_used);
+    registry_->CreateGauge("disk.inodesPercentUsed", tags).Set(inodes_percent);
   }
 }
 

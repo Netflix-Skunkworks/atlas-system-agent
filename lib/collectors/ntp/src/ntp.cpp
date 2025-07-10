@@ -9,9 +9,9 @@ template <typename Clock>
 Ntp<Clock>::Ntp(Registry* registry) noexcept
 
     : registry_{registry},
-      lastSampleAge_{registry->gauge("sys.time.lastSampleAge")},
-      estimatedError_{registry->gauge("sys.time.estimatedError")},
-      unsynchronized_{registry->gauge("sys.time.unsynchronized")},
+      lastSampleAge_{registry->CreateGauge("sys.time.lastSampleAge")},
+      estimatedError_{registry->CreateGauge("sys.time.estimatedError")},
+      unsynchronized_{registry->CreateGauge("sys.time.unsynchronized")},
       lastSampleTime_{Clock::now()} {}
 
 template <typename Clock>

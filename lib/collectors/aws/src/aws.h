@@ -93,7 +93,7 @@ class Aws {
 
     resp = http_client_.Get(creds_url_, tokenHeader);
     if (resp.status != 200) {
-      registry_->counter("aws.credentialsRefreshErrors").Increment();
+      registry_->CreateCounter("aws.credentialsRefreshErrors").Increment();
       return;
     }
 
@@ -114,27 +114,27 @@ class Aws {
     creds.Parse(json.c_str(), json.length());
     if (creds.HasParseError()) {
       Logger()->warn("Unable to parse {} as JSON", json);
-      registry_->counter("aws.credentialsRefreshErrors").Increment();
+      registry_->CreateCounter("aws.credentialsRefreshErrors").Increment();
       return;
     }
 
     if (!creds.IsObject()) {
       Logger()->warn("Got {} which is not a JSON object", json);
-      registry_->counter("aws.credentialsRefreshErrors").Increment();
+      registry_->CreateCounter("aws.credentialsRefreshErrors").Increment();
       return;
     }
 
     auto lastUpdated = detail::getDateFrom(creds, "LastUpdated");
     if (lastUpdated > absl::UnixEpoch()) {
       auto updatedAge = now - lastUpdated;
-      registry_->gauge("aws.credentialsAge").Set(absl::ToDoubleSeconds(updatedAge));
+      registry_->CreateGauge("aws.credentialsAge").Set(absl::ToDoubleSeconds(updatedAge));
     }
 
     auto expiration = detail::getDateFrom(creds, "Expiration");
 
     if (expiration > absl::UnixEpoch()) {
       auto ttl = expiration - now;
-      registry_->gauge("aws.credentialsTtl").Set(absl::ToDoubleSeconds(ttl));
+      registry_->CreateGauge("aws.credentialsTtl").Set(absl::ToDoubleSeconds(ttl));
 
       std::string bucket;
       // update some buckets
@@ -150,7 +150,7 @@ class Aws {
         bucket = "hours";
       }
 
-      registry_->counter("aws.credentialsTtlBucket", {{"bucket", bucket}}).Increment();
+      registry_->CreateCounter("aws.credentialsTtlBucket", {{"bucket", bucket}}).Increment();
     }
   }
 };

@@ -103,17 +103,17 @@ static const std::vector<std::string> AtlasNamingConvention = {
 
 inline auto ebsGauge(Registry* registry, const std::string_view name, const std::string_view deviceName) {
   std::unordered_map<std::string, std::string> tags = {{"dev", fmt::format("{}", deviceName)}};
-  return registry->gauge(std::string(name), tags);
+  return registry->CreateGauge(std::string(name), tags);
 }
 
 inline auto ebsMonocounter(Registry* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id) {
   std::unordered_map<std::string, std::string> tags = {{"dev", fmt::format("{}", deviceName)}, {"id", fmt::format("{}", id)}};
-  return registry->monotonic_counter(std::string(name), tags);
+  return registry->CreateMonotonicCounter(std::string(name), tags);
 }
 
 inline auto ebsHistogram(Registry* registry, const std::string_view name, const std::string_view deviceName, const std::string_view id, const std::string_view bin) {
   std::unordered_map<std::string, std::string> tags = {{"dev", fmt::format("{}", deviceName)}, {"id", fmt::format("{}", id)}, {"bin", fmt::format("{}", bin)}};
-  return registry->monotonic_counter(std::string(name), tags);
+  return registry->CreateMonotonicCounter(std::string(name), tags);
 }
   
 class EBSCollector {

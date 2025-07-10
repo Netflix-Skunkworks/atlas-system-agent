@@ -18,13 +18,13 @@ namespace detail {
 
 inline auto gauge(Registry* registry, const std::string_view name, const std::string_view serviceName) {
   auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)}};
-  return registry->gauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
+  return registry->CreateGauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
 }
 
 inline auto gaugeServiceState(Registry* registry, const std::string_view name, const std::string_view serviceName, const std::string_view state) {
   auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)}};
   tags.emplace("state", fmt::format("{}", state));
-  return registry->gauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
+  return registry->CreateGauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
 }
 }  // namespace detail
 
