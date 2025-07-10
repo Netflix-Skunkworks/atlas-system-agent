@@ -806,12 +806,11 @@ void Proc::memory_stats() noexcept {
 }
 
 inline int64_t to_int64(const std::string& s) {
-  // int64_t res;
-  // auto parsed = absl::SimpleAtoi(s, &res);
-  // return parsed ? res : 0;
-
-
-  return 0; // REMOVE THIS LINE
+  try {
+    return std::stoll(s);
+  } catch (const std::exception&) {
+    return 0;
+  }
 }
 
 
