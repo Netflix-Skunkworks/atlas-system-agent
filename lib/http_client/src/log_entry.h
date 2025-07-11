@@ -50,7 +50,7 @@ class LogEntry {
 
   void log() {
     // REVIEW: do we needed a restricted percentile timer here
-    auto timer = registry_->pct_timer_with_id(id_);
+    auto timer = registry_->CreatePercentTimer(id_);
     timer.Record(absl::ToDoubleSeconds(absl::Now() - start_));
   }
 

@@ -35,7 +35,7 @@ inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const 
   if (id != nullptr) {
     tagMap["id"] = id;
   }
-  return registry->gauge(name, tagMap);
+  return registry->CreateGauge(name, tagMap);
 }
 
 inline auto counter(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr) {
@@ -43,7 +43,7 @@ inline auto counter(Registry* registry, const char* name, unsigned int gpu, cons
   if (id != nullptr) {
     tagMap["id"] = id;
   }
-  return registry->counter(name, tagMap);
+  return registry->CreateCounter(name, tagMap);
 }
 }  // namespace detail
 

@@ -12,7 +12,7 @@ inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const 
   if (id != nullptr) {
     tags["id"] = id;
   }
-  return registry->gauge(name, tags);
+  return registry->CreateGauge(name, tags);
 }
 
 }  // namespace detail
@@ -24,8 +24,8 @@ class GpuMetrics {
       : registry_(registry), nvml_(std::move(nvml)) {}
 
   void gpu_metrics() noexcept {
-    static auto gpuCountGauge = registry_->gauge("gpu.count");
-    static auto gpuTemperature = registry_->distribution_summary("gpu.temperature");
+    static auto gpuCountGauge = registry_->CreateGauge("gpu.count");
+    static auto gpuTemperature = registry_->CreateDistributionSummary("gpu.temperature");
 
     unsigned count;
     if (!nvml_->get_count(&count)) {

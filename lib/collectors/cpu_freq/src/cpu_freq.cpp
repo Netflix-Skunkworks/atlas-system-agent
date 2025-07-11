@@ -26,9 +26,9 @@ void CpuFreq::Stats() noexcept {
       if (cur < 0) continue;
 
 
-      registry_->distribution_summary("sys.minCoreFrequency").Record(min);
-      registry_->distribution_summary("sys.maxCoreFrequency").Record(max);
-      registry_->distribution_summary("sys.curCoreFrequency").Record(cur);
+      registry_->CreateDistributionSummary("sys.minCoreFrequency").Record(min);
+      registry_->CreateDistributionSummary("sys.maxCoreFrequency").Record(max);
+      registry_->CreateDistributionSummary("sys.curCoreFrequency").Record(cur);
     }
 }
 
