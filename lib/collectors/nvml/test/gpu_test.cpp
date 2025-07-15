@@ -49,7 +49,12 @@ class TestNvml {
   }
 
   bool get_performance_state(NvmlDeviceHandle device, NvmlPerfState* perf_state) noexcept {
-    return 8;
+    if (device) {
+      *perf_state = 10;
+    } else {
+      *perf_state = 1;
+    }
+    return true;
   }
 
   bool get_temperature(NvmlDeviceHandle device, unsigned int* temperature) noexcept {
@@ -69,24 +74,6 @@ class TestNvml {
   bool get_fan_speed(NvmlDeviceHandle device, unsigned int* speed) noexcept { return false; }
 };
 
-struct GpuTestingConstants {
-  static constexpr auto expectedMessage1 = "g:gpu.count:2.000000\n";
-  static constexpr auto expectedMessage2 = "g:gpu.usedMemory,gpu=0:2900.000000\n";
-  static constexpr auto expectedMessage3 = "g:gpu.freeMemory,gpu=0:100.000000\n";
-  static constexpr auto expectedMessage4 = "g:gpu.totalMemory,gpu=0:3000.000000\n";
-  static constexpr auto expectedMessage5 = "g:gpu.utilization,gpu=0:0.000000\n";
-  static constexpr auto expectedMessage6 = "g:gpu.memoryActivity,gpu=0:0.000000\n";
-  static constexpr auto expectedMessage7 = "g:gpu.perfState,gpu=0:-1.000000\n";
-  static constexpr auto expectedMessage8 = "d:gpu.temperature:42\n";
-  static constexpr auto expectedMessage9 = "g:gpu.usedMemory,gpu=1:2000.000000\n";
-  static constexpr auto expectedMessage10 = "g:gpu.freeMemory,gpu=1:1000.000000\n";
-  static constexpr auto expectedMessage11= "g:gpu.totalMemory,gpu=1:3000.000000\n";
-  static constexpr auto expectedMessage12 = "g:gpu.utilization,gpu=1:100.000000\n";
-  static constexpr auto expectedMessage13 = "g:gpu.memoryActivity,gpu=1:25.000000\n";
-  static constexpr auto expectedMessage14 = "g:gpu.perfState,gpu=1:-1.000000\n";
-  static constexpr auto expectedMessage15 = "d:gpu.temperature:72\n";
-};
-
 TEST(Gpu, Metrics) {
 
   auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -101,22 +88,21 @@ TEST(Gpu, Metrics) {
   for (const auto& msg : messages) {
     std::cout << msg << std::endl;
   }
-  EXPECT_EQ(messages.at(0), GpuTestingConstants::expectedMessage1);
-  EXPECT_EQ(messages.at(1), GpuTestingConstants::expectedMessage2);
-  EXPECT_EQ(messages.at(2), GpuTestingConstants::expectedMessage3);
-  EXPECT_EQ(messages.at(3), GpuTestingConstants::expectedMessage4);
-  EXPECT_EQ(messages.at(4), GpuTestingConstants::expectedMessage5);
-  EXPECT_EQ(messages.at(5), GpuTestingConstants::expectedMessage6);
-  EXPECT_EQ(messages.at(6), GpuTestingConstants::expectedMessage7);
-  EXPECT_EQ(messages.at(7), GpuTestingConstants::expectedMessage8);
-  EXPECT_EQ(messages.at(8), GpuTestingConstants::expectedMessage9);
-  EXPECT_EQ(messages.at(9), GpuTestingConstants::expectedMessage10);
-  EXPECT_EQ(messages.at(10), GpuTestingConstants::expectedMessage11);
-  EXPECT_EQ(messages.at(11), GpuTestingConstants::expectedMessage12);
-  EXPECT_EQ(messages.at(12), GpuTestingConstants::expectedMessage13);
-  EXPECT_EQ(messages.at(13), GpuTestingConstants::expectedMessage14);
-  EXPECT_EQ(messages.at(14), GpuTestingConstants::expectedMessage15);
-
+  EXPECT_EQ(messages.at(0), "g:gpu.count:2.000000\n");
+  EXPECT_EQ(messages.at(1), "g:gpu.usedMemory,gpu=0:2900.000000\n");
+  EXPECT_EQ(messages.at(2), "g:gpu.freeMemory,gpu=0:100.000000\n");
+  EXPECT_EQ(messages.at(3), "g:gpu.totalMemory,gpu=0:3000.000000\n");
+  EXPECT_EQ(messages.at(4), "g:gpu.utilization,gpu=0:0.000000\n");
+  EXPECT_EQ(messages.at(5), "g:gpu.memoryActivity,gpu=0:0.000000\n");
+  EXPECT_EQ(messages.at(6), "g:gpu.perfState,gpu=0:1.000000\n");
+  EXPECT_EQ(messages.at(7), "d:gpu.temperature:42.000000\n");
+  EXPECT_EQ(messages.at(8), "g:gpu.usedMemory,gpu=1:2000.000000\n");
+  EXPECT_EQ(messages.at(9), "g:gpu.freeMemory,gpu=1:1000.000000\n");
+  EXPECT_EQ(messages.at(10), "g:gpu.totalMemory,gpu=1:3000.000000\n");
+  EXPECT_EQ(messages.at(11), "g:gpu.utilization,gpu=1:100.000000\n");
+  EXPECT_EQ(messages.at(12), "g:gpu.memoryActivity,gpu=1:25.000000\n");
+  EXPECT_EQ(messages.at(13), "g:gpu.perfState,gpu=1:10.000000\n");
+  EXPECT_EQ(messages.at(14), "d:gpu.temperature:72.000000\n");
 }
 
 }  // namespace
