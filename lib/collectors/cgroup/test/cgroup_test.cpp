@@ -45,8 +45,8 @@ TEST(CGroup, Net) {
 TEST(CGroup, PressureStall) {
   auto config = Config(WriterConfig(WriterTypes::Memory));
   Registry registry(config);
-  // TODO: move tesdata/resources2 to testdata/resources1
-  CGroupTest cGroup{&registry, "testdata/resources2", absl::Seconds(30)};
+
+  CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample2", absl::Seconds(30)};
 
   cGroup.pressure_stall();
   auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -61,11 +61,10 @@ TEST(CGroup, PressureStall) {
   EXPECT_EQ(messages.at(5), "C:sys.pressure.full,id=memory:1.500000\n");
 }
 
-// TODO: double check this test
 TEST(CGroup, ParseCpuV2) {
   auto config = Config(WriterConfig(WriterTypes::Memory));
   Registry registry(config);
-  CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
+  CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1", absl::Seconds(30)};
   setenv("TITUS_NUM_CPU", "1", 1);
   auto now = absl::Now();
   cGroup.cpu_stats(now);
@@ -75,18 +74,50 @@ TEST(CGroup, ParseCpuV2) {
   auto messages = memoryWriter->GetMessages();
 
   EXPECT_EQ(messages.size(), 5);
+  // cpu_throttle_v2
   EXPECT_EQ(messages.at(0), "C:cgroup.cpu.numThrottled:2.000000\n");
+  
+  // cpu_utilization_v2
   EXPECT_EQ(messages.at(1), "g:cgroup.cpu.weight:100.000000\n");
   EXPECT_EQ(messages.at(2), "c:cgroup.cpu.processingCapacity:30.000000\n");
   EXPECT_EQ(messages.at(3), "g:sys.cpu.numProcessors:1.000000\n");
   EXPECT_EQ(messages.at(4), "g:titus.cpu.requested:1.000000\n");
+
+  // This test requires two iterations 
+  memoryWriter->Clear();
+  cGroup.set_prefix("lib/collectors/cgroup/test/resources/sample2");
+  cGroup.cpu_stats(now + absl::Seconds(5));
+  cGroup.cpu_peak_stats(now + absl::Seconds(5));
+
+  messages = memoryWriter->GetMessages();
+  EXPECT_EQ(messages.size(), 13);
+
+  // cpu_throttle_v2
+  EXPECT_EQ(messages.at(0), "c:cgroup.cpu.throttledTime:1.000000\n");
+  EXPECT_EQ(messages.at(1), "C:cgroup.cpu.numThrottled:4.000000\n");
+
+  // cpu_time_v2
+  EXPECT_EQ(messages.at(2), "c:cgroup.cpu.processingTime:30.000000\n");
+  EXPECT_EQ(messages.at(3), "c:cgroup.cpu.usageTime,id=system:120.000000\n");
+  EXPECT_EQ(messages.at(4), "c:cgroup.cpu.usageTime,id=user:60.000000\n");
+
+  // cpu_utilization_v2
+  EXPECT_EQ(messages.at(5), "g:cgroup.cpu.weight:100.000000\n");
+  EXPECT_EQ(messages.at(6), "c:cgroup.cpu.processingCapacity:5.000000\n");
+  EXPECT_EQ(messages.at(7), "g:sys.cpu.numProcessors:1.000000\n");
+  EXPECT_EQ(messages.at(8), "g:titus.cpu.requested:1.000000\n");
+  EXPECT_EQ(messages.at(9), "g:sys.cpu.utilization,id=system:2400.000000\n");
+  EXPECT_EQ(messages.at(10), "g:sys.cpu.utilization,id=user:1200.000000\n");
+
+  // cpu_peak_utilization_v2
+  EXPECT_EQ(messages.at(11), "m:sys.cpu.peakUtilization,id=system:2400.000000\n");
+  EXPECT_EQ(messages.at(12), "m:sys.cpu.peakUtilization,id=user:1200.000000\n");
 }
 
-// TODO: double check this test
 TEST(CGroup, ParseMemoryV2) {
   auto config = Config(WriterConfig(WriterTypes::Memory));
   Registry registry(config);
-  CGroupTest cGroup{&registry, "testdata/resources", absl::Seconds(30)};
+  CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1", absl::Seconds(30)};
 
   cGroup.memory_stats_v2();
   cGroup.memory_stats_std_v2();
@@ -95,15 +126,21 @@ TEST(CGroup, ParseMemoryV2) {
   auto messages = memoryWriter->GetMessages();
 
   EXPECT_EQ(messages.size(), 17);
+
+  // memory_stats_v2
   EXPECT_EQ(messages.at(0), "g:cgroup.mem.used:7841374208.000000\n");
   EXPECT_EQ(messages.at(1), "g:cgroup.mem.limit:8589934592.000000\n");
   EXPECT_EQ(messages.at(2), "C:cgroup.mem.failures:0.000000\n");
+  
   EXPECT_EQ(messages.at(3), "g:cgroup.mem.processUsage,id=cache:11218944.000000\n");
   EXPECT_EQ(messages.at(4), "g:cgroup.mem.processUsage,id=rss:1.000000\n");
   EXPECT_EQ(messages.at(5), "g:cgroup.mem.processUsage,id=rss_huge:2.000000\n");
   EXPECT_EQ(messages.at(6), "g:cgroup.mem.processUsage,id=mapped_file:0.000000\n");
+  
   EXPECT_EQ(messages.at(7), "C:cgroup.mem.pageFaults,id=minor:0.000000\n");
   EXPECT_EQ(messages.at(8), "C:cgroup.mem.pageFaults,id=major:0.000000\n");
+  
+  // memory_stats_std_v2
   EXPECT_EQ(messages.at(9), "g:mem.cached:11218944.000000\n");
   EXPECT_EQ(messages.at(10), "g:mem.shared:135168.000000\n");
   EXPECT_EQ(messages.at(11), "g:mem.availReal:759779328.000000\n");
