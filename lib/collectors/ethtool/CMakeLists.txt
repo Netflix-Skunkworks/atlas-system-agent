@@ -10,7 +10,7 @@ target_include_directories(ethtool
 target_link_libraries(ethtool
     abseil::abseil
     fmt::fmt
-    registry
+    spectator-registry
 )
 
 add_executable(ethtool_test
@@ -21,7 +21,7 @@ target_link_libraries(ethtool_test
     ethtool
     gtest::gtest
     logger
-    registry
+    spectator-registry
     util
 )
 

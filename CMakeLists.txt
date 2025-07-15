@@ -7,13 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_compile_options(-pedantic -Werror -Wall -Wno-missing-braces -fno-omit-frame-pointer "$<$<CONFIG:Debug>:-fsanitize=address>")
-
-# Apply sanitizer flags globally in Debug mode
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-fsanitize=address)
-    add_link_options(-fsanitize=address)
-endif()
+add_compile_options(-pedantic -Werror -Wall -Wno-missing-braces -fno-omit-frame-pointer)
 
 include(CTest)
 

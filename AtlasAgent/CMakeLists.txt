@@ -26,7 +26,7 @@ target_link_libraries(atlas_system_agent
     service_monitor
     HttpClient
     logger
-    registry
+    spectator-registry
 )
 
 # required to allow running on older systems, such as bionic

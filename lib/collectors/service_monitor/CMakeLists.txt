@@ -14,7 +14,7 @@ target_link_libraries(service_monitor
     SDBusCpp::sdbus-c++
     fmt::fmt
     abseil::abseil
-    registry
+    spectator-registry
     util
 )
 

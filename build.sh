@@ -34,18 +34,6 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   fi
 fi
 
-# echo -e "${BLUE}==== check thirdparty dependencies ====${NC}"
-# if [[ ! -d "thirdparty" ]]; then
-#   echo "thirdparty directory not found, cloning spectator-cpp..."
-#   git clone https://github.com/Netflix/spectator-cpp.git thirdparty
-#   cd thirdparty
-#   git checkout 823be6829165d168b55c4b61b7881a1374a831f8
-#   cd ..
-#   echo "spectator-cpp cloned and checked out to specified commit"
-# else
-#   echo "thirdparty directory already exists, skipping clone"
-# fi
-
 if [[ ! -f "$HOME/.conan2/profiles/default" ]]; then
   echo -e "${BLUE}==== create default profile ====${NC}"
   conan profile detect

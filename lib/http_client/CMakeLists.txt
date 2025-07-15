@@ -14,5 +14,5 @@ target_link_libraries(HttpClient
     abseil::abseil
     fmt::fmt
     CURL::libcurl
-    registry
+    spectator-registry
 )

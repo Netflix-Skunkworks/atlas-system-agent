@@ -11,7 +11,7 @@ target_link_libraries(perf_metrics
     PUBLIC
     abseil::abseil
     fmt::fmt
-    registry
+    spectator-registry
 )
 
 add_executable(perf_metrics_test
@@ -21,7 +21,7 @@ add_executable(perf_metrics_test
 target_link_libraries(perf_metrics_test
     perf_metrics
     util
-    registry
+    spectator-registry
     logger
     gtest::gtest
 )

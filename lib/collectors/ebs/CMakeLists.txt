@@ -11,5 +11,5 @@ target_include_directories(ebs
 target_link_libraries(ebs
     fmt::fmt
     abseil::abseil
-    registry
+    spectator-registry
 )
