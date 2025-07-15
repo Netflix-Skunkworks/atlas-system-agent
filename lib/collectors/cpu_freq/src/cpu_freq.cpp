@@ -16,7 +16,7 @@ void CpuFreq::Stats() noexcept {
     // each logical cpu provides a directory with a name like policy%d
     while ((direntry = readdir(dh)) != nullptr) {
       if (direntry->d_name[0] == '.') continue;
-
+      std::cout << "Directory entry: " << direntry->d_name << std::endl;
       auto prefix = fmt::format("{}/{}", path_prefix_, direntry->d_name);
       auto min = static_cast<double>(read_num_from_file(prefix, "scaling_min_freq"));
       if (min < 0) continue;
