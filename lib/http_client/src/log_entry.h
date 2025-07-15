@@ -49,7 +49,6 @@ class LogEntry {
   [[nodiscard]] absl::Time start() const { return start_; }
 
   void log() {
-    // REVIEW: do we needed a restricted percentile timer here
     auto timer = registry_->CreatePercentTimer(id_);
     timer.Record(absl::ToDoubleSeconds(absl::Now() - start_));
   }

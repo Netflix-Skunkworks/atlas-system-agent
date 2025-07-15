@@ -154,9 +154,9 @@ bool EBSCollector::handle_histogram(const ebs_nvme_histogram& histogram, const s
 }
 
 bool EBSCollector::update_metrics(const std::string &devicePath, const nvme_get_amzn_stats_logpage &stats) {
-  // if (this->registry_ == nullptr) {
-  //   return false;
-  // }
+  if (this->registry_ == nullptr) {
+    return false;
+  }
   
   ebsMonocounter(registry_, EBSMC::ebsOperations, devicePath, EBSMC::ReadOp).Set(stats.total_read_ops);
   ebsMonocounter(registry_, EBSMC::ebsOperations, devicePath, EBSMC::WriteOp).Set(stats.total_write_ops);

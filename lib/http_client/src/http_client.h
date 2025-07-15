@@ -26,7 +26,7 @@ struct HttpResponse {
 
 class HttpClient {
  public:
-  HttpClient(Registry* registry,HttpClientConfig config) : config_{config}, registry_{registry} {}
+  HttpClient(Registry* registry, HttpClientConfig config) : config_{config}, registry_{registry} {}
 
   [[nodiscard]] HttpResponse Get(const std::string& url) const;
 
@@ -45,7 +45,7 @@ class HttpClient {
 
  private:
   HttpClientConfig config_;
-  Registry* registry_{nullptr};
+  Registry* registry_;
 
   HttpResponse perform(const char* method, const std::string& url,
                        std::shared_ptr<CurlHeaders> headers, const char* payload, size_t size,

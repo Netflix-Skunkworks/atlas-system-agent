@@ -6,7 +6,6 @@
 #include <optional>
 #include <vector>
 #include <lib/files/src/files.h>
-// #include <lib/spectator/id.h>
 
 struct UtilConstants {
   static constexpr auto ServiceActiveCmd{"systemctl is-active --quiet"};
@@ -38,17 +37,6 @@ bool can_execute(const std::string& program);
 
 // parse a string of the form key=val,key2=val2 into spectator Tags
 std::unordered_map<std::string, std::string> parse_tags(const char* s);
-
-// construct a spectator id with extra tags - intended for use with network interface metrics
-// inline spectator::IdPtr id_for(const char* name, const char* iface, const char* idStr,
-//                                const spectator::Tags& extra) noexcept {
-//   spectator::Tags tags{extra};
-//   tags.add("iface", iface);
-//   if (idStr != nullptr) {
-//     tags.add("id", idStr);
-//   }
-//   return spectator::Id::of(name, tags);
-// }
 
 bool is_service_running(const char* serviceName);
 
