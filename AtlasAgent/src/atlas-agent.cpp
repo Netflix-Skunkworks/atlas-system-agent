@@ -426,10 +426,11 @@ int main(int argc, char* const argv[]) {
   }
 #endif
 
-  // TODO: Add ability to set Spectator logger level
+  
   auto logger = Logger();
   //if (options.verbose) {
     logger->set_level(spdlog::level::debug);
+    Logger::GetLogger()->set_level(spdlog::level::debug);
   //}
 
   std::unique_ptr<Nvml> nvidia_lib;

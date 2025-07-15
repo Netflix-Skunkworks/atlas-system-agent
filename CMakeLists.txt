@@ -32,8 +32,6 @@ else()
     message(STATUS "building atlas-system-agent")
 endif()
 
-# Add spectator-cpp as a subdirectory (CMake-ified)
-# Disable tests in spectator-cpp
 add_subdirectory(thirdparty/spectator-cpp)
 add_subdirectory(lib)
 add_subdirectory(AtlasAgent)

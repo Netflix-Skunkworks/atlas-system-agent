@@ -15,7 +15,7 @@ class CGroupTest : public atlasagent::CGroup {
   void cpu_peak_stats(absl::Time now) { CGroup::do_cpu_peak_stats(now); }
 };
 
-inline long megabits2bytes(int mbits) { return mbits * 125000; }
+inline double megabits2bytes(int mbits) { return mbits * 125000; }
 
 TEST(CGroup, Net) {
   auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -39,7 +39,7 @@ TEST(CGroup, Net) {
   messages = memoryWriter->GetMessages();
   EXPECT_EQ(messages.size(), 1);
 
-  EXPECT_EQ(messages.at(0), "g:cgroup.net.bandwidthBytes:16000000.000000\n");
+  EXPECT_EQ(messages.at(0), "g:cgroup.net.bandwidthBytes:" + std::to_string(megabits2bytes(128)) + "\n");
 }
 
 TEST(CGroup, PressureStall) {
@@ -77,7 +77,7 @@ TEST(CGroup, ParseCpuV2) {
   EXPECT_EQ(messages.size(), 5);
   EXPECT_EQ(messages.at(0), "C:cgroup.cpu.numThrottled:2.000000\n");
   EXPECT_EQ(messages.at(1), "g:cgroup.cpu.weight:100.000000\n");
-  EXPECT_EQ(messages.at(2), "c:cgroup.cpu.processingTime:30.000000\n");
+  EXPECT_EQ(messages.at(2), "c:cgroup.cpu.processingCapacity:30.000000\n");
   EXPECT_EQ(messages.at(3), "g:sys.cpu.numProcessors:1.000000\n");
   EXPECT_EQ(messages.at(4), "g:titus.cpu.requested:1.000000\n");
 }
@@ -95,7 +95,7 @@ TEST(CGroup, ParseMemoryV2) {
   auto messages = memoryWriter->GetMessages();
 
   EXPECT_EQ(messages.size(), 17);
-  EXPECT_EQ(messages.at(0), "g:cgroup.mem.processUsage:7841374208.000000\n");
+  EXPECT_EQ(messages.at(0), "g:cgroup.mem.used:7841374208.000000\n");
   EXPECT_EQ(messages.at(1), "g:cgroup.mem.limit:8589934592.000000\n");
   EXPECT_EQ(messages.at(2), "C:cgroup.mem.failures:0.000000\n");
   EXPECT_EQ(messages.at(3), "g:cgroup.mem.processUsage,id=cache:11218944.000000\n");

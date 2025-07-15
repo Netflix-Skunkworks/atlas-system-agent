@@ -129,7 +129,7 @@ void CGroup::cpu_utilization_v2(absl::Time now) noexcept {
   auto num_cpu = get_num_cpu();
   auto avail_cpu_time = get_avail_cpu_time(delta_t, num_cpu);
 
-  registry_->CreateCounter("cgroup.cpu.processingTime").Increment(delta_t * num_cpu);
+  registry_->CreateCounter("cgroup.cpu.processingCapacity").Increment(delta_t * num_cpu);
   registry_->CreateGauge("sys.cpu.numProcessors").Set(num_cpu);
   registry_->CreateGauge("titus.cpu.requested").Set(num_cpu);
 
@@ -180,7 +180,7 @@ void CGroup::cpu_peak_utilization_v2(absl::Time now) noexcept {
 void CGroup::memory_stats_v2() noexcept {
   auto usage_bytes = read_num_from_file(path_prefix_, "memory.current");
   if (usage_bytes >= 0) {
-    registry_->CreateGauge("cgroup.mem.processUsage").Set(usage_bytes);
+    registry_->CreateGauge("cgroup.mem.used").Set(usage_bytes);
   }
 
   auto limit_bytes = read_num_from_file(path_prefix_, "memory.max");
