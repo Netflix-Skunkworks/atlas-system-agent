@@ -50,9 +50,9 @@ inline std::vector<std::string> execute_dcgmi() try {
 
 
 bool GpuMetricsDCGM::update_metrics(std::map<int, std::vector<double>>& dataMap) {
-  // if (this->registry_ == nullptr) {
-  //   return false;
-  // }
+  if (this->registry_ == nullptr) {
+    return false;
+  }
   for (const auto& [gpuId, data] : dataMap) {
     for (unsigned int i = 0; i < data.size(); i++) {
       double value = data.at(i);

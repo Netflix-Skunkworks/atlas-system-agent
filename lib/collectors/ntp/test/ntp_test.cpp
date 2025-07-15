@@ -79,10 +79,8 @@ TEST(Ntp, StatsInvalid) {
   auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
   auto messages = memoryWriter->GetMessages();
 
-  auto expected_message = "g:sys.time.lastSampleAge:" + std::to_string(get_default_sample_age(ntp)) + "\n"; 
-  
   EXPECT_EQ(messages.size(), 1);
-  EXPECT_EQ(messages.at(0), expected_message);
+  EXPECT_EQ(messages.at(0),  "g:sys.time.lastSampleAge:" + std::to_string(get_default_sample_age(ntp)) + "\n");
 }
 
 // ensure we deal properly when the server in tracking gets lost
@@ -103,10 +101,8 @@ TEST(Ntp, NoSources) {
   auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
   auto messages = memoryWriter->GetMessages();
   
-  auto expected_message = "g:sys.time.lastSampleAge:" + std::to_string(get_default_sample_age(ntp)) + "\n";
-
   EXPECT_EQ(messages.size(), 1);
-  EXPECT_EQ(messages.at(0), expected_message);
+  EXPECT_EQ(messages.at(0), "g:sys.time.lastSampleAge:" + std::to_string(get_default_sample_age(ntp)) + "\n");
 }
 
 TEST(Ntp, adjtime) {
@@ -114,11 +110,13 @@ TEST(Ntp, adjtime) {
   auto r = Registry(config);
   NtpTest ntp{&r};
 
-  struct timex t{};
+  struct timex t {};
   t.esterror = 100000;
   ntp.ntp(TIME_OK, &t);
+  
   auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
   auto messages = memoryWriter->GetMessages();
+  
   EXPECT_EQ(messages.size(), 2);
   EXPECT_EQ(messages.at(0), "g:sys.time.unsynchronized:0.000000\n");
   EXPECT_EQ(messages.at(1), "g:sys.time.estimatedError:0.100000\n");
@@ -132,6 +130,7 @@ TEST(Ntp, adjtime_err) {
   struct timex t{};
   t.esterror = 200000;
   ntp.ntp(TIME_ERROR, &t);
+  
   auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
   auto messages = memoryWriter->GetMessages();
 
