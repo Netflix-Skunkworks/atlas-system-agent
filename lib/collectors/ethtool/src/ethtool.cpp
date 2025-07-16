@@ -91,8 +91,6 @@ void Ethtool::ethtool_stats(const std::vector<std::string>& nic_stats,
       tags["iface"] = iface;
       auto metric = registry_->CreateGauge("net.perf.conntrackAllowanceAvailable", tags);
       
-      
-      
       std::vector<std::string> stat_fields = absl::StrSplit(stat_line, ':');
       try {
         auto number = std::stoll(stat_fields[1]);

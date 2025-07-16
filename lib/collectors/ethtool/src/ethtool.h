@@ -15,8 +15,7 @@ class Ethtool {
 
  private:
   Registry* registry_;
-  //const spectator::Tags net_tags_;
-  std::unordered_map<std::string, std::string> net_tags_;
+  const std::unordered_map<std::string, std::string> net_tags_;
   std::vector<std::string> interfaces_;
 
  protected:

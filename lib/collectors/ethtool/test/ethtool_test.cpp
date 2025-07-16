@@ -92,16 +92,13 @@ TEST(Ethtool, EnumerateInterfaces) {
   auto r = Registry(config);
   EthtoolTest ethtool{&r};
   std::vector<std::string> ip_links = {
-      "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group "
-      "default qlen 1000\n",
+      "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000\n",
       "   link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00\n",
-      "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP mode DEFAULT group "
-      "default qlen 1000\n",
+      "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP mode DEFAULT group default qlen 1000\n",
       "   link/ether 0a:69:fb:fa:96:77 brd ff:ff:ff:ff:ff:ff\n",
       "   altname enp0s5\n",
       "   altname ens5\n",
-      "3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP mode DEFAULT group "
-      "default qlen 1000\n",
+      "3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP mode DEFAULT group default qlen 1000\n",
       "   link/ether 0a:69:fb:fa:96:78 brd ff:ff:ff:ff:ff:ff\n",
       "   altname enp0s6\n",
       "   altname ens6\n"};
