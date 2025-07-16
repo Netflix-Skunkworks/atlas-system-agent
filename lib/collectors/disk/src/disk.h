@@ -56,7 +56,6 @@ class Disk {
   std::unordered_map<std::string, u_long> last_ms_doing_io{};
   std::unordered_map<MeterId, std::shared_ptr<MonotonicTimer>> monotonic_timers_{};
 
-
  protected:
   // protected for testing
   void do_disk_stats(absl::Time start) noexcept;

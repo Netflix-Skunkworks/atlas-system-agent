@@ -153,7 +153,6 @@ void Disk::stats_for_interesting_mps(
   }
 }
 
-
 void Disk::disk_stats() noexcept {
   do_disk_stats(absl::Now());
 }
@@ -208,10 +207,6 @@ std::vector<DiskIo> Disk::get_disk_stats() const noexcept {
   return res;
 }
 
-// inline IdPtr id_for(const char* name, const char* id, const std::string& dev) {
-//   return spectator::Id::of(name, {{"id", id}, {"dev", dev.c_str()}});
-// }
-
 static constexpr const char* kRead = "read";
 static constexpr const char* kWrite = "write";
 
@@ -238,15 +233,9 @@ void Disk::diskio_stats(absl::Time start) noexcept {
     if (st.major == kMultipleDevice) {
       continue;  // ignore multiple devices for disk.io.ops and disk.percentBusy - they do not provide timing stats
     }
-
-
-    //auto mono_read_id = id_for("disk.io.ops", kRead, st.device);
-    //auto mono_write_id = id_for("disk.io.ops", kWrite, st.device);
     
     MeterId mono_read_id = MeterId("disk.io.ops", readTags);
     MeterId mono_write_id = MeterId("disk.io.ops", writeTags);
-    
-    
     MeterId busy_gauge_id = MeterId("disk.percentBusy", {{"dev", st.device}});
 
     std::shared_ptr<MonotonicTimer> read_timer;
