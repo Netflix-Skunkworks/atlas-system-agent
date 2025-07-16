@@ -220,10 +220,9 @@ class PerfMetrics {
   // branch miss rate
   DistributionSummary branch_ds_;
 
-  void update_ds(PerfCounter& a, DistributionSummary ds, const char* name);
+  void update_ds(PerfCounter& a, const DistributionSummary& ds, const char* name);
 
-  static void update_rate(PerfCounter& a, PerfCounter& b, DistributionSummary ds,
-                          const char* name);
+  static void update_rate(PerfCounter& a, PerfCounter& b, const DistributionSummary& ds, const char* name);
 };
 
 }  // namespace atlasagent

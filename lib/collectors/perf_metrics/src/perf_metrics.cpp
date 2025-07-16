@@ -94,8 +94,7 @@ void PerfMetrics::collect() {
   open_perf_counters_if_needed();
 }
 
-void PerfMetrics::update_ds(PerfCounter& a, DistributionSummary ds,
-                                 const char* name) {
+void PerfMetrics::update_ds(PerfCounter& a, const DistributionSummary& ds, const char* name) {
   auto a_values = a.read_delta();
   // update our distribution summary with values from each CPU
   for (auto v : a_values) {
@@ -105,8 +104,7 @@ void PerfMetrics::update_ds(PerfCounter& a, DistributionSummary ds,
 }
 
 
-void PerfMetrics::update_rate(PerfCounter& a, PerfCounter& b, DistributionSummary ds,
-                                   const char* name) {
+void PerfMetrics::update_rate(PerfCounter& a, PerfCounter& b, const DistributionSummary& ds, const char* name) {
   auto a_values = a.read_delta();
   auto b_values = b.read_delta();
   assert(a_values.size() == b_values.size());

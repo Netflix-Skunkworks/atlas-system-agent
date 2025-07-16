@@ -4,13 +4,10 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
-
-
-
 TEST(PerfMetrics, OnlineCpus) {
   auto config = Config(WriterConfig(WriterTypes::Memory));
   auto r = Registry(config);
-  atlasagent::PerfMetrics p(&r, "testdata/resources");
+  atlasagent::PerfMetrics p(&r, "lib/collectors/perf_metrics/test/resources");
   
   std::vector<bool> expected{};
   expected.resize(24);
@@ -23,7 +20,7 @@ TEST(PerfMetrics, OnlineCpus) {
 }
 
 TEST(PerfMetrics, ParseRange) {
-  auto fp = atlasagent::open_file("testdata", "resources/range-simple.txt");
+  auto fp = atlasagent::open_file("lib/collectors/perf_metrics/test/resources", "range-simple.txt");
   std::vector<bool> range;
   parse_range(fp, &range);
 
@@ -34,7 +31,7 @@ TEST(PerfMetrics, ParseRange) {
 }
 
 TEST(PerfMetrics, ParseRangeCommas) {
-  auto fp = atlasagent::open_file("testdata", "resources/range-commas.txt");
+  auto fp = atlasagent::open_file("lib/collectors/perf_metrics/test/resources", "range-commas.txt");
   std::vector<bool> range;
   parse_range(fp, &range);
 
