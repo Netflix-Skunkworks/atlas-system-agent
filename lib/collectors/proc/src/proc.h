@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
 namespace atlasagent {
@@ -27,8 +26,7 @@ class Proc {
 
  private:
   Registry* registry_;
-  //const spectator::Tags net_tags_;
-  std::unordered_map<std::string, std::string> net_tags_;
+  const std::unordered_map<std::string, std::string> net_tags_;
   std::string path_prefix_;
 
   void handle_line(FILE* fp) noexcept;

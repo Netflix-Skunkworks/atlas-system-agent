@@ -1,6 +1,7 @@
 #include "proc.h"
 #include <lib/util/src/util.h>
 #include <absl/strings/str_split.h>
+#include <absl/strings/numbers.h>
 #include <cinttypes>
 #include <cstring>
 #include <utility>
@@ -12,10 +13,6 @@ inline void discard_line(FILE* fp) {
     // just keep reading until a newline is found
   }
 }
-
-
-
-
 
 void Proc::handle_line(FILE* fp) noexcept {
   char iface[4096];
@@ -46,14 +43,15 @@ void Proc::handle_line(FILE* fp) noexcept {
                     &bytes, &packets, &errs, &drop, &fifo, &colls, &carrier, &compressed);
   if (assigned > 0) {
     auto allTagsOut = this->net_tags_;
-    allTagsOut.emplace("iface", iface);
-    allTagsOut.emplace("id", "out");
     
+    allTagsOut.emplace("iface", iface);    
+    registry_->CreateMonotonicCounter("net.iface.collisions", allTagsOut).Set(colls);
+
+    allTagsOut.emplace("id", "out");
     registry_->CreateMonotonicCounter("net.iface.bytes", allTagsOut).Set(bytes);
     registry_->CreateMonotonicCounter("net.iface.packets", allTagsOut).Set(packets);
     registry_->CreateMonotonicCounter("net.iface.errors", allTagsOut).Set(errs + fifo);
     registry_->CreateMonotonicCounter("net.iface.droppedPackets", allTagsOut).Set(drop);
-    registry_->CreateMonotonicCounter("net.iface.collisions", allTagsOut).Set(colls);
   }
 }
 
@@ -106,28 +104,15 @@ void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcep
   }
 }
 
-/*
-inline IdPtr create_id(const char* name, const Tags& tags, Tags extra) {
-  Tags all_tags{tags};
-  all_tags.move_all(std::move(extra));
-  return Id::of(name, all_tags);
-}
-*/
-
-
 inline auto tcpstate_gauge(Registry* registry, const char* state, const char* protocol, const std::unordered_map<std::string, std::string>& extra) {
   std::unordered_map<std::string, std::string> tags{{"id", state}, {"proto", protocol}};
   tags.insert(extra.begin(), extra.end());
   return registry->CreateGauge("net.tcp.connectionStates", tags);
 }
 
-
-
 inline auto make_tcp_gauges(Registry* registry_, const char* protocol, const std::unordered_map<std::string, std::string>& extra)
     -> std::array<Gauge, kConnStates> 
 {
-
-
   // REVIEW: size changed to 11 from 12. for some reason this function was returning pointers to gauges, and the first one was always nullptr...why?
   // There is no need for the first element to be nullptr, so we can just return an array of gauges.
   return {
@@ -144,8 +129,6 @@ inline auto make_tcp_gauges(Registry* registry_, const char* protocol, const std
           tcpstate_gauge(registry_, "closing", protocol, extra)};
 }
 
-
-
 inline void update_tcpstates_for_proto(const std::array<Gauge, kConnStates>& gauges, FILE* fp) 
 {
   std::array<int, kConnStates> connections{};
@@ -157,19 +140,15 @@ inline void update_tcpstates_for_proto(const std::array<Gauge, kConnStates>& gau
   }
 }
 
-
 void Proc::parse_tcp_connections() noexcept {
-  static std::array<Gauge, kConnStates> v4_states =
-      make_tcp_gauges(registry_, "v4", net_tags_);
-  static std::array<Gauge, kConnStates> v6_states =
-      make_tcp_gauges(registry_, "v6", net_tags_);
+  static std::array<Gauge, kConnStates> v4_states = make_tcp_gauges(registry_, "v4", net_tags_);
+  static std::array<Gauge, kConnStates> v6_states = make_tcp_gauges(registry_, "v6", net_tags_);
 
   update_tcpstates_for_proto(v4_states, open_file(path_prefix_, "net/tcp"));
   update_tcpstates_for_proto(v6_states, open_file(path_prefix_, "net/tcp6"));
 }
 
 // replicate what snmpd is doing
-
 void Proc::snmp_stats() noexcept {
   auto fp = open_file(path_prefix_, "net/snmp");
   if (fp == nullptr) {
@@ -201,27 +180,21 @@ void Proc::snmp_stats() noexcept {
   parse_udpv6_stats(stats);
 }
 
-
 void Proc::parse_ipv6_stats(const std::unordered_map<std::string, int64_t>& snmp_stats) noexcept {
 
-  
   auto inTags = std::unordered_map<std::string, std::string>{{"id", "in"}, {"proto", "v6"}};
   auto outTags = std::unordered_map<std::string, std::string>{{"id", "out"}, {"proto", "v6"}};
   auto protoTags = std::unordered_map<std::string, std::string>{{"proto", "v6"}};
+  
   inTags.insert(net_tags_.begin(), net_tags_.end());
   outTags.insert(net_tags_.begin(), net_tags_.end());
   protoTags.insert(net_tags_.begin(), net_tags_.end());
-
 
   static auto ipInReceivesCtr = registry_->CreateMonotonicCounter("net.ip.datagrams", inTags);
   static auto ipInDicardsCtr = registry_->CreateMonotonicCounter("net.ip.discards", inTags);
   static auto ipOutRequestsCtr = registry_->CreateMonotonicCounter("net.ip.datagrams", outTags);
   static auto ipOutDiscardsCtr = registry_->CreateMonotonicCounter("net.ip.discards", outTags);
   static auto ipReasmReqdsCtr = registry_->CreateMonotonicCounter("net.ip.reasmReqds", protoTags);
-
-
-
-
 
   // the ipv4 metrics for these come from net/netstat but net/snmp6 include them
   
@@ -230,12 +203,9 @@ void Proc::parse_ipv6_stats(const std::unordered_map<std::string, int64_t>& snmp
   capableTags.insert(net_tags_.begin(), net_tags_.end());
   notCapableTags.insert(net_tags_.begin(), net_tags_.end());
   
-  
   static auto ect_ctr = registry_->CreateMonotonicCounter("net.ip.ectPackets", capableTags);
   static auto noEct_ctr = registry_->CreateMonotonicCounter("net.ip.ectPackets", notCapableTags);
   static auto congested_ctr = registry_->CreateMonotonicCounter("net.ip.congestedPackets", protoTags);
-
-
 
   auto in_receives = snmp_stats.find("Ip6InReceives");
   auto in_discards = snmp_stats.find("Ip6InDiscards");
@@ -279,7 +249,6 @@ void Proc::parse_ipv6_stats(const std::unordered_map<std::string, int64_t>& snmp
   
 }
 
-
 void Proc::parse_udpv6_stats(const std::unordered_map<std::string, int64_t>& snmp_stats) noexcept {
   
   auto inTags = std::unordered_map<std::string, std::string>{{"id", "in"}, {"proto", "v6"}};
@@ -306,9 +275,7 @@ void Proc::parse_udpv6_stats(const std::unordered_map<std::string, int64_t>& snm
   if (out_datagrams != snmp_stats.end()) {
     udpOutDatagramsCtr.Set(out_datagrams->second);
   }
-  
 }
-
 
 void Proc::parse_ip_stats(const char* buf) noexcept {
   
@@ -344,9 +311,7 @@ void Proc::parse_ip_stats(const char* buf) noexcept {
   ipOutRequestsCtr.Set(ipOutRequests);
   ipOutDiscardsCtr.Set(ipOutDiscards);
   ipReasmReqdsCtr.Set(ipReasmReqds);
-  
 }
-
 
 void Proc::parse_tcp_stats(const char* buf) noexcept {
   
@@ -410,7 +375,6 @@ void Proc::parse_tcp_stats(const char* buf) noexcept {
 
 }
 
-
 void Proc::parse_udp_stats(const char* buf) noexcept {
   
   auto inTags = std::unordered_map<std::string, std::string>{{"id", "in"}, {"proto", "v4"}};
@@ -438,11 +402,10 @@ void Proc::parse_udp_stats(const char* buf) noexcept {
 
 }
 
-
 void Proc::parse_load_avg(const char* buf) noexcept {
-  auto loadAvg1Gauge = registry_->CreateGauge("sys.load.1");
-  auto loadAvg5Gauge = registry_->CreateGauge("sys.load.5");
-  auto loadAvg15Gauge = registry_->CreateGauge("sys.load.15");
+  static auto loadAvg1Gauge = registry_->CreateGauge("sys.load.1");
+  static auto loadAvg5Gauge = registry_->CreateGauge("sys.load.5");
+  static auto loadAvg15Gauge = registry_->CreateGauge("sys.load.15");
 
   double loadAvg1, loadAvg5, loadAvg15;
   sscanf(buf, LOADAVG_LINE, &loadAvg1, &loadAvg5, &loadAvg15);
@@ -451,7 +414,6 @@ void Proc::parse_load_avg(const char* buf) noexcept {
   loadAvg5Gauge.Set(loadAvg5);
   loadAvg15Gauge.Set(loadAvg15);
 }
-
 
 void Proc::loadavg_stats() noexcept {
   auto fp = open_file(path_prefix_, "loadavg");
@@ -475,7 +437,6 @@ int get_pid_from_sched(const char* sched_line) noexcept {
 }
 }  // namespace proc
 
-
 bool Proc::is_container() const noexcept {
   auto fp = open_file(path_prefix_, "1/sched");
   if (fp == nullptr) {
@@ -489,7 +450,6 @@ bool Proc::is_container() const noexcept {
 
   return proc::get_pid_from_sched(line) != 1;
 }
-
 
 void Proc::set_prefix(const std::string& new_prefix) noexcept {
   path_prefix_ = new_prefix;
@@ -533,8 +493,6 @@ struct cpu_gauges {
     interrupt_gauge->Set(vals.interrupt);
   }
 };
-
-
 
 struct stat_vals {
   static constexpr const char* CPU_STATS_LINE = " %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu";
@@ -591,7 +549,6 @@ struct stat_vals {
 
 }  // namespace detail
 
-
 inline void set_if_present(const std::unordered_map<std::string, int64_t>& stats, const char* key, const MonotonicCounter& ctr) {
   auto it = stats.find(key);
   if (it != stats.end()) {
@@ -599,18 +556,15 @@ inline void set_if_present(const std::unordered_map<std::string, int64_t>& stats
   }
 }
 
-
 void Proc::uptime_stats() noexcept {
   static auto sys_uptime = registry_->CreateGauge("sys.uptime");
   // uptime values are in seconds, reported as doubles, but given how large they will be over
   // time, the 10ths of a second will not matter for the purpose of producing this metric
   auto uptime_seconds = read_num_vector_from_file(path_prefix_, "uptime");
-  sys_uptime.Set(uptime_seconds[0]); 
+  sys_uptime.Set(uptime_seconds[0]);
 }
 
-
 void Proc::vmstats() noexcept {
-  
   static auto processes = registry_->CreateMonotonicCounter("vmstat.procs.count");
   static auto procs_running = registry_->CreateGauge("vmstat.procs", {{"id", "running"}});
   static auto procs_blocked = registry_->CreateGauge("vmstat.procs", {{"id", "blocked"}});
@@ -661,13 +615,13 @@ void Proc::vmstats() noexcept {
   }
 }
 
-
 void Proc::peak_cpu_stats() noexcept {
-  
   static detail::cpu_gauges<Registry, MaxGauge> peakUtilizationGauges{
       registry_, "sys.cpu.peakUtilization", [](Registry* r, const char* name, const char* id) -> std::shared_ptr<MaxGauge> {
         return std::make_shared<MaxGauge>(r->CreateMaxGauge(name, {{"id", id}}));
-  }};
+      }
+  };
+  
   static detail::stat_vals prev;
 
   auto fp = open_file(path_prefix_, "stat");
@@ -685,18 +639,17 @@ void Proc::peak_cpu_stats() noexcept {
     peakUtilizationGauges.update(gauge_vals);
   }
   prev = vals;
-  
 }
-
 
 void Proc::cpu_stats() noexcept {
   
   static auto num_procs = registry_->CreateGauge("sys.cpu.numProcessors");
   
-  static detail::cpu_gauges<Registry, Gauge> utilizationGauges{
-      registry_, "sys.cpu.utilization", [](Registry* r, const char* name, const char* id) {
+  static detail::cpu_gauges<Registry, Gauge> utilizationGauges {
+    registry_, "sys.cpu.utilization", [](Registry* r, const char* name, const char* id) {
         return std::make_shared<Gauge>(r->CreateGauge(name, {{"id", id}}));
-      }};
+    }
+  };
 
   static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
   static detail::stat_vals prev_vals;
@@ -737,14 +690,12 @@ void Proc::cpu_stats() noexcept {
       auto& prev = it->second;
       auto computed_vals = per_cpu_vals.compute_vals(prev);
       auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice + computed_vals.wait + computed_vals.interrupt;
-
       coresDistSummary.Record(usage);
     }
     prev_cpu_vals[cpu_num] = per_cpu_vals;
   }
   num_procs.Set(cpu_count);
 }
-
 
 void Proc::memory_stats() noexcept {
   static auto avail_real = registry_->CreateGauge("mem.availReal");
@@ -802,17 +753,13 @@ void Proc::memory_stats() noexcept {
     }
   }
   total_free.Set(total_free_bytes * 1024.0);
-
 }
 
 inline int64_t to_int64(const std::string& s) {
-  try {
-    return std::stoll(s);
-  } catch (const std::exception&) {
-    return 0;
-  }
+  int64_t res;
+  auto parsed = absl::SimpleAtoi(s, &res);
+  return parsed ? res : 0;
 }
-
 
 void Proc::socket_stats() noexcept {
   
@@ -839,9 +786,7 @@ void Proc::socket_stats() noexcept {
       break;
     }
   }
-  
 }
-
 
 void Proc::netstat_stats() noexcept {
   
@@ -851,7 +796,6 @@ void Proc::netstat_stats() noexcept {
   capableTags.insert(net_tags_.begin(), net_tags_.end());
   notCapableTags.insert(net_tags_.begin(), net_tags_.end());
   protoTags.insert(net_tags_.begin(), net_tags_.end());
-
 
   static auto ect_ctr = registry_->CreateMonotonicCounter("net.ip.ectPackets", capableTags);
   static auto noEct_ctr = registry_->CreateMonotonicCounter("net.ip.ectPackets", notCapableTags);
@@ -899,9 +843,7 @@ void Proc::netstat_stats() noexcept {
     ect_ctr.Set(ect);
     noEct_ctr.Set(noEct);
   }
-  
 }
-
 
 void Proc::arp_stats() noexcept {
   static auto arpcache_size = registry_->CreateGauge("net.arpCacheSize", net_tags_);
@@ -920,7 +862,6 @@ void Proc::arp_stats() noexcept {
     }
   }
   arpcache_size.Set(num_entries);
-
 }
 
 static bool all_digits(const char* str) {
@@ -950,7 +891,6 @@ int32_t count_tasks(const std::string& dirname) {
   }
   return count;
 }
-
 
 void Proc::process_stats() noexcept {
   

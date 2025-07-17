@@ -85,9 +85,6 @@ TEST(Gpu, Metrics) {
   auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
   auto messages = memoryWriter->GetMessages();
   EXPECT_EQ(15, messages.size());
-  for (const auto& msg : messages) {
-    std::cout << msg << std::endl;
-  }
   EXPECT_EQ(messages.at(0), "g:gpu.count:2.000000\n");
   EXPECT_EQ(messages.at(1), "g:gpu.usedMemory,gpu=0:2900.000000\n");
   EXPECT_EQ(messages.at(2), "g:gpu.freeMemory,gpu=0:100.000000\n");
