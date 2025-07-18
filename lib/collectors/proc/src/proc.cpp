@@ -79,8 +79,7 @@ static constexpr const char* UDP_STATS_LINE = "Udp: %lu %lu %lu %lu";
 static constexpr size_t UDP_STATS_PREFIX_LEN = 5;
 static constexpr const char* LOADAVG_LINE = "%lf %lf %lf";
 
-//static constexpr int kConnStates = 12; // REVIEW CHANGED TO BE 11
-static constexpr int kConnStates = 11; // REVIEW CHANGED TO BE 11
+static constexpr int kConnStates = 11;
 void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcept {
   char line[2048];
   // discard header
@@ -113,8 +112,6 @@ inline auto tcpstate_gauge(Registry* registry, const char* state, const char* pr
 inline auto make_tcp_gauges(Registry* registry_, const char* protocol, const std::unordered_map<std::string, std::string>& extra)
     -> std::array<Gauge, kConnStates> 
 {
-  // REVIEW: size changed to 11 from 12. for some reason this function was returning pointers to gauges, and the first one was always nullptr...why?
-  // There is no need for the first element to be nullptr, so we can just return an array of gauges.
   return {
           tcpstate_gauge(registry_, "established", protocol, extra),
           tcpstate_gauge(registry_, "synSent", protocol, extra),
@@ -134,7 +131,7 @@ inline void update_tcpstates_for_proto(const std::array<Gauge, kConnStates>& gau
   std::array<int, kConnStates> connections{};
   if (fp != nullptr) {
     sum_tcp_states(fp, &connections);
-    for (auto i = 1; i < kConnStates; ++i) {
+    for (auto i = 0; i < kConnStates; ++i) {
       gauges[i].Set(connections[i]);
     }
   }

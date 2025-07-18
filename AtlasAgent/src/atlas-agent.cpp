@@ -425,13 +425,12 @@ int main(int argc, char* const argv[]) {
     common_tags["titus.host"] = titus_host;
   }
 #endif
-
   
   auto logger = Logger();
-  //if (options.verbose) {
+  if (options.verbose) {
     logger->set_level(spdlog::level::debug);
     Logger::GetLogger()->set_level(spdlog::level::debug);
-  //}
+  }
 
   std::unique_ptr<Nvml> nvidia_lib;
   try {
