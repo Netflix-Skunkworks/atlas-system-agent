@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lib/tagging/src/tagging_registry.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+
 #include <lib/util/src/util.h>
 #include <fmt/format.h>
 #include <unistd.h>
@@ -182,10 +183,10 @@ class PerfCounter {
   std::vector<perf_count> prev_vals;
 };
 
-template <typename Reg = TaggingRegistry>
+
 class PerfMetrics {
  public:
-  PerfMetrics(Reg* registry, std::string path_prefix);
+  PerfMetrics(Registry* registry, const std::string path_prefix);
 
   bool open_perf_counters_if_needed();
 
@@ -196,7 +197,7 @@ class PerfMetrics {
 
  private:
   bool disabled_ = true;
-  Reg* registry_;
+  Registry* registry_;
   std::string path_prefix_;
   std::vector<bool> online_cpus_;
   UnixFile pid_{-1};
@@ -208,20 +209,20 @@ class PerfMetrics {
   PerfCounter branch_misses{PERF_COUNT_HW_BRANCH_MISSES};
 
   // instructions
-  typename Reg::dist_summary_ptr instructions_ds;
+  DistributionSummary instructions_ds_;
 
   // cycles
-  typename Reg::dist_summary_ptr cycles_ds;
+  DistributionSummary cycles_ds_;
 
   // cache miss rate
-  typename Reg::dist_summary_ptr cache_ds;
+  DistributionSummary cache_ds_;
+
   // branch miss rate
-  typename Reg::dist_summary_ptr branch_ds;
+  DistributionSummary branch_ds_;
 
-  void update_ds(PerfCounter& a, typename Reg::dist_summary_t* ds, const char* name);
+  void update_ds(PerfCounter& a, const DistributionSummary& ds, const char* name);
 
-  static void update_rate(PerfCounter& a, PerfCounter& b, typename Reg::dist_summary_t* ds,
-                          const char* name);
+  static void update_rate(PerfCounter& a, PerfCounter& b, const DistributionSummary& ds, const char* name);
 };
 
 }  // namespace atlasagent

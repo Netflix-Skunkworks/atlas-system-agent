@@ -1,10 +1,12 @@
 #pragma once
+#include <thirdparty/spectator-cpp/spectator/registry.h>
 
-#include <lib/tagging/src/tagging_registry.h>
+
 #include <lib/util/src/util.h>
 #include <absl/strings/str_split.h>
 #include <sys/timex.h>
-
+#include <absl/time/time.h>
+#include <absl/time/clock.h>
 
 struct TestClock {
   static absl::Time now() {
@@ -23,18 +25,18 @@ struct abseil_clock {
 
 
 
-template <typename Reg = TaggingRegistry, typename Clock = detail::abseil_clock>
+template <typename Clock = detail::abseil_clock>
 class Ntp {
  public:
-  explicit Ntp(Reg* registry) noexcept;
-    
+  explicit Ntp(Registry* registry) noexcept;
 
   void update_stats() noexcept;
 
  private:
-  typename Reg::gauge_ptr lastSampleAge_;
-  typename Reg::gauge_ptr estimatedError_;
-  typename Reg::gauge_ptr unsynchronized_;
+  Registry* registry_;
+  Gauge lastSampleAge_;
+  Gauge estimatedError_;
+  Gauge unsynchronized_;
 
  protected:
   // for testing

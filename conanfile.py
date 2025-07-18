@@ -11,6 +11,7 @@ class AtlasSystemAgentConan(ConanFile):
         "abseil/20240116.2",
         "asio/1.32.0",
         "backward-cpp/1.6",
+        "boost/1.83.0",
         "fmt/11.0.2",
         "gtest/1.15.0",
         "libcurl/8.10.1",
@@ -42,24 +43,21 @@ class AtlasSystemAgentConan(ConanFile):
             os.unlink(path)
 
     def get_spectator_cpp(self):
+        thirdparty_dir = "thirdparty"
         repo = "Netflix/spectator-cpp"
-        commit = "6e7c2fd5f26085aa75a978fc5eff28805bbaf0cc"
-        zip_name = repo.replace("Netflix/", "") + f"-{commit}.zip"
-
-        self.maybe_remove_file(zip_name)
-        download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_name)
-        check_sha256(self, zip_name, "1605b3a4a8deb9f1f1ce742f1d95b3a1aefae32289ee7df585525c87f2a51193")
-
-        dir_name = repo.replace("Netflix/", "")
-        self.maybe_remove_dir(dir_name)
-        unzip(self, zip_name, destination=dir_name, strip_root=True)
-        self.maybe_remove_dir("lib/spectator")
-        shutil.move(f"{dir_name}/spectator", "lib/spectator")
-        self.maybe_remove_dir("lib/tools")
-        shutil.move(f"{dir_name}/tools", "lib/tools")
-
-        os.unlink(zip_name)
-        shutil.rmtree(dir_name)
+        commit = "0213b0e5d8a9fce18cde5b66de2ff4adcd5034c6"
+        
+        zip_path = os.path.join(thirdparty_dir, f"spectator-cpp-{commit}.zip")
+        dir_path = os.path.join(thirdparty_dir, "spectator-cpp")
+        
+        os.makedirs(thirdparty_dir, exist_ok=True)
+        self.maybe_remove_file(zip_path)
+        self.maybe_remove_dir(dir_path)
+        
+        download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_path)
+        check_sha256(self, zip_path, "388a453743caca3ffaba5dadc173207a0b6977d59f7b5afe2937e2555ff521dc")
+        unzip(self, zip_path, destination=dir_path, strip_root=True)
+        self.maybe_remove_file(zip_path)
 
     def source(self):
         self.get_spectator_cpp()

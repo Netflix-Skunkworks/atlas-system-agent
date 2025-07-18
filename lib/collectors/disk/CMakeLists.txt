@@ -12,8 +12,7 @@ target_link_libraries(disk
     abseil::abseil
     fmt::fmt
     monotonic_timer
-    spectator
-    tagging
+    spectator-registry
 )
 
 # Add disk test executable
@@ -25,7 +24,7 @@ target_link_libraries(disk_test
     disk
     util
     logger
-    measurement_utils
+    spectator-registry
     gtest::gtest
 )
 

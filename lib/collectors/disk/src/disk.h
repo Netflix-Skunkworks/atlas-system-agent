@@ -1,13 +1,14 @@
 #pragma once
-
+#include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <lib/monotonic_timer/src/monotonic_timer.h>
-#include <lib/tagging/src/tagging_registry.h>
 #include <string>
 #include <sys/types.h>
 #include <fmt/format.h>
 #include <unordered_map>
 #include <vector>
 #include <unordered_set>
+#include <absl/time/time.h>
+#include <absl/time/clock.h>
 
 namespace atlasagent {
 struct MountPoint {
@@ -40,20 +41,20 @@ std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
 std::string get_id_from_mountpoint(const std::string& mp);
 std::string get_dev_from_device(const std::string& device);
 
-template <typename Reg = TaggingRegistry>
+
 class Disk {
  public:
-  explicit Disk(Reg* registry, std::string path_prefix = "") noexcept
+  explicit Disk(Registry* registry, std::string path_prefix = "") noexcept
       : registry_(registry), path_prefix_(std::move(path_prefix)) {}
   void titus_disk_stats() noexcept;
   void disk_stats() noexcept;
   void set_prefix(const std::string& new_prefix) noexcept;  // for testing
  private:
-  Reg* registry_;
+  Registry* registry_;
   std::string path_prefix_;
   absl::Time last_updated_{absl::UnixEpoch()};
   std::unordered_map<std::string, u_long> last_ms_doing_io{};
-  std::unordered_map<spectator::IdPtr, std::shared_ptr<MonotonicTimer<Reg>>> monotonic_timers_{};
+  std::unordered_map<MeterId, std::shared_ptr<MonotonicTimer>> monotonic_timers_{};
 
  protected:
   // protected for testing

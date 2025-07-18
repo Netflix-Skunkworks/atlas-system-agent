@@ -1,9 +1,10 @@
 #pragma once
 
 #include <lib/files/src/files.h>
-#include <lib/tagging/src/tagging_registry.h>
 #include <lib/util/src/util.h>
 #include <sys/stat.h>
+
+#include <thirdparty/spectator-cpp/spectator/registry.h>
 
 namespace atlasagent {
 
@@ -18,20 +19,17 @@ inline bool is_directory(const std::string& directory) {
 }
 }  // namespace detail
 
-template <typename Reg = TaggingRegistry>
+
 class CpuFreq {
  public:
-  explicit CpuFreq(Reg* registry, std::string path_prefix = "/sys/devices/system/cpu/cpufreq") noexcept;
+  explicit CpuFreq(Registry* registry, std::string path_prefix = "/sys/devices/system/cpu/cpufreq") noexcept;
 
   void Stats() noexcept;
 
  private:
-  Reg* registry_;
+  Registry* registry_;
   std::string path_prefix_;
   bool enabled_;
 
-  typename Reg::dist_summary_ptr min_ds_;
-  typename Reg::dist_summary_ptr max_ds_;
-  typename Reg::dist_summary_ptr cur_ds_;
 };
 }  // namespace atlasagent

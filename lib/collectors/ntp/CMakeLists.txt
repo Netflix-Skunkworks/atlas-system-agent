@@ -11,7 +11,7 @@ target_link_libraries(ntp
     abseil::abseil
     fmt::fmt
     logger
-    tagging
+    spectator-registry
 )
 
 add_executable(ntp_test
@@ -21,9 +21,8 @@ add_executable(ntp_test
 target_link_libraries(ntp_test
     gtest::gtest
     logger
-    measurement_utils
     ntp
-    spectator
+    spectator-registry
     util
 )
 

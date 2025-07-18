@@ -11,8 +11,7 @@ target_include_directories(proc
 target_link_libraries(proc
     fmt::fmt
     abseil::abseil
-    spectator
-    tagging
+    spectator-registry
 )
 
 # Add proc test executable
@@ -23,7 +22,7 @@ add_executable(proc_test
 target_link_libraries(proc_test
     proc
     logger
-    measurement_utils
+    spectator-registry
     util
     gtest::gtest
 )

@@ -11,8 +11,7 @@ target_include_directories(dcgm
 target_link_libraries(dcgm
     fmt::fmt
     abseil::abseil
-    spectator
-    tagging
+    spectator-registry
 )
 
 # Add dcgm test executable
@@ -24,8 +23,6 @@ target_link_libraries(dcgm_stats_test
     dcgm
     util
     logger
-    spectator
-    measurement_utils
     gtest::gtest
 )
 

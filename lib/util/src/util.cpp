@@ -225,16 +225,16 @@ bool can_execute(const std::string& program) {
   return false;
 }
 
-spectator::Tags parse_tags(const char* s) {
-  spectator::Tags tags{};
+std::unordered_map<std::string, std::string> parse_tags(const char* s) {
+  std::unordered_map<std::string, std::string> tags{};
   auto fields = absl::StrSplit(s, absl::ByAnyChar(", "));
   for (const auto& f : fields) {
     auto pos = f.find('=');
     if (pos != std::string::npos) {
-      auto key = f.substr(0, pos);
-      auto value = f.substr(pos + 1, f.length());
+      std::string key = std::string(f.substr(0, pos));
+      std::string value = std::string(f.substr(pos + 1, f.length()));
       if (!key.empty() && !value.empty()) {
-        tags.add(key, value);
+        tags[key] = value;
       }
     }
   }

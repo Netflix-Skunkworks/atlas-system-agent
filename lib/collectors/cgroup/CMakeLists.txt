@@ -11,7 +11,7 @@ target_include_directories(cgroup
 target_link_libraries(cgroup
     fmt::fmt
     abseil::abseil
-    tagging
+    spectator-registry
 )
 
 # Add cgroup test executable
@@ -22,8 +22,7 @@ add_executable(cgroup_test
 target_link_libraries(cgroup_test
     cgroup
     util
-    spectator
-    measurement_utils
+    spectator-registry
     logger
     gtest::gtest
 )

@@ -1,14 +1,16 @@
 #include <lib/logger/src/logger.h>
-#include <lib/measurement_utils/src/measurement_utils.h>
+
 #include <lib/collectors/ntp/src/ntp.h>
 #include <gtest/gtest.h>
+
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+#include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
 namespace {
 using atlasagent::Logger;
 using atlasagent::Ntp;
-using Registry = spectator::TestRegistry;
 
-class NtpTest : public Ntp<Registry, TestClock> {
+class NtpTest : public Ntp<TestClock> {
  public:
   explicit NtpTest(Registry* registry) : Ntp{registry} {}
   void stats(const std::string& tracking, const std::vector<std::string>& sources) noexcept {
@@ -23,8 +25,9 @@ double get_default_sample_age(const NtpTest& ntp) {
 }
 
 TEST(Ntp, Stats) {
-  Registry registry;
-  NtpTest ntp{&registry};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  NtpTest ntp{&r};
 
   std::string tracking =
       "A9FEA97B,169.254.169.123,4,1553630752.756016394,0.000042,-0.000048721,"
@@ -36,24 +39,32 @@ TEST(Ntp, Stats) {
       "^,-,172.16.1.2,2,10,337,1028,0.000021583,-0.000021316,0.049278442\n"};
   ntp.stats(tracking, sources);
 
-  auto ms = registry.Measurements();
-  auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {{"sys.time.lastSampleAge|gauge", 74}};
-  EXPECT_EQ(map, expected);
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0), "g:sys.time.lastSampleAge:74.000000\n");
 }
 
 TEST(Ntp, StatsEmpty) {
-  Registry registry;
-  NtpTest ntp{&registry};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  NtpTest ntp{&r};
+
   ntp.stats("", {});
 
-  auto ms = registry.Measurements();
-  EXPECT_EQ(ms.size(), 1);  // we always report
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+
+  // We always report
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0), "g:sys.time.lastSampleAge:0.000000\n");
 }
 
 TEST(Ntp, StatsInvalid) {
-  Registry registry;
-  NtpTest ntp{&registry};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  NtpTest ntp{&r};
 
   std::string tracking =
       "A9FEA97B,1.2.3.4,4,1.1,foo,-0.021,1,-2,-0.022,0.079,0.0005,0.0001,775.8,Normal\n";
@@ -62,21 +73,22 @@ TEST(Ntp, StatsInvalid) {
       "^,*,1.2.3.4,3,8,377,abc,-0.000027989,-0.000076710,0.000319246\n",
       "^,-,10.229.0.50,2,10,340,7219,0.002353442,0.001586549,0.049785987\n",
       "^,-,172.16.1.2,2,10,337,1028,0.000021583,-0.000021316,0.049278442\n"};
+
   ntp.stats(tracking, sources);
 
-  auto ms = registry.Measurements();
-  auto map = measurements_to_map(ms, "");
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
 
-  std::unordered_map<std::string, double> expected = {
-      {"sys.time.lastSampleAge|gauge", get_default_sample_age(ntp)}};
-  EXPECT_EQ(expected, map);
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0),  "g:sys.time.lastSampleAge:" + std::to_string(get_default_sample_age(ntp)) + "\n");
 }
 
 // ensure we deal properly when the server in tracking gets lost
 // (maybe a race between the commands ntpc tracking; ntpc sources)
 TEST(Ntp, NoSources) {
-  Registry registry;
-  NtpTest ntp{&registry};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  NtpTest ntp{&r};
 
   std::string tracking =
       "A9FEA97B,1.2.3.4,4,1.1,10,-0.021,1,-2,-0.022,0.079,0.0005,0.0001,775.8,Normal\n";
@@ -86,40 +98,43 @@ TEST(Ntp, NoSources) {
       "^,-,10.229.0.50,2,10,340,7219,0.002353442,0.001586549,0.049785987\n",
       "^,-,172.16.1.2,2,10,337,1028,0.000021583,-0.000021316,0.049278442\n"};
   ntp.stats(tracking, sources);
-
-  auto ms = registry.Measurements();
-  auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {
-      {"sys.time.lastSampleAge|gauge", get_default_sample_age(ntp)}};
-  EXPECT_EQ(map, expected);
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+  
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0), "g:sys.time.lastSampleAge:" + std::to_string(get_default_sample_age(ntp)) + "\n");
 }
 
 TEST(Ntp, adjtime) {
-  Registry registry;
-  NtpTest ntp{&registry};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  NtpTest ntp{&r};
 
   struct timex t {};
   t.esterror = 100000;
   ntp.ntp(TIME_OK, &t);
-
-  auto ms = registry.Measurements();
-  auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {{"sys.time.unsynchronized|gauge", 0},
-                                                      {"sys.time.estimatedError|gauge", 0.1}};
-  EXPECT_EQ(map, expected);
+  
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
+  
+  EXPECT_EQ(messages.size(), 2);
+  EXPECT_EQ(messages.at(0), "g:sys.time.unsynchronized:0.000000\n");
+  EXPECT_EQ(messages.at(1), "g:sys.time.estimatedError:0.100000\n");
 }
 
 TEST(Ntp, adjtime_err) {
-  Registry registry;
-  NtpTest ntp{&registry};
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
+  NtpTest ntp{&r};
 
-  struct timex t {};
+  struct timex t{};
   t.esterror = 200000;
   ntp.ntp(TIME_ERROR, &t);
+  
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
 
-  auto ms = registry.Measurements();
-  auto map = measurements_to_map(ms, "");
-  std::unordered_map<std::string, double> expected = {{"sys.time.unsynchronized|gauge", 1}};
-  EXPECT_EQ(map, expected);
+  EXPECT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages.at(0), "g:sys.time.unsynchronized:1.000000\n");
 }
 }  // namespace

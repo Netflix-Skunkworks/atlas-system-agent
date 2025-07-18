@@ -7,13 +7,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_compile_options(-pedantic -Werror -Wall -Wno-missing-braces -fno-omit-frame-pointer "$<$<CONFIG:Debug>:-fsanitize=address>")
+add_compile_options(-pedantic -Werror -Wall -Wno-missing-braces -fno-omit-frame-pointer)
 
 include(CTest)
 
 find_package(absl REQUIRED)
 find_package(asio REQUIRED)
 find_package(Backward REQUIRED)
+find_package(Boost REQUIRED)
 find_package(fmt REQUIRED)
 find_package(GTest REQUIRED)
 find_package(CURL REQUIRED)
@@ -31,5 +32,6 @@ else()
     message(STATUS "building atlas-system-agent")
 endif()
 
+add_subdirectory(thirdparty/spectator-cpp)
 add_subdirectory(lib)
 add_subdirectory(AtlasAgent)

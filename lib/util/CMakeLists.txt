@@ -11,7 +11,8 @@ target_include_directories(util
 target_link_libraries(util
     fmt::fmt
     abseil::abseil
-    spectator
+    spectator-registry
+    logger
 )
 
 # Add utils test executable

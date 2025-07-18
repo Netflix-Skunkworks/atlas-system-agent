@@ -2,20 +2,12 @@
 
 namespace atlasagent {
 
-template class CpuFreq<atlasagent::TaggingRegistry>;
-template class CpuFreq<spectator::TestRegistry>;
-
-template <typename Reg>
-CpuFreq<Reg>::CpuFreq(Reg* registry, std::string path_prefix) noexcept
+CpuFreq::CpuFreq(Registry* registry, std::string path_prefix) noexcept
     : registry_{registry},
       path_prefix_{std::move(path_prefix)},
-      enabled_{detail::is_directory(path_prefix_)},
-      min_ds_{registry_->GetDistributionSummary("sys.minCoreFrequency")},
-      max_ds_{registry_->GetDistributionSummary("sys.maxCoreFrequency")},
-      cur_ds_{registry_->GetDistributionSummary("sys.curCoreFrequency")} {}
+      enabled_{detail::is_directory(path_prefix_)} {}
 
-template <typename Reg>
-void CpuFreq<Reg>::Stats() noexcept {
+void CpuFreq::Stats() noexcept {
     if (!enabled_) return;
 
     DirHandle dh{path_prefix_.c_str()};
@@ -24,7 +16,6 @@ void CpuFreq<Reg>::Stats() noexcept {
     // each logical cpu provides a directory with a name like policy%d
     while ((direntry = readdir(dh)) != nullptr) {
       if (direntry->d_name[0] == '.') continue;
-
       auto prefix = fmt::format("{}/{}", path_prefix_, direntry->d_name);
       auto min = static_cast<double>(read_num_from_file(prefix, "scaling_min_freq"));
       if (min < 0) continue;
@@ -33,9 +24,10 @@ void CpuFreq<Reg>::Stats() noexcept {
       auto cur = static_cast<double>(read_num_from_file(prefix, "scaling_cur_freq"));
       if (cur < 0) continue;
 
-      min_ds_->Record(min);
-      max_ds_->Record(max);
-      cur_ds_->Record(cur);
+
+      registry_->CreateDistributionSummary("sys.minCoreFrequency").Record(min);
+      registry_->CreateDistributionSummary("sys.maxCoreFrequency").Record(max);
+      registry_->CreateDistributionSummary("sys.curCoreFrequency").Record(cur);
     }
 }
 

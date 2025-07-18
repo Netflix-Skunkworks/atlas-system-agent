@@ -1,6 +1,7 @@
 #ifdef __linux__
 #include <sys/vfs.h>
 #endif
+#include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <lib/collectors/aws/src/aws.h>
 #include <lib/collectors/cgroup/src/cgroup.h>
 #include <lib/collectors/cpu_freq/src/cpu_freq.h>
@@ -27,19 +28,18 @@ using atlasagent::GetLogger;
 using atlasagent::Logger;
 using atlasagent::Nvml;
 
-using atlasagent::TaggingRegistry;
-using Aws = atlasagent::Aws<>;
-using CGroup = atlasagent::CGroup<>;
-using CpuFreq = atlasagent::CpuFreq<>;
-using Disk = atlasagent::Disk<>;
-using Ethtool = atlasagent::Ethtool<>;
-using GpuMetrics = atlasagent::GpuMetrics<TaggingRegistry, Nvml>;
+using Aws = atlasagent::Aws;
+using CGroup = atlasagent::CGroup;
+using CpuFreq = atlasagent::CpuFreq;
+using Disk = atlasagent::Disk;
+using Ethtool = atlasagent::Ethtool;
+using GpuMetrics = atlasagent::GpuMetrics<Nvml>;
 using Ntp = atlasagent::Ntp<>;
-using PerfMetrics = atlasagent::PerfMetrics<>;
-using PressureStall = atlasagent::PressureStall<>;
-using Proc = atlasagent::Proc<>;
+using PerfMetrics = atlasagent::PerfMetrics;
+using PressureStall = atlasagent::PressureStall;
+using Proc = atlasagent::Proc;
 
-std::unique_ptr<GpuMetrics> init_gpu(TaggingRegistry* registry, std::unique_ptr<Nvml> lib) {
+std::unique_ptr<GpuMetrics> init_gpu(Registry* registry, std::unique_ptr<Nvml> lib) {
   if (lib) {
     try {
       lib->initialize();
@@ -173,8 +173,8 @@ long initial_polling_delay() {
 }
 
 #if defined(TITUS_SYSTEM_SERVICE)
-void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-  const spectator::Tags& net_tags, const int& max_monitored_services) {
+void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
+  const std::unordered_map<std::string, std::string>& net_tags, const int& max_monitored_services) {
   using std::chrono::duration_cast;
   using std::chrono::milliseconds;
   using std::chrono::seconds;
@@ -190,7 +190,7 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent
 
   // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
   // check if these optionals have a set value. lets improve how we handle this
-  std::optional<ServiceMonitor<TaggingRegistry> > serviceMetrics{};
+  std::optional<ServiceMonitor> serviceMetrics{};
   std::optional<std::vector<std::regex> > serviceConfig{
       parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
   if (serviceConfig.has_value()) {
@@ -240,8 +240,8 @@ void collect_titus_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent
   } while (runner.wait_for(time_to_sleep));
 }
 #else
-void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                            const spectator::Tags& net_tags, const int& max_monitored_services) {
+void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
+                            const std::unordered_map<std::string, std::string>& net_tags, const int& max_monitored_services) {
   using std::chrono::duration_cast;
   using std::chrono::milliseconds;
   using std::chrono::seconds;
@@ -258,7 +258,7 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
 
   auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
-  std::optional<GpuMetricsDCGM<TaggingRegistry> > gpuDCGM{std::nullopt};
+  std::optional<GpuMetricsDCGM> gpuDCGM{std::nullopt};
   if (atlasagent::is_file_present(DCGMConstants::dcgmiPath)) {
     gpuDCGM.emplace(registry);
   }
@@ -267,7 +267,7 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
   // check if these optionals have a set value. lets improve how we handle this
   
   // Create a ServiceMonitor object to monitor Systemd services if any configs are valid
-  std::optional<ServiceMonitor<TaggingRegistry> > serviceMetrics{};
+  std::optional<ServiceMonitor> serviceMetrics{};
   std::optional<std::vector<std::regex> > serviceConfig{parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
   if (serviceConfig.has_value()) {
     serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
@@ -277,7 +277,7 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
   }
 
   // Create an EBS collector object to monitor EBS devices if any configs are valid
-  std::optional<EBSCollector<TaggingRegistry> > ebsMetrics{};
+  std::optional<EBSCollector> ebsMetrics{};
   std::optional<std::unordered_set<std::string> > ebsConfig{parse_ebs_config_directory(EBSConstants::ConfigPath)};
   if (ebsConfig.has_value()) {
     ebsMetrics.emplace(registry, ebsConfig.value());
@@ -348,7 +348,7 @@ void collect_system_metrics(TaggingRegistry* registry, std::unique_ptr<atlasagen
 #endif
 
 struct agent_options {
-  spectator::Tags network_tags;
+  std::unordered_map<std::string, std::string> network_tags;
   std::string cfg_file;
   bool verbose;
   unsigned int max_monitored_services{ServiceMonitorConstants::DefaultMonitoredServices};
@@ -417,21 +417,19 @@ int main(int argc, char* const argv[]) {
 
   init_signals();
   backward::SignalHandling sh;
+  
   std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", process}};
-  auto cfg = spectator::Config{"unix:/run/spectatord/spectatord.unix", std::move(common_tags)};
-
 #if defined(TITUS_SYSTEM_SERVICE)
   auto titus_host = std::getenv("TITUS_HOST_EC2_INSTANCE_ID");
   if (titus_host != nullptr && titus_host[0] != '\0') {
-    cfg.common_tags["titus.host"] = titus_host;
+    common_tags["titus.host"] = titus_host;
   }
 #endif
-
-  auto spectator_logger = GetLogger("spectator");
+  
   auto logger = Logger();
   if (options.verbose) {
-    spectator_logger->set_level(spdlog::level::debug);
     logger->set_level(spdlog::level::debug);
+    Logger::GetLogger()->set_level(spdlog::level::debug);
   }
 
   std::unique_ptr<Nvml> nvidia_lib;
@@ -442,22 +440,18 @@ int main(int argc, char* const argv[]) {
     logger->info("Will not collect GPU metrics: {}", e.what());
   }
 
-  atlasagent::HttpClient<>::GlobalInit();
-  auto maybe_tagger = atlasagent::Tagger::FromConfigFile(options.cfg_file.c_str());
-  if (!maybe_tagger) {
-    logger->warn("Unable to load Tagger from config file {}. Ignoring", options.cfg_file);
-  }
-  spectator::Registry spectator_registry{cfg, spectator_logger};
-  TaggingRegistry registry{&spectator_registry, maybe_tagger.value_or(atlasagent::Tagger::Nop())};
+  atlasagent::HttpClient::GlobalInit();
+  
+  Config config(WriterConfig(WriterTypes::Unix), common_tags);
+  Registry registry(config);
 #if defined(TITUS_SYSTEM_SERVICE)
   Logger()->info("Start gathering Titus system metrics");
   collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
 #else
   Logger()->info("Start gathering EC2 system metrics");
-  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags,
-                         options.max_monitored_services);
+  collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
 #endif
   logger->info("Shutting down spectator registry");
-  atlasagent::HttpClient<>::GlobalShutdown();
+  atlasagent::HttpClient::GlobalShutdown();
   return 0;
 }

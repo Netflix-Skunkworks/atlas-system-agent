@@ -9,8 +9,9 @@ target_include_directories(perf_metrics
 
 target_link_libraries(perf_metrics
     PUBLIC
+    abseil::abseil
     fmt::fmt
-    tagging
+    spectator-registry
 )
 
 add_executable(perf_metrics_test
@@ -20,8 +21,7 @@ add_executable(perf_metrics_test
 target_link_libraries(perf_metrics_test
     perf_metrics
     util
-    spectator
-    measurement_utils
+    spectator-registry
     logger
     gtest::gtest
 )

@@ -10,8 +10,7 @@ target_include_directories(ethtool
 target_link_libraries(ethtool
     abseil::abseil
     fmt::fmt
-    measurement_utils
-    tagging
+    spectator-registry
 )
 
 add_executable(ethtool_test
@@ -22,7 +21,7 @@ target_link_libraries(ethtool_test
     ethtool
     gtest::gtest
     logger
-    spectator
+    spectator-registry
     util
 )
 

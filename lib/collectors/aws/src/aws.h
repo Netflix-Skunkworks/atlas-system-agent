@@ -1,9 +1,12 @@
 #pragma once
 
+#include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <lib/http_client/src/http_client.h>
 #include <lib/logger/src/logger.h>
-#include <lib/tagging/src/tagging_registry.h>
 #include <rapidjson/document.h>
+
+#include "absl/time/clock.h"
+
 
 namespace atlasagent {
 
@@ -47,11 +50,12 @@ inline std::string get_iam_endpoint() {
 
 }  // namespace detail
 
-template <typename Reg = TaggingRegistry>
+
 class Aws {
  public:
-  explicit Aws(Reg* registry) noexcept
-      : registry_{registry},
+  explicit Aws(Registry* registry) noexcept
+      :
+        registry_(registry),
         executor_{detail::get_netflix_executor()},
         token_endpoint_{detail::get_token_endpoint()},
         iam_endpoint_{detail::get_iam_endpoint()},
@@ -89,7 +93,7 @@ class Aws {
 
     resp = http_client_.Get(creds_url_, tokenHeader);
     if (resp.status != 200) {
-      registry_->GetCounter("aws.credentialsRefreshErrors")->Increment();
+      registry_->CreateCounter("aws.credentialsRefreshErrors").Increment();
       return;
     }
 
@@ -97,12 +101,12 @@ class Aws {
   }
 
  private:
-  Reg* registry_;
+  Registry* registry_;
   std::string executor_;
   std::string token_endpoint_;
   std::string iam_endpoint_;
   std::string creds_url_;
-  HttpClient<Reg> http_client_;
+  HttpClient http_client_;
 
  protected:
   void update_stats_from(absl::Time now, const std::string& json) noexcept {
@@ -110,27 +114,27 @@ class Aws {
     creds.Parse(json.c_str(), json.length());
     if (creds.HasParseError()) {
       Logger()->warn("Unable to parse {} as JSON", json);
-      registry_->GetCounter("aws.credentialsRefreshErrors")->Increment();
+      registry_->CreateCounter("aws.credentialsRefreshErrors").Increment();
       return;
     }
 
     if (!creds.IsObject()) {
       Logger()->warn("Got {} which is not a JSON object", json);
-      registry_->GetCounter("aws.credentialsRefreshErrors")->Increment();
+      registry_->CreateCounter("aws.credentialsRefreshErrors").Increment();
       return;
     }
 
     auto lastUpdated = detail::getDateFrom(creds, "LastUpdated");
     if (lastUpdated > absl::UnixEpoch()) {
       auto updatedAge = now - lastUpdated;
-      registry_->GetGauge("aws.credentialsAge")->Set(absl::ToDoubleSeconds(updatedAge));
+      registry_->CreateGauge("aws.credentialsAge").Set(absl::ToDoubleSeconds(updatedAge));
     }
 
     auto expiration = detail::getDateFrom(creds, "Expiration");
 
     if (expiration > absl::UnixEpoch()) {
       auto ttl = expiration - now;
-      registry_->GetGauge("aws.credentialsTtl")->Set(absl::ToDoubleSeconds(ttl));
+      registry_->CreateGauge("aws.credentialsTtl").Set(absl::ToDoubleSeconds(ttl));
 
       std::string bucket;
       // update some buckets
@@ -146,8 +150,7 @@ class Aws {
         bucket = "hours";
       }
 
-      registry_->GetCounter("aws.credentialsTtlBucket", spectator::Tags{{"bucket", bucket}})
-          ->Increment();
+      registry_->CreateCounter("aws.credentialsTtlBucket", {{"bucket", bucket}}).Increment();
     }
   }
 };

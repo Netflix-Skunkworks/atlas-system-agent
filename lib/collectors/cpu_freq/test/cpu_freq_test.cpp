@@ -1,39 +1,46 @@
 #include <lib/collectors/cpu_freq/src/cpu_freq.h>
 #include <lib/logger/src/logger.h>
-#include <lib/measurement_utils/src/measurement_utils.h>
+
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+#include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
 #include <gtest/gtest.h>
+#include <set>
 
 namespace {
 using atlasagent::CpuFreq;
-using Registry = spectator::TestRegistry;
 
 TEST(CpuFreq, Stats) {
-  Registry registry;
-  CpuFreq<Registry> cpufreq{&registry, "testdata/resources/cpufreq"};
-  cpufreq.Stats();
 
-  auto min_ds = registry.GetDistributionSummary("sys.minCoreFrequency");
-  auto max_ds = registry.GetDistributionSummary("sys.maxCoreFrequency");
-  auto cur_ds = registry.GetDistributionSummary("sys.curCoreFrequency");
+  auto config = Config(WriterConfig(WriterTypes::Memory));
+  auto r = Registry(config);
 
-  EXPECT_EQ(min_ds->Count(), 4);
-  EXPECT_EQ(max_ds->Count(), 4);
-  EXPECT_EQ(cur_ds->Count(), 4);
+  CpuFreq cpuFreq{&r, "lib/collectors/cpu_freq/test/resources"};
+  cpuFreq.Stats();
 
-  EXPECT_EQ(min_ds->TotalAmount(), 4 * 1200000);
-  EXPECT_EQ(max_ds->TotalAmount(), 4 * 3500000);
-  EXPECT_EQ(cur_ds->TotalAmount(), 1200188 + 1200484 + 2620000 + 3000000);
+  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+  auto messages = memoryWriter->GetMessages();
 
-  std::vector<spectator::Measurement> measures;
-  cur_ds->Measure(&measures);
-  auto map = measurements_to_map(measures, "");
-  auto it = map.find("sys.curCoreFrequency|max");
-  if (it != map.end()) {
-    EXPECT_EQ(it->second, 3000000);
-  } else {
-    FAIL() << "Unable to find max value";
-  }
+  EXPECT_EQ(messages.size(), 12);
+
+  std::multiset<std::string> expected = {
+    "d:sys.minCoreFrequency:1200000.000000\n",
+    "d:sys.maxCoreFrequency:3500000.000000\n",
+    "d:sys.curCoreFrequency:1200188.000000\n",
+    "d:sys.minCoreFrequency:1200000.000000\n",
+    "d:sys.maxCoreFrequency:3500000.000000\n",
+    "d:sys.curCoreFrequency:1200484.000000\n",
+    "d:sys.minCoreFrequency:1200000.000000\n",
+    "d:sys.maxCoreFrequency:3500000.000000\n",
+    "d:sys.curCoreFrequency:2620000.000000\n",
+    "d:sys.minCoreFrequency:1200000.000000\n",
+    "d:sys.maxCoreFrequency:3500000.000000\n",
+    "d:sys.curCoreFrequency:3000000.000000\n"
+  };
+
+  std::multiset<std::string> actual(messages.begin(), messages.end());
+
+  EXPECT_EQ(actual, expected);
 }
 
 }  // namespace

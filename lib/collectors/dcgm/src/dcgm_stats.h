@@ -1,5 +1,4 @@
-#include <lib/tagging/src/tagging_registry.h>
-#include <lib/spectator/registry.h>
+#include <thirdparty/spectator-cpp/spectator/registry.h>
 
 #include "string.h"
 #include "unistd.h"
@@ -31,29 +30,26 @@ struct DCGMConstants {
 };
 
 namespace detail {
-template <typename Reg>
-inline auto gauge(Reg* registry, const char* name, unsigned int gpu, const char* id = nullptr) {
-  auto tags = spectator::Tags{{"gpu", fmt::format("{}", gpu)}};
+inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr) {
+  std::unordered_map<std::string, std::string> tagMap = {{"gpu", fmt::format("{}", gpu)}};
   if (id != nullptr) {
-    tags.add("id", id);
+    tagMap["id"] = id;
   }
-  return registry->GetGauge(name, tags);
+  return registry->CreateGauge(name, tagMap);
 }
 
-template <typename Reg>
-inline auto counter(Reg* registry, const char* name, unsigned int gpu, const char* id = nullptr) {
-  auto tags = spectator::Tags{{"gpu", fmt::format("{}", gpu)}};
+inline auto counter(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr) {
+  std::unordered_map<std::string, std::string> tagMap = {{"gpu", fmt::format("{}", gpu)}};
   if (id != nullptr) {
-    tags.add("id", id);
+    tagMap["id"] = id;
   }
-  return registry->GetCounter(name, tags);
+  return registry->CreateCounter(name, tagMap);
 }
 }  // namespace detail
 
-template <typename Reg = atlasagent::TaggingRegistry>
 class GpuMetricsDCGM {
  public:
-  GpuMetricsDCGM(Reg* registry) : registry_{registry} {};
+  GpuMetricsDCGM(Registry* registry) : registry_{registry} {};
   ~GpuMetricsDCGM(){};
 
   // Abide by the C++ rule of 5
@@ -65,5 +61,5 @@ class GpuMetricsDCGM {
 
  private:
   bool update_metrics(std::map<int, std::vector<double>>& dataMap);
-  Reg* registry_;
+  Registry* registry_;
 };

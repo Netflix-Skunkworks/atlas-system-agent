@@ -9,9 +9,9 @@ target_include_directories(monotonic_timer
 
 target_link_libraries(monotonic_timer
     PUBLIC
+    abseil::abseil
     fmt::fmt
-    spectator
-    tagging
+    spectator-registry
 )
 
 # Add monotonic_timer test executable
@@ -23,8 +23,7 @@ target_link_libraries(monotonic_timer_test
     monotonic_timer
     util
     logger
-    spectator
-    measurement_utils
+    spectator-registry
     gtest::gtest
 )
 

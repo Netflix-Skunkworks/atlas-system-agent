@@ -14,8 +14,8 @@ target_link_libraries(service_monitor
     SDBusCpp::sdbus-c++
     fmt::fmt
     abseil::abseil
-    spectator
-    tagging
+    spectator-registry
+    util
 )
 
 # Add service monitor test executable

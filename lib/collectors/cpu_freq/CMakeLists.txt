@@ -8,8 +8,9 @@ target_include_directories(cpu_freq
 )
 
 target_link_libraries(cpu_freq
+    abseil::abseil
     fmt::fmt
-    tagging
+    spectator-registry
 )
 
 add_executable(cpu_freq_test
@@ -20,8 +21,7 @@ target_link_libraries(cpu_freq_test
     cpu_freq
     gtest::gtest
     logger
-    measurement_utils
-    spectator
+    spectator-registry
     util    
 )
 

@@ -2,20 +2,20 @@
 
 namespace atlasagent {
 
-template class Ntp<atlasagent::TaggingRegistry>;
-template class Ntp<spectator::TestRegistry>;
-template class atlasagent::Ntp<spectator::TestRegistry, TestClock>;
+template class atlasagent::Ntp<TestClock>;
+template class Ntp<detail::abseil_clock>;
 
-template <typename Reg, typename Clock>
-Ntp<Reg, Clock>::Ntp(Reg* registry) noexcept
+template <typename Clock>
+Ntp<Clock>::Ntp(Registry* registry) noexcept
 
-    : lastSampleAge_{registry->GetGauge("sys.time.lastSampleAge")},
-      estimatedError_{registry->GetGauge("sys.time.estimatedError")},
-      unsynchronized_{registry->GetGauge("sys.time.unsynchronized")},
+    : registry_{registry},
+      lastSampleAge_{registry->CreateGauge("sys.time.lastSampleAge")},
+      estimatedError_{registry->CreateGauge("sys.time.estimatedError")},
+      unsynchronized_{registry->CreateGauge("sys.time.unsynchronized")},
       lastSampleTime_{Clock::now()} {}
 
-template <typename Reg, typename Clock>
-void Ntp<Reg, Clock>::update_stats() noexcept {
+template <typename Clock>
+void Ntp<Clock>::update_stats() noexcept {
   if (can_execute("chronyc")) {
     auto tracking_csv = read_output_string("chronyc -c tracking");
     auto sources_csv = read_output_lines("chronyc -c sources");
@@ -28,21 +28,21 @@ void Ntp<Reg, Clock>::update_stats() noexcept {
   ntp_stats(err, &time);
 }
 
-template <typename Reg, typename Clock>
-void Ntp<Reg, Clock>::ntp_stats(int err, timex* time) {
+template <typename Clock>
+void Ntp<Clock>::ntp_stats(int err, timex* time) {
   if (err == -1) {
     atlasagent::Logger()->warn("Unable to ntp_gettime: {}", strerror(errno));
     return;
   }
 
-  unsynchronized_->Set(err == TIME_ERROR);
+  unsynchronized_.Set(err == TIME_ERROR);
   if (err != TIME_ERROR) {
-    estimatedError_->Set(time->esterror / 1e6);
+    estimatedError_.Set(time->esterror / 1e6);
   }
 }
 
-template <typename Reg, typename Clock>
-void Ntp<Reg, Clock>::chrony_stats(const std::string& tracking,
+template <typename Clock>
+void Ntp<Clock>::chrony_stats(const std::string& tracking,
                                    const std::vector<std::string>& sources) noexcept {
   std::vector<std::string> fields = absl::StrSplit(tracking, ',');
 
@@ -65,7 +65,7 @@ void Ntp<Reg, Clock>::chrony_stats(const std::string& tracking,
     }
   }
 
-  lastSampleAge_->Set(absl::ToDoubleSeconds(Clock::now() - lastSampleTime_));
+  lastSampleAge_.Set(absl::ToDoubleSeconds(Clock::now() - lastSampleTime_));
 }
 
 }  // namespace atlasagent

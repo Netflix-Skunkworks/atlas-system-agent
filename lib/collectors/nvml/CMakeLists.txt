@@ -13,10 +13,10 @@ target_link_libraries(nvml
     fmt::fmt
     absl::time
     spdlog::spdlog
-    spectator
+    spectator-registry
 )
 
-# Add nvml test executable
+#Add nvml test executable
 add_executable(gpu_test
     test/gpu_test.cpp
 )
@@ -25,8 +25,7 @@ target_link_libraries(gpu_test
     nvml
     util
     logger
-    spectator
-    measurement_utils
+    spectator-registry
     gtest::gtest
 )
 

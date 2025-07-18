@@ -10,7 +10,7 @@ target_include_directories(pressure_stall
 target_link_libraries(pressure_stall
     abseil::abseil
     fmt::fmt
-    tagging
+    spectator-registry
 )
 
 # Add pressure stall test executable
@@ -22,8 +22,7 @@ target_link_libraries(pressure_stall_test
     pressure_stall
     util
     logger
-    measurement_utils
-    spectator
+    spectator-registry
     abseil::abseil
     gtest::gtest
 )

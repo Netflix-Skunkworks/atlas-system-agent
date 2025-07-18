@@ -11,6 +11,7 @@ target_link_libraries(aws
     INTERFACE
     fmt::fmt
     rapidjson
+    spectator-registry
 )
 
 # Add aws test executable
@@ -21,8 +22,7 @@ add_executable(aws_test
 target_link_libraries(aws_test
     aws
     util
-    spectator
-    measurement_utils
+    spectator-registry
     logger
     gtest::gtest
 )

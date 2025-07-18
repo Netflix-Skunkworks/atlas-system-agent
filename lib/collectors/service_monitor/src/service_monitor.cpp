@@ -1,12 +1,12 @@
 #include "service_monitor.h"
 #include <lib/util/src/util.h>
 
-template class ServiceMonitor<atlasagent::TaggingRegistry>;
+
 
 // The constructor takes a registry, a vector of regex patterns, and a maximum number of services to monitor.
 // If the maximum number of services is not equal to the default value, it logs a message indicating the custom value.
-template <typename Reg>
-ServiceMonitor<Reg>::ServiceMonitor(Reg* registry, std::vector<std::regex> config, unsigned int max_services)
+
+ServiceMonitor::ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services)
     : registry_{registry},
       config_{std::move(config)},
       maxMonitoredServices{max_services == ServiceMonitorConstants::DefaultMonitoredServices ? ServiceMonitorConstants::DefaultMonitoredServices : max_services} {
@@ -16,8 +16,8 @@ ServiceMonitor<Reg>::ServiceMonitor(Reg* registry, std::vector<std::regex> confi
   }
 }
 
-template <class Reg>
-bool ServiceMonitor<Reg>::init_monitored_services() try {
+
+bool ServiceMonitor::init_monitored_services() try {
   // Read & set the CPU core count which is used to calculate CPU usage 
   auto cpuCores = get_cpu_cores();
   if (cpuCores.has_value() == false) {
@@ -79,8 +79,7 @@ bool ServiceMonitor<Reg>::init_monitored_services() try {
   return false;
 }
 
-template <class Reg>
-bool ServiceMonitor<Reg>::update_metrics() try {
+bool ServiceMonitor::update_metrics() try {
   // Tracks non-critical metric update failures
   bool success = true;
 
@@ -119,7 +118,7 @@ bool ServiceMonitor<Reg>::update_metrics() try {
   for (const auto& service : servicesStates) {
 
     const auto newServiceState = fmt::format("{}.{}", service.activeState, service.subState);
-    detail::gaugeServiceState(this->registry_, ServiceMonitorConstants::ServiceStatusName, service.name.c_str(), newServiceState.c_str())->Set(1);
+    detail::gaugeServiceState(this->registry_, ServiceMonitorConstants::ServiceStatusName, service.name.c_str(), newServiceState.c_str()).Set(1);
 
     // If the service is not active and running, we do not want to send metrics that depend on /proc/[pid]
     // The systemd service variable 'main pid' remains set even if a process/service is not running.
@@ -156,15 +155,15 @@ bool ServiceMonitor<Reg>::update_metrics() try {
     }
     if (serviceRSS.has_value()) {
       detail::gauge(this->registry_, ServiceMonitorConstants::RssName, service.name.c_str())
-          ->Set(serviceRSS.value() * this->pageSize);
+          .Set(serviceRSS.value() * this->pageSize);
     }
     if (serviceFds.has_value()) {
       detail::gauge(this->registry_, ServiceMonitorConstants::FdsName, service.name.c_str())
-          ->Set(serviceFds.value());
+          .Set(serviceFds.value());
     }
     if (cpuUsage.has_value()) {
       detail::gauge(this->registry_, ServiceMonitorConstants::CpuUsageName, service.name.c_str())
-          ->Set(cpuUsage.value());
+          .Set(cpuUsage.value());
     }
   }
 
@@ -187,8 +186,7 @@ bool ServiceMonitor<Reg>::update_metrics() try {
 }
 
 // TODO: Shutdown module if no services are being monitored
-template <class Reg>
-bool ServiceMonitor<Reg>::gather_metrics() {
+bool ServiceMonitor::gather_metrics() {
   // To begin sending metrics, we must first determine the core count, page size, and determine all the systemd 
   // services that match our config. Once init_monitored_services() completes successfully, we can start 
   // sending metrics to spectatord. If we fail to determine these values, we will continue to retry until success.
