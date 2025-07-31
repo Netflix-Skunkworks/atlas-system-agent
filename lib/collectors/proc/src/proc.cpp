@@ -95,8 +95,8 @@ void sum_tcp_states(FILE* fp, std::array<int, kConnStates>* connections) noexcep
     }
     const char* st = fields[3].c_str();
     auto state = static_cast<int>(strtol(st, nullptr, 16));
-    if (state < kConnStates) {
-      ++(*connections)[state];
+    if (state > 0 && state <= kConnStates) {
+      ++(*connections)[state - 1];
     } else {
       Logger()->info("Ignoring connection state {} for line: {}", state, line);
     }
