@@ -12,6 +12,7 @@
 #include <lib/collectors/nvml/src/gpumetrics.h>
 #include <lib/collectors/ntp/src/ntp.h>
 #include <lib/collectors/perf_metrics/src/perf_metrics.h>
+#include <lib/collectors/perfspect/src/perfspect.h>
 #include <lib/collectors/pressure_stall/src/pressure_stall.h>
 #include <lib/collectors/proc/src/proc.h>
 #include <lib/collectors/service_monitor/src/service_monitor.h>
@@ -263,7 +264,12 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
     gpuDCGM.emplace(registry);
   }
 
-  // TODO: DCGM, EBS, and ServiceMonitor have Dynamic metric collection. During each iteration we have to
+  std::optional<Perfspect> perfspectMetrics{std::nullopt};
+  if (atlasagent::is_file_present(PerfspectConstants::BinaryLocation)) {
+    perfspectMetrics.emplace(registry);
+  }
+
+  // TODO: DCGM, EBS, Perfspect and ServiceMonitor have Dynamic metric collection. During each iteration we have to
   // check if these optionals have a set value. lets improve how we handle this
   
   // Create a ServiceMonitor object to monitor Systemd services if any configs are valid
@@ -334,6 +340,10 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
 
       if (serviceMetrics.has_value() && serviceMetrics.value().gather_metrics() == false) {
         Logger()->error("Failed to gather Service metrics");
+      }
+
+      if (perfspectMetrics.has_value() && perfspectMetrics.value().gather_metrics() == false) {
+        Logger()->error("Failed to gather Perfspect metrics");
       }
 
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
