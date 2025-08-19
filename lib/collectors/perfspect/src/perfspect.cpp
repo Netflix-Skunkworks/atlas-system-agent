@@ -3,13 +3,22 @@
 
 #include <boost/process.hpp>
 
-bool valid_instance() {}
+bool valid_instance() {
+  // TODO: Implement actual validation logic
+  return true;
+}
 
 bool Perfspect::start_script() {
   try {
     std::string fullBinaryPath = std::string(PerfspectConstants::BinaryLocation) + "/" + PerfspectConstants::BinaryName;
+    
+    // Use individual argument constants
     this->scriptProcess = boost::process::child(fullBinaryPath,
-                                                PerfspectConstants::arguments,
+                                                PerfspectConstants::command,
+                                                PerfspectConstants::eventfileFlag,
+                                                PerfspectConstants::eventfilePath,
+                                                PerfspectConstants::metricfileFlag,
+                                                PerfspectConstants::metricfilePath,
                                                 boost::process::std_out > this->outStream);
     this->scriptStarted = true;
     return true;
@@ -19,7 +28,7 @@ bool Perfspect::start_script() {
   }
 }
 
-void Perfspect::read_output(std::vector<std::string>& perfspectOutput) {
+bool Perfspect::read_output(std::vector<std::string>& perfspectOutput) {
   if (!this->scriptStarted || !this->scriptProcess.running()) {
     this->scriptStarted = false;
     atlasagent::Logger()->error("Perfspect script process has died.");
@@ -36,8 +45,9 @@ void Perfspect::read_output(std::vector<std::string>& perfspectOutput) {
     atlasagent::Logger()->info("Perfspect output: {}", line);
     perfspectOutput.push_back(line);
   }
+  
+  return true;
 }
-
 
 bool Perfspect::gather_metrics() {
   if (this->scriptStarted == false) {
@@ -49,7 +59,7 @@ bool Perfspect::gather_metrics() {
   atlasagent::Logger()->info("Gathering Perfspect metrics...");
 
   std::vector<std::string> perfspectOutput;
-  if (false == this->read_output(pefspectOutput)) {
+  if (false == this->read_output(perfspectOutput)) {
     return false;
   }
 

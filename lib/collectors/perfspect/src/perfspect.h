@@ -10,9 +10,13 @@
 struct PerfspectConstants {
   static constexpr auto BinaryLocation{"/apps/nflx-perfspect/bin"};
   static constexpr auto BinaryName{"perfspect"};
-  static constexpr auto arguments{
-      "metrics --eventfile /apps/nflx-perfspect/etc/events-intel.txt --metricfile "
-      "/apps/nflx-perfspect/etc/metrics-intel.json"};
+  
+  // Individual argument constants
+  static constexpr auto command{"metrics"};
+  static constexpr auto eventfileFlag{"--eventfile"};
+  static constexpr auto eventfilePath{"/apps/nflx-perfspect/etc/events-intel.txt"};
+  static constexpr auto metricfileFlag{"--metricfile"};
+  static constexpr auto metricfilePath{"/apps/nflx-perfspect/etc/metrics-intel.json"};
 };
 bool valid_instance();
 
@@ -34,6 +38,7 @@ class Perfspect {
  private:
   bool start_script();
   bool read_output(std::vector<std::string>& perfspectOutput);
+  
 
   Registry* registry_;
   bool scriptStarted{false};
