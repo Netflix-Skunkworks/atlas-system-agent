@@ -7,40 +7,34 @@
 #include <gtest/gtest.h>
 #include <set>
 
-namespace {
+namespace
+{
 using atlasagent::CpuFreq;
 
-TEST(CpuFreq, Stats) {
+TEST(CpuFreq, Stats)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
 
-  auto config = Config(WriterConfig(WriterTypes::Memory));
-  auto r = Registry(config);
+    CpuFreq cpuFreq{&r, "lib/collectors/cpu_freq/test/resources"};
+    cpuFreq.Stats();
 
-  CpuFreq cpuFreq{&r, "lib/collectors/cpu_freq/test/resources"};
-  cpuFreq.Stats();
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
 
-  auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-  auto messages = memoryWriter->GetMessages();
+    EXPECT_EQ(messages.size(), 12);
 
-  EXPECT_EQ(messages.size(), 12);
+    std::multiset<std::string> expected = {
+        "d:sys.minCoreFrequency:1200000.000000\n", "d:sys.maxCoreFrequency:3500000.000000\n",
+        "d:sys.curCoreFrequency:1200188.000000\n", "d:sys.minCoreFrequency:1200000.000000\n",
+        "d:sys.maxCoreFrequency:3500000.000000\n", "d:sys.curCoreFrequency:1200484.000000\n",
+        "d:sys.minCoreFrequency:1200000.000000\n", "d:sys.maxCoreFrequency:3500000.000000\n",
+        "d:sys.curCoreFrequency:2620000.000000\n", "d:sys.minCoreFrequency:1200000.000000\n",
+        "d:sys.maxCoreFrequency:3500000.000000\n", "d:sys.curCoreFrequency:3000000.000000\n"};
 
-  std::multiset<std::string> expected = {
-    "d:sys.minCoreFrequency:1200000.000000\n",
-    "d:sys.maxCoreFrequency:3500000.000000\n",
-    "d:sys.curCoreFrequency:1200188.000000\n",
-    "d:sys.minCoreFrequency:1200000.000000\n",
-    "d:sys.maxCoreFrequency:3500000.000000\n",
-    "d:sys.curCoreFrequency:1200484.000000\n",
-    "d:sys.minCoreFrequency:1200000.000000\n",
-    "d:sys.maxCoreFrequency:3500000.000000\n",
-    "d:sys.curCoreFrequency:2620000.000000\n",
-    "d:sys.minCoreFrequency:1200000.000000\n",
-    "d:sys.maxCoreFrequency:3500000.000000\n",
-    "d:sys.curCoreFrequency:3000000.000000\n"
-  };
+    std::multiset<std::string> actual(messages.begin(), messages.end());
 
-  std::multiset<std::string> actual(messages.begin(), messages.end());
-
-  EXPECT_EQ(actual, expected);
+    EXPECT_EQ(actual, expected);
 }
 
 }  // namespace

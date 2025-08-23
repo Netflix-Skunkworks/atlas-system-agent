@@ -7,11 +7,13 @@
 #include <vector>
 #include <lib/files/src/files.h>
 
-struct UtilConstants {
-  static constexpr auto ServiceActiveCmd{"systemctl is-active --quiet"};
+struct UtilConstants
+{
+    static constexpr auto ServiceActiveCmd{"systemctl is-active --quiet"};
 };
 
-namespace atlasagent {
+namespace atlasagent
+{
 
 StdIoFile open_file(const std::string& prefix, const char* name);
 
@@ -21,8 +23,7 @@ int64_t read_num_from_file(const std::string& prefix, const char* fn);
 
 std::vector<int64_t> read_num_vector_from_file(const std::string& prefix, const char* fn);
 
-void parse_kv_from_file(const std::string& prefix, const char* fn,
-                        std::unordered_map<std::string, int64_t>* stats);
+void parse_kv_from_file(const std::string& prefix, const char* fn, std::unordered_map<std::string, int64_t>* stats);
 
 bool starts_with(const char* line, const char* prefix) noexcept;
 
