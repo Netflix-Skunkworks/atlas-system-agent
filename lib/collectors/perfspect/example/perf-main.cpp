@@ -25,12 +25,10 @@ int main()
         return 0;
     }
 
-    
-
     while (true)
     {
         perfspectMetrics->gather_metrics();
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        std::this_thread::sleep_for(std::chrono::seconds(62));
     }
 
 }
