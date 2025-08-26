@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <optional>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
@@ -16,9 +17,11 @@ struct PerfspectConstants
     // Individual argument constants
     static constexpr auto command{"metrics"};
     static constexpr auto eventfileFlag{"--eventfile"};
-    static constexpr auto eventfilePath{"/apps/nflx-perfspect/etc/events-amd.txt"};
+    static constexpr auto eventfilePathAmd{"/apps/nflx-perfspect/etc/events-amd.txt"};
+    static constexpr auto eventfilePathIntel{"/apps/nflx-perfspect/etc/events-intel.txt"};
     static constexpr auto metricfileFlag{"--metricfile"};
-    static constexpr auto metricfilePath{"/apps/nflx-perfspect/etc/metrics-amd.json"};
+    static constexpr auto metricfilePathAmd{"/apps/nflx-perfspect/etc/metrics-amd.json"};
+    static constexpr auto metricfilePathIntel{"/apps/nflx-perfspect/etc/metrics-intel.json"};
     static constexpr auto durationFlag{"--duration"};
     static constexpr auto durationValue{"60"};
     static constexpr auto liveFlag{"--live"};
@@ -70,7 +73,7 @@ inline auto perfspectCounter(Registry* registry, const std::string_view name)
 class Perfspect
 {
    public:
-    Perfspect(Registry* registry) : registry_(registry){};
+    Perfspect(Registry* registry, std::pair<char, char> instanceInfo);
     ~Perfspect() { cleanup_process(); };
 
     // Abide by the C++ rule of 5
@@ -80,17 +83,20 @@ class Perfspect
     Perfspect& operator=(Perfspect&& other) = delete;
 
     bool gather_metrics();
+    static std::optional<std::pair<char, char>> is_valid_instance();
 
    private:
     bool process_completed();
     bool start_script();
-    bool read_output(std::vector<std::string>& perfspectOutput);
+    bool read_output();
     void cleanup_process();
     bool sendMetricsAMD(const std::vector<std::string>& perfspectOutput);
 
     Registry* registry_;
     bool scriptStarted{false};
     std::vector<std::string> perfspectOutput;
+    bool isAmd{false};
+    char version;
 
     std::unique_ptr<boost::process::child> scriptProcess;
     std::unique_ptr<boost::process::ipstream> outStream;  // Pipe for reading stdout
