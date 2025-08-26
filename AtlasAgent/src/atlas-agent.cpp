@@ -263,8 +263,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
     gpuDCGM.emplace(registry);
   }
 
-
-  // TODO: DCGM, EBS, Perfspect and ServiceMonitor have Dynamic metric collection. During each iteration we have to
+  // TODO: DCGM, EBS, and ServiceMonitor have Dynamic metric collection. During each iteration we have to
   // check if these optionals have a set value. lets improve how we handle this
   
   // Create a ServiceMonitor object to monitor Systemd services if any configs are valid
@@ -335,10 +334,6 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
 
       if (serviceMetrics.has_value() && serviceMetrics.value().gather_metrics() == false) {
         Logger()->error("Failed to gather Service metrics");
-      }
-
-      if (perfspectMetrics.has_value() && perfspectMetrics.value().gather_metrics() == false) {
-        Logger()->error("Failed to gather Perfspect metrics");
       }
 
       auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
