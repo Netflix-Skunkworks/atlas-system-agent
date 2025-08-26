@@ -218,6 +218,6 @@ bool Perfspect::gather_metrics()
 		this->start_script();
 		return false;
 	}
-
+    this->start_script();
     return true;
 }
