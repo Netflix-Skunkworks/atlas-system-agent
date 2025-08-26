@@ -14,6 +14,7 @@ target_link_libraries(nvml
     absl::time
     spdlog::spdlog
     spectator-registry
+    ${CMAKE_DL_LIBS}
 )
 
 #Add nvml test executable

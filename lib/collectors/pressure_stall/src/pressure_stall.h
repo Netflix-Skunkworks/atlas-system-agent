@@ -4,21 +4,21 @@
 #include <lib/util/src/util.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
+namespace atlasagent
+{
 
-namespace atlasagent {
+class PressureStall
+{
+   public:
+    explicit PressureStall(Registry* registry, std::string path_prefix = "/proc/pressure") noexcept;
 
+    void set_prefix(std::string new_prefix) noexcept;
 
-class PressureStall {
- public:
-  explicit PressureStall(Registry* registry, std::string path_prefix = "/proc/pressure") noexcept;
+    void update_stats() noexcept;
 
-  void set_prefix(std::string new_prefix) noexcept;
-
-  void update_stats() noexcept;
-
- private:
-  Registry* registry_;
-  std::string path_prefix_;
-  static constexpr double MICROS = 1000 * 1000.0;
+   private:
+    Registry* registry_;
+    std::string path_prefix_;
+    static constexpr double MICROS = 1000 * 1000.0;
 };
 }  // namespace atlasagent
