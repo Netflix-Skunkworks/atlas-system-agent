@@ -18,10 +18,6 @@ Perfspect::Perfspect(Registry* registry, std::pair<char, char> instanceInfo)
     atlasagent::Logger()->info("Perfspect initialized for instance type: {}{}", instanceInfo.first, instanceInfo.second);
 };
 
-
-
-
-
 std::optional<std::pair<char, char>> Perfspect::is_valid_instance()
 {
     if (false == atlasagent::is_file_present(PerfspectConstants::BinaryLocation))
@@ -118,25 +114,20 @@ void Perfspect::cleanup_process()
 
 bool Perfspect::read_output()
 {
-    std::string line;
-    int stdout_lines = 0;
-
     if (this->outStream == nullptr)
     {
         atlasagent::Logger()->debug("No output stream available for reading");
         return false;
     }
 
+    std::string line;
     while (std::getline(*this->outStream, line))
     {
-        stdout_lines++;
-        if (line.empty() == true)
+        if (!line.empty())
         {
-            continue;  // Skip empty lines
+            atlasagent::Logger()->info("Agent Read Output from Perfspect: {}", line);
+            this->perfspectOutput.push_back(line);
         }
-
-        atlasagent::Logger()->info("Agent Read Output from Perfspect: {}", line);
-        this->perfspectOutput.push_back(line);
     }
 
     return true;
@@ -181,7 +172,6 @@ bool Perfspect::sendMetricsAMD(const std::vector<std::string>& perfspectOutput)
 
     detail::perfspectGauge(this->registry_, PerfspectConstants::cpuFreqMetricName).Set(averageCpuFrequency);
     detail::perfspectGauge(this->registry_, PerfspectConstants::cpiMetricName).Set(averageCPI);
-    detail::perfspectGauge(this->registry_, PerfspectConstants::gipsMetricName).Set(averageGIPS);
     detail::perfspectGauge(this->registry_, PerfspectConstants::l2DataCacheMissMetricName).Set(averageL2DataCacheMisses);
     detail::perfspectGauge(this->registry_, PerfspectConstants::l2CodeCacheMissMetricName).Set(averageL2CodeCacheMisses);
 
