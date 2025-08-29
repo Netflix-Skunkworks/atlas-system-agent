@@ -22,3 +22,8 @@ target_link_libraries(perfspect_example
     spectator-registry
     util
 )
+
+# Add static linking for better portability
+target_link_options(perfspect_example PRIVATE  
+    -static-libstdc++
+)

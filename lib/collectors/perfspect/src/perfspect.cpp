@@ -168,21 +168,20 @@ bool Perfspect::sendMetricsAMD(const std::vector<std::string>& perfspectOutput)
     auto averageGIPS = data.gips / 12.0;
     auto averageL2DataCacheMisses = data.l2DataCacheMisses / 12.0;
     auto averageL2CodeCacheMisses = data.l2CodeCacheMisses / 12.0;
-	
 
     detail::perfspectGauge(this->registry_, PerfspectConstants::cpuFreqMetricName).Set(averageCpuFrequency);
     detail::perfspectGauge(this->registry_, PerfspectConstants::cpiMetricName).Set(averageCPI);
-    detail::perfspectGauge(this->registry_, PerfspectConstants::l2DataCacheMissMetricName).Set(averageL2DataCacheMisses);
-    detail::perfspectGauge(this->registry_, PerfspectConstants::l2CodeCacheMissMetricName).Set(averageL2CodeCacheMisses);
+    detail::perfspectGauge(this->registry_, PerfspectConstants::l2CacheMissRateMetricName, PerfspectConstants::CodeMetricId).Set(averageL2CodeCacheMisses);
+    detail::perfspectGauge(this->registry_, PerfspectConstants::l2CacheMissRateMetricName, PerfspectConstants::DataMetricId).Set(averageL2DataCacheMisses);
 
     auto totalInstructions = averageGIPS * 60 * 1'000'000'000;
     detail::perfspectCounter(this->registry_, PerfspectConstants::totalInstructionsMetricName).Increment(totalInstructions);
 
-    auto totalL2DataCacheMisses = (averageL2DataCacheMisses / 1000.0) * totalInstructions;
-    detail::perfspectCounter(this->registry_, PerfspectConstants::totalL2DataCacheMissesMetricName).Increment(totalL2DataCacheMisses);
-
     auto totalL2CodeCacheMisses = (averageL2CodeCacheMisses / 1000.0) * totalInstructions;
-    detail::perfspectCounter(this->registry_, PerfspectConstants::totalL2CodeCacheMissesMetricName).Increment(totalL2CodeCacheMisses);
+    detail::perfspectCounter(this->registry_, PerfspectConstants::totalL2CacheMissesMetricName, PerfspectConstants::CodeMetricId).Increment(totalL2CodeCacheMisses);
+
+    auto totalL2DataCacheMisses = (averageL2DataCacheMisses / 1000.0) * totalInstructions;
+    detail::perfspectCounter(this->registry_, PerfspectConstants::totalL2CacheMissesMetricName, PerfspectConstants::DataMetricId).Increment(totalL2DataCacheMisses);
 
 	atlasagent::Logger()->info("Avg CPU Freq: {}, Avg CPI: {}, Avg GIPS: {}, Avg L2 Data Cache Misses: {}, Avg L2 Code Cache Misses: {}",
 		averageCpuFrequency, averageCPI, averageGIPS, averageL2DataCacheMisses, averageL2CodeCacheMisses);

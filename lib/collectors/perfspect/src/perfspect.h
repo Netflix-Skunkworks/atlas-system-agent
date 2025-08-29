@@ -26,14 +26,17 @@ struct PerfspectConstants
     static constexpr auto durationValue{"60"};
     static constexpr auto liveFlag{"--live"};
 
-    static constexpr auto cpuFreqMetricName{"perfspect.cpu.frequency"};
-    static constexpr auto cpiMetricName{"perfspect.cpu.cyclesPerInstruction"};
-    static constexpr auto l2DataCacheMissMetricName{"perfspect.cpu.l2DataCacheMisses"};
-    static constexpr auto l2CodeCacheMissMetricName{"perfspect.cpu.l2CodeCacheMisses"};
-    static constexpr auto gipsMetricName{"perfspect.cpu.gips"};
-    static constexpr auto totalInstructionsMetricName{"perfspect.cpu.totalInstructions"};
-    static constexpr auto totalL2DataCacheMissesMetricName{"perfspect.cpu.totalL2DataCacheMisses"};
-    static constexpr auto totalL2CodeCacheMissesMetricName{"perfspect.cpu.totalL2CodeCacheMisses"};
+    static constexpr auto cpuFreqMetricName{"cpu.perfspect.frequency"};
+    static constexpr auto cpiMetricName{"cpu.perfspect.cyclesPerInstruction"};
+    
+    static constexpr auto totalInstructionsMetricName{"cpu.perfspect.totalInstructions"};
+    
+    static constexpr auto totalL2CacheMissesMetricName{"cpu.perfspect.totalL2CacheMisses"};
+    
+    static constexpr auto l2CacheMissRateMetricName{"cpu.perfspect.l2CacheMissRatePti"};
+
+    static constexpr auto CodeMetricId{"code"};
+    static constexpr auto DataMetricId{"data"};
 
     static constexpr auto FiveSecondIntervals{12}; // 12 intervals of 5 seconds each for a total of 60 seconds
 
@@ -48,24 +51,21 @@ struct PerfspectData
     float gips{0.0};  // Giga Instructions Per Second
 };
 
-
-
-
-
-
-
-
 bool valid_instance();
 
 namespace detail
 {
-inline auto perfspectGauge(Registry* registry, const std::string_view name)
+inline auto perfspectGauge(Registry* registry, const std::string_view name, const char* id = nullptr)
 {
-    return registry->CreateGauge(std::string(name));
+    return id == nullptr 
+        ? registry->CreateGauge(std::string(name))
+        : registry->CreateGauge(std::string(name), {{"id", id}});
 }
-inline auto perfspectCounter(Registry* registry, const std::string_view name)
+inline auto perfspectCounter(Registry* registry, const std::string_view name, const char* id = nullptr)
 {
-    return registry->CreateCounter(std::string(name));
+    return id == nullptr 
+        ? registry->CreateCounter(std::string(name))
+        : registry->CreateCounter(std::string(name), {{"id", id}});
 }
 
 }  // namespace detail
