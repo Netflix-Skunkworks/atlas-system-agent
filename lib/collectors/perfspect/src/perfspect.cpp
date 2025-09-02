@@ -51,6 +51,7 @@ std::optional<std::pair<char, char>> Perfspect::is_valid_instance()
     return std::make_pair(generation, processor);
 }
 
+
 bool Perfspect::start_script()
 {
     try
@@ -77,7 +78,6 @@ bool Perfspect::start_script()
             PerfspectConstants::durationFlag, PerfspectConstants::durationValue, PerfspectConstants::liveFlag,
             boost::process::std_out > *this->outStream, boost::process::std_err > *this->errStream);
         
-        this->scriptStarted = true;
         atlasagent::Logger()->info("Perfspect process started successfully with PID: {}", this->scriptProcess->id());
         return true;
     }
@@ -108,115 +108,96 @@ void Perfspect::cleanup_process()
     }
     this->outStream.reset();
     this->errStream.reset();
-    this->scriptStarted = false;
-    this->perfspectOutput.clear();
 }
 
-bool Perfspect::read_output()
+std::optional<std::string> Perfspect::readOutputNew()
 {
     if (this->outStream == nullptr)
     {
-        atlasagent::Logger()->debug("No output stream available for reading");
-        return false;
+        atlasagent::Logger()->debug("No output stream available for checking");
+        return std::nullopt;
+    }
+
+    if (this->outStream->rdbuf()->in_avail() <= 0)
+    {
+        return std::nullopt; // No data available
     }
 
     std::string line;
-    while (std::getline(*this->outStream, line))
+    std::getline(*this->outStream, line);
+    if (this->firstIteration == true)
     {
-        if (!line.empty())
-        {
-            atlasagent::Logger()->info("Agent Read Output from Perfspect: {}", line);
-            this->perfspectOutput.push_back(line);
-        }
+        std::getline(*this->outStream, line);
+        this->firstIteration = false;
     }
-
-    return true;
+    return line;
 }
 
-bool Perfspect::sendMetricsAMD(const std::vector<std::string>& perfspectOutput)
+std::optional<PerfspectData> parsePerfspectLine(const std::string& line)
 {
-	if (perfspectOutput.size() < 13)
-	{
-		atlasagent::Logger()->info("Not enough perfspect output collected: {}/13 lines", perfspectOutput.size());
-		return false;
-	}
+    std::istringstream ss(line);
+    std::string item;
+    std::vector<std::string> parts;
 
-    struct PerfspectData data{};
-    for (unsigned int i = 1; i < 13; i++)
+    while (std::getline(ss, item, ','))
     {
-        std::string line = perfspectOutput[i];
-
-        std::vector<std::string> parts;
-        std::string part;
-        std::istringstream ss(line);
-        while (std::getline(ss, part, ','))
-        {
-            parts.push_back(part);
-        }
-
-        data.cpuFrequency += std::stof(parts[4]);
-        data.cyclesPerInstruction += std::stof(parts[5]);
-        data.gips += std::stof(parts[6]);
-        data.l2DataCacheMisses += std::stof(parts[8]);
-        data.l2CodeCacheMisses += std::stof(parts[9]);
-		atlasagent::Logger()->info("PerfspectLine {}: CPU Freq: {}, CPI: {}, GIPS: {}, L2 Data Cache Misses: {}, L2 Code Cache Misses: {}",
-			i, parts[4], parts[5], parts[6], parts[8], parts[9]);
+        parts.push_back(item);
     }
 
-    auto averageCpuFrequency = data.cpuFrequency / 12.0;
-    auto averageCPI = data.cyclesPerInstruction / 12.0;
-    auto averageGIPS = data.gips / 12.0;
-    auto averageL2DataCacheMisses = data.l2DataCacheMisses / 12.0;
-    auto averageL2CodeCacheMisses = data.l2CodeCacheMisses / 12.0;
+    if (parts.size() != 10)
+    {
+        return std::nullopt; // Invalid line format
+    }
 
-    detail::perfspectGauge(this->registry_, PerfspectConstants::cpuFreqMetricName).Set(averageCpuFrequency);
-    detail::perfspectGauge(this->registry_, PerfspectConstants::cpiMetricName).Set(averageCPI);
-    detail::perfspectGauge(this->registry_, PerfspectConstants::l2CacheMissRateMetricName, PerfspectConstants::CodeMetricId).Set(averageL2CodeCacheMisses);
-    detail::perfspectGauge(this->registry_, PerfspectConstants::l2CacheMissRateMetricName, PerfspectConstants::DataMetricId).Set(averageL2DataCacheMisses);
+    PerfspectData data{};
+    data.cpuFrequency = std::stof(parts[4]);
+    data.cyclesPerSecond = std::stof(parts[5]);
+    data.instructionsPerSecond = std::stof(parts[6]);
+    data.l2CacheMissesPerSecond = std::stof(parts[7]);
 
-    auto totalInstructions = averageGIPS * 60 * 1'000'000'000;
-    detail::perfspectCounter(this->registry_, PerfspectConstants::totalInstructionsMetricName).Increment(totalInstructions);
+    return data;
+}
 
-    auto totalL2CodeCacheMisses = (averageL2CodeCacheMisses / 1000.0) * totalInstructions;
-    detail::perfspectCounter(this->registry_, PerfspectConstants::totalL2CacheMissesMetricName, PerfspectConstants::CodeMetricId).Increment(totalL2CodeCacheMisses);
-
-    auto totalL2DataCacheMisses = (averageL2DataCacheMisses / 1000.0) * totalInstructions;
-    detail::perfspectCounter(this->registry_, PerfspectConstants::totalL2CacheMissesMetricName, PerfspectConstants::DataMetricId).Increment(totalL2DataCacheMisses);
-
-	atlasagent::Logger()->info("Avg CPU Freq: {}, Avg CPI: {}, Avg GIPS: {}, Avg L2 Data Cache Misses: {}, Avg L2 Code Cache Misses: {}",
-		averageCpuFrequency, averageCPI, averageGIPS, averageL2DataCacheMisses, averageL2CodeCacheMisses);
-	atlasagent::Logger()->info("Total Instructions: {}, Total L2 Data Cache Misses: {}, Total L2 Code Cache Misses: {}",
-		totalInstructions, totalL2DataCacheMisses, totalL2CodeCacheMisses);
-
-    return true;
+void Perfspect::SendMetrics(PerfspectData data)
+{
+    detail::perfspectGauge(this->registry_, "cpu.perfspect.frequency").Set(data.cpuFrequency);
+    detail::perfspectCounter(this->registry_, "cpu.perfspect.totalCycles").Increment(data.cyclesPerSecond * 5);
+    detail::perfspectCounter(this->registry_, "cpu.perfspect.totalInstructions").Increment(data.instructionsPerSecond * 5);
+    detail::perfspectCounter(this->registry_, "cpu.perfspect.totalCacheMisses").Increment(data.l2CacheMissesPerSecond * 5);
 }
 
 bool Perfspect::gather_metrics()
 {
     atlasagent::Logger()->info("Checking for Perfspect metrics...");
 
-    // If the script hasn't been started start it now (required for first run)
-    if (this->scriptStarted == false)
+    // If the perfspect process has not been started or is no longer running start it
+    if (this->scriptProcess == nullptr || this->scriptProcess->running() == false)
     {
-        atlasagent::Logger()->info("Starting new 60-second perfspect collection cycle");
-        return this->start_script();
+        atlasagent::Logger()->info("No active perfspect process found, starting a new one");
+        if (this->start_script() == false)
+        {
+            atlasagent::Logger()->error("Failed to start perfspect process");
+            return false;
+        }
+        return true;
     }
-    
-    // Read available output, restart script if reading fails
-    if (this->read_output() == false)
+
+    // Check for available output and read it if present
+    auto availableOutput = this->readOutputNew();
+    if (availableOutput.has_value() == false)
     {
-        atlasagent::Logger()->info("Failed to read perfspect output");
-        this->start_script();
+        atlasagent::Logger()->info("No new perfspect output available yet");
         return false;
     }
 
-	// Send the metrics for the previous iteration and restart the script for the next iteration
-	if (false == this->sendMetricsAMD(this->perfspectOutput))
-	{
-		atlasagent::Logger()->info("Failed to send perfspect metrics");
-		this->start_script();
-		return false;
-	}
-    this->start_script();
+    // Parse the output line into a struct of data we can report
+    auto parsedDataOpt = parsePerfspectLine(availableOutput.value());
+    if (parsedDataOpt.has_value() == false)
+    {
+        atlasagent::Logger()->error("Failed to parse perfspect output line: {}", availableOutput.value());
+        return false;
+    }
+
+    SendMetrics(parsedDataOpt.value());
     return true;
 }

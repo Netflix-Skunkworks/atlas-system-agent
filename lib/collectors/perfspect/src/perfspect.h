@@ -25,30 +25,14 @@ struct PerfspectConstants
     static constexpr auto durationFlag{"--duration"};
     static constexpr auto durationValue{"60"};
     static constexpr auto liveFlag{"--live"};
-
-    static constexpr auto cpuFreqMetricName{"cpu.perfspect.frequency"};
-    static constexpr auto cpiMetricName{"cpu.perfspect.cyclesPerInstruction"};
-    
-    static constexpr auto totalInstructionsMetricName{"cpu.perfspect.totalInstructions"};
-    
-    static constexpr auto totalL2CacheMissesMetricName{"cpu.perfspect.totalL2CacheMisses"};
-    
-    static constexpr auto l2CacheMissRateMetricName{"cpu.perfspect.l2CacheMissRatePti"};
-
-    static constexpr auto CodeMetricId{"code"};
-    static constexpr auto DataMetricId{"data"};
-
-    static constexpr auto FiveSecondIntervals{12}; // 12 intervals of 5 seconds each for a total of 60 seconds
-
 };
 
 struct PerfspectData
 {
-    float cpuFrequency{0.0};
-    float cyclesPerInstruction{0.0};
-    float l2DataCacheMisses{0.0}; // Instructions per 1000 instructions
-    float l2CodeCacheMisses{0.0}; // Instructions per 1000 instructions
-    float gips{0.0};  // Giga Instructions Per Second
+    float cpuFrequency{};
+    float cyclesPerSecond{};
+    float instructionsPerSecond{};
+    float l2CacheMissesPerSecond{};
 };
 
 bool valid_instance();
@@ -86,15 +70,15 @@ class Perfspect
     static std::optional<std::pair<char, char>> is_valid_instance();
 
    private:
-    bool process_completed();
     bool start_script();
-    bool read_output();
     void cleanup_process();
-    bool sendMetricsAMD(const std::vector<std::string>& perfspectOutput);
+
+    void SendMetrics(PerfspectData data);
+    
+    std::optional<std::string> readOutputNew();
 
     Registry* registry_;
-    bool scriptStarted{false};
-    std::vector<std::string> perfspectOutput;
+    bool firstIteration{true};
     bool isAmd{false};
     char version;
 

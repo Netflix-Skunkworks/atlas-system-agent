@@ -17,14 +17,18 @@ int main()
 
     std::optional<Perfspect> perfspectMetrics{std::nullopt};
     auto instanceInfo = Perfspect::is_valid_instance();
-    if (instanceInfo.has_value() == true) 
+    if (instanceInfo.has_value() == false)
     {
-        perfspectMetrics.emplace(&registry, instanceInfo.value());
+        Logger::error("Perfspect", "No valid AMD instance found, exiting");
+        return 1;
     }
+
+    perfspectMetrics.emplace(&registry, instanceInfo.value());
+    
 
     while (true)
     {
         perfspectMetrics->gather_metrics();
-        std::this_thread::sleep_for(std::chrono::seconds(61));
+        std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }
