@@ -16,7 +16,7 @@ int main()
     Registry registry(config);
 
     std::optional<Perfspect> perfspectMetrics{std::nullopt};
-    auto instanceInfo = Perfspect::is_valid_instance();
+    auto instanceInfo = Perfspect::IsValidInstance();
     if (instanceInfo.has_value() == false)
     {
         Logger::error("Perfspect", "No valid AMD instance found, exiting");
@@ -28,7 +28,7 @@ int main()
 
     while (true)
     {
-        perfspectMetrics->gather_metrics();
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        perfspectMetrics->GatherMetrics();
+        sleep(2);
     }
 }

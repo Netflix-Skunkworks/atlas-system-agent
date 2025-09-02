@@ -3,6 +3,7 @@
 #include <lib/util/src/util.h>
 
 #include <boost/process.hpp>
+#include <boost/asio.hpp>
 
 #include <string>
 #include <string_view>
@@ -10,6 +11,7 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
+#include <chrono>
 
 
 Perfspect::Perfspect(Registry* registry, std::pair<char, char> instanceInfo) 
@@ -18,9 +20,9 @@ Perfspect::Perfspect(Registry* registry, std::pair<char, char> instanceInfo)
     atlasagent::Logger()->info("Perfspect initialized for instance type: {}{}", instanceInfo.first, instanceInfo.second);
 };
 
-std::optional<std::pair<char, char>> Perfspect::is_valid_instance()
+std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
 {
-    if (false == atlasagent::is_file_present(PerfspectConstants::BinaryLocation))
+    if (!atlasagent::is_file_present(PerfspectConstants::BinaryLocation))
     {
         atlasagent::Logger()->error("Perfspect binary not found at {}", PerfspectConstants::BinaryLocation);
         return std::nullopt;
@@ -51,52 +53,48 @@ std::optional<std::pair<char, char>> Perfspect::is_valid_instance()
     return std::make_pair(generation, processor);
 }
 
-
-bool Perfspect::start_script()
+bool Perfspect::StartScript() try
 {
-    try
-    {
-        // Clean up any existing process first
-        cleanup_process();
+    // Clean up any existing process first
+    CleanupProcess();
 
-        std::string fullBinaryPath =
-            std::string(PerfspectConstants::BinaryLocation) + "/" + PerfspectConstants::BinaryName;
-        atlasagent::Logger()->info("Starting perfspect process for 60 seconds: {}", fullBinaryPath);
+    std::string fullBinaryPath = std::string(PerfspectConstants::BinaryLocation) + "/" + PerfspectConstants::BinaryName;
+    
+    // Create async pipe for stdout
+    this->asyncPipe = std::make_unique<boost::process::async_pipe>(this->ioContext);
 
-        // Create new streams
-        this->outStream = std::make_unique<boost::process::ipstream>();
-        this->errStream = std::make_unique<boost::process::ipstream>();
+    // Select the appropriate event and metric file paths based on processor type
+    const char* eventfilePath = this->isAmd ? PerfspectConstants::eventfilePathAmd : PerfspectConstants::eventfilePathIntel;
+    const char* metricfilePath = this->isAmd ? PerfspectConstants::metricfilePathAmd : PerfspectConstants::metricfilePathIntel;
 
-        // Select the appropriate event and metric file paths based on processor type
-        const char* eventfilePath = this->isAmd ? PerfspectConstants::eventfilePathAmd : PerfspectConstants::eventfilePathIntel;
-        const char* metricfilePath = this->isAmd ? PerfspectConstants::metricfilePathAmd : PerfspectConstants::metricfilePathIntel;
-
-        // Use individual argument constants with --live and --duration 60
-        this->scriptProcess = std::make_unique<boost::process::child>(
-            fullBinaryPath, PerfspectConstants::command, PerfspectConstants::eventfileFlag,
-            eventfilePath, PerfspectConstants::metricfileFlag, metricfilePath,
-            PerfspectConstants::durationFlag, PerfspectConstants::durationValue, PerfspectConstants::liveFlag,
-            boost::process::std_out > *this->outStream, boost::process::std_err > *this->errStream);
+    this->scriptProcess = std::make_unique<boost::process::child>(
+        fullBinaryPath, PerfspectConstants::command, PerfspectConstants::eventfileFlag,
+        eventfilePath, PerfspectConstants::metricfileFlag, metricfilePath,
+        PerfspectConstants::intervalFlag, PerfspectConstants::intervalValue, PerfspectConstants::liveFlag,
+        boost::process::std_out > *this->asyncPipe, 
+        boost::process::std_err > boost::process::null);
         
-        atlasagent::Logger()->info("Perfspect process started successfully with PID: {}", this->scriptProcess->id());
-        return true;
-    }
-    catch (const boost::process::process_error& e)
-    {
-        atlasagent::Logger()->error("Failed to start script: {}", e.what());
-        cleanup_process();
-        return false;
-    }
-    catch (const std::exception& e)
-    {
-        atlasagent::Logger()->error("Failed to start script (std::exception): {}", e.what());
-        cleanup_process();
-        return false;
-    }
+    // Start async reading
+    AsyncRead();
+        
+    atlasagent::Logger()->info("Perfspect process started successfully with PID: {}", this->scriptProcess->id());
+    return true;
+}
+catch (const std::exception& e)
+{
+    atlasagent::Logger()->error("Failed to start script: {}", e.what());
+    CleanupProcess();
+    return false;
 }
 
-void Perfspect::cleanup_process()
+void Perfspect::CleanupProcess()
 {
+    if (this->asyncPipe)
+    {
+        this->asyncPipe->close();
+        this->asyncPipe.reset();
+    }
+    
     if (this->scriptProcess)
     {
         if (this->scriptProcess->running())
@@ -106,34 +104,70 @@ void Perfspect::cleanup_process()
         }
         this->scriptProcess.reset();
     }
-    this->outStream.reset();
-    this->errStream.reset();
+    
+    // Reset async state
+    this->hasNewLine = false;
+    this->pendingLine.clear();
 }
 
-std::optional<std::string> Perfspect::readOutputNew()
+void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t bytes_transferred)
 {
-    if (this->outStream == nullptr)
+    if (ec.failed())
     {
-        atlasagent::Logger()->debug("No output stream available for checking");
+        atlasagent::Logger()->debug("Async read failed: {}", ec.message());
+        return;
+    }
+    
+    // Extract the line from the buffer
+    std::istream is(&this->buffer);
+    std::getline(is, this->pendingLine);
+    if (this->firstIteration)
+    {
+        std::cout << "first" << pendingLine << std::endl;
+        std::getline(is, this->pendingLine);
+        this->firstIteration = false;
+    }
+
+    std::cout << pendingLine << std::endl;
+    
+    // Mark that we have a new line ready
+    this->hasNewLine = true;
+        
+    // Continue reading the next line
+    if (this->asyncPipe)
+    {
+        AsyncRead();
+    }
+}
+
+void Perfspect::AsyncRead()
+{
+    boost::asio::async_read_until(*this->asyncPipe, this->buffer, '\n',
+        [this](const boost::system::error_code& ec, std::size_t bytes_transferred) {
+            this->ExtractLine(ec, bytes_transferred);
+        });
+}
+
+std::optional<std::string> Perfspect::ReadOutput()
+{
+    // Process any pending async operations
+    this->ioContext.poll();
+    
+    if (this->hasNewLine == false)
+    {
         return std::nullopt;
     }
 
-    if (this->outStream->rdbuf()->in_avail() <= 0)
-    {
-        return std::nullopt; // No data available
-    }
-
-    std::string line;
-    std::getline(*this->outStream, line);
-    if (this->firstIteration == true)
-    {
-        std::getline(*this->outStream, line);
-        this->firstIteration = false;
-    }
-    return line;
+    std::string result = this->pendingLine;
+    
+    // Reset state after reading
+    this->hasNewLine = false;
+    this->pendingLine.clear();
+    
+    return result;
 }
 
-std::optional<PerfspectData> parsePerfspectLine(const std::string& line)
+std::optional<PerfspectData> ParsePerfspectLine(const std::string& line)
 {
     std::istringstream ss(line);
     std::string item;
@@ -144,7 +178,7 @@ std::optional<PerfspectData> parsePerfspectLine(const std::string& line)
         parts.push_back(item);
     }
 
-    if (parts.size() != 10)
+    if (parts.size() != 8)
     {
         return std::nullopt; // Invalid line format
     }
@@ -160,21 +194,28 @@ std::optional<PerfspectData> parsePerfspectLine(const std::string& line)
 
 void Perfspect::SendMetrics(PerfspectData data)
 {
+    atlasagent::Logger()->info("Sending Perfspect metrics:");
+    atlasagent::Logger()->info("Cpu Frequency: {}", data.cpuFrequency);
+    atlasagent::Logger()->info("Cycles Per Second: {} * 5 = {}", data.cyclesPerSecond, data.cyclesPerSecond * 5);
+    atlasagent::Logger()->info("Instructions Per Second: {} * 5 = {}", data.instructionsPerSecond, data.instructionsPerSecond * 5);
+    atlasagent::Logger()->info("L2 Cache Misses Per Second: {} * 5 = {}", data.l2CacheMissesPerSecond, data.l2CacheMissesPerSecond * 5);
+    
+    
     detail::perfspectGauge(this->registry_, "cpu.perfspect.frequency").Set(data.cpuFrequency);
     detail::perfspectCounter(this->registry_, "cpu.perfspect.totalCycles").Increment(data.cyclesPerSecond * 5);
     detail::perfspectCounter(this->registry_, "cpu.perfspect.totalInstructions").Increment(data.instructionsPerSecond * 5);
     detail::perfspectCounter(this->registry_, "cpu.perfspect.totalCacheMisses").Increment(data.l2CacheMissesPerSecond * 5);
 }
 
-bool Perfspect::gather_metrics()
+bool Perfspect::GatherMetrics()
 {
     atlasagent::Logger()->info("Checking for Perfspect metrics...");
 
     // If the perfspect process has not been started or is no longer running start it
-    if (this->scriptProcess == nullptr || this->scriptProcess->running() == false)
+    if (!this->scriptProcess || this->scriptProcess->running() == false)
     {
         atlasagent::Logger()->info("No active perfspect process found, starting a new one");
-        if (this->start_script() == false)
+        if (this->StartScript() == false)
         {
             atlasagent::Logger()->error("Failed to start perfspect process");
             return false;
@@ -183,7 +224,7 @@ bool Perfspect::gather_metrics()
     }
 
     // Check for available output and read it if present
-    auto availableOutput = this->readOutputNew();
+    auto availableOutput = this->ReadOutput();
     if (availableOutput.has_value() == false)
     {
         atlasagent::Logger()->info("No new perfspect output available yet");
@@ -191,7 +232,7 @@ bool Perfspect::gather_metrics()
     }
 
     // Parse the output line into a struct of data we can report
-    auto parsedDataOpt = parsePerfspectLine(availableOutput.value());
+    auto parsedDataOpt = ParsePerfspectLine(availableOutput.value());
     if (parsedDataOpt.has_value() == false)
     {
         atlasagent::Logger()->error("Failed to parse perfspect output line: {}", availableOutput.value());

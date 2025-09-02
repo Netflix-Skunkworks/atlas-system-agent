@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/process.hpp>
+#include <boost/asio.hpp>
 
 #include <vector>
 #include <string>
@@ -16,14 +17,18 @@ struct PerfspectConstants
 
     // Individual argument constants
     static constexpr auto command{"metrics"};
+    
     static constexpr auto eventfileFlag{"--eventfile"};
     static constexpr auto eventfilePathAmd{"/apps/nflx-perfspect/etc/events-amd.txt"};
     static constexpr auto eventfilePathIntel{"/apps/nflx-perfspect/etc/events-intel.txt"};
+    
     static constexpr auto metricfileFlag{"--metricfile"};
     static constexpr auto metricfilePathAmd{"/apps/nflx-perfspect/etc/metrics-amd.json"};
     static constexpr auto metricfilePathIntel{"/apps/nflx-perfspect/etc/metrics-intel.json"};
-    static constexpr auto durationFlag{"--duration"};
-    static constexpr auto durationValue{"60"};
+    
+    static constexpr auto intervalFlag{"--interval"};
+    static constexpr auto intervalValue{"5"};
+    
     static constexpr auto liveFlag{"--live"};
 };
 
@@ -35,7 +40,6 @@ struct PerfspectData
     float l2CacheMissesPerSecond{};
 };
 
-bool valid_instance();
 
 namespace detail
 {
@@ -58,7 +62,7 @@ class Perfspect
 {
    public:
     Perfspect(Registry* registry, std::pair<char, char> instanceInfo);
-    ~Perfspect() { cleanup_process(); };
+    ~Perfspect() { CleanupProcess(); };
 
     // Abide by the C++ rule of 5
     Perfspect(const Perfspect& other) = delete;
@@ -66,16 +70,16 @@ class Perfspect
     Perfspect(Perfspect&& other) = delete;
     Perfspect& operator=(Perfspect&& other) = delete;
 
-    bool gather_metrics();
-    static std::optional<std::pair<char, char>> is_valid_instance();
+    bool GatherMetrics();
+    static std::optional<std::pair<char, char>> IsValidInstance();
 
    private:
-    bool start_script();
-    void cleanup_process();
-
+    bool StartScript();
+    void CleanupProcess();
     void SendMetrics(PerfspectData data);
-    
-    std::optional<std::string> readOutputNew();
+    std::optional<std::string> ReadOutput();
+    void ExtractLine(const boost::system::error_code& ec, std::size_t bytes_transferred);
+    void AsyncRead();
 
     Registry* registry_;
     bool firstIteration{true};
@@ -83,6 +87,11 @@ class Perfspect
     char version;
 
     std::unique_ptr<boost::process::child> scriptProcess;
-    std::unique_ptr<boost::process::ipstream> outStream;  // Pipe for reading stdout
-    std::unique_ptr<boost::process::ipstream> errStream;  // Pipe for reading stderr
+    
+    // Asio components for async reading
+    boost::asio::io_context ioContext;
+    std::unique_ptr<boost::process::async_pipe> asyncPipe;
+    boost::asio::streambuf buffer;
+    std::string pendingLine;
+    bool hasNewLine{false};
 };
