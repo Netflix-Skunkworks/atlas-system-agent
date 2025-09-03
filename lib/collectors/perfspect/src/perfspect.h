@@ -81,7 +81,7 @@ class Perfspect
 
    private:
     void AsyncRead();
-    void CleanupProcess();
+    bool CleanupProcess();
     void ExtractLine(const boost::system::error_code& ec, std::size_t bytes_transferred);
     ReadResult ReadOutput();
     void SendMetrics(const PerfspectData &data);

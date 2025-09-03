@@ -60,7 +60,11 @@ std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
 bool Perfspect::StartScript() try
 {
     // Clean up any existing process first
-    CleanupProcess();
+    if (CleanupProcess() == false)
+    {
+        atlasagent::Logger()->error("Failed to clean up previous Perfspect process.");
+        return false;
+    }
 
     std::filesystem::path fullBinaryPath = std::filesystem::path(PerfspectConstants::BinaryLocation) / PerfspectConstants::BinaryName;
     
@@ -93,12 +97,24 @@ catch (const std::exception& e)
     return false;
 }
 
-void Perfspect::CleanupProcess()
+bool Perfspect::CleanupProcess() try
 {
     if (this->scriptProcess && this->scriptProcess->running())
     {        
-        this->scriptProcess->terminate();
-        this->scriptProcess->wait();
+        std::error_code ec;
+        this->scriptProcess->terminate(ec);
+        if (ec)
+        {
+            atlasagent::Logger()->debug("Failed to terminate PerfSpect process: {}", ec.message());
+            return false;
+        }
+        
+        this->scriptProcess->wait(ec);
+        if (ec)
+        {
+            atlasagent::Logger()->debug("Failed to wait for PerfSpect process termination: {}", ec.message());
+            return false;
+        }
     }
     
     this->scriptProcess.reset();
@@ -107,6 +123,13 @@ void Perfspect::CleanupProcess()
     this->buffer.reset();
     this->pendingLine.clear();
     this->firstIteration = true;
+    return true;
+}
+catch (const std::exception& e)
+{
+    atlasagent::Logger()->error("Failed to cleanup child process", e.what());
+    CleanupProcess();
+    return false;
 }
 
 void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t bytes_transferred)
