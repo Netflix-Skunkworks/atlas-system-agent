@@ -64,8 +64,10 @@ bool Perfspect::StartScript() try
 
     std::filesystem::path fullBinaryPath = std::filesystem::path(PerfspectConstants::BinaryLocation) / PerfspectConstants::BinaryName;
     
-    // Create async pipe for stdout
-    this->asyncPipe = std::make_unique<boost::process::async_pipe>(this->ioContext);
+    // Create io_context, async pipe, and buffer for stdout
+    this->ioContext = std::make_unique<boost::asio::io_context>();
+    this->asyncPipe = std::make_unique<boost::process::async_pipe>(*this->ioContext);
+    this->buffer = std::make_unique<boost::asio::streambuf>();
 
     // Select the appropriate event and metric file paths based on processor type
     const char* eventfilePath = this->isAmd ? PerfspectConstants::eventfilePathAmd : PerfspectConstants::eventfilePathIntel;
@@ -93,23 +95,18 @@ catch (const std::exception& e)
 
 void Perfspect::CleanupProcess()
 {
-    if (this->asyncPipe)
-    {
-        this->asyncPipe->close();
-        this->asyncPipe.reset();
+    if (this->scriptProcess && this->scriptProcess->running())
+    {        
+        this->scriptProcess->terminate();
+        this->scriptProcess->wait();
     }
     
-    if (this->scriptProcess)
-    {
-        if (this->scriptProcess->running())
-        {
-            this->scriptProcess->terminate();
-            this->scriptProcess->wait();
-        }
-        this->scriptProcess.reset();
-    }
-    
+    this->scriptProcess.reset();
+    this->ioContext.reset();
+    this->asyncPipe.reset();
+    this->buffer.reset();
     this->pendingLine.clear();
+    this->firstIteration = true;
 }
 
 void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t bytes_transferred)
@@ -121,8 +118,7 @@ void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t byt
         return;
     }
     
-    // Extract the line from the buffer
-    std::istream is(&this->buffer);
+    std::istream is(this->buffer.get());
     std::getline(is, this->pendingLine);
     if (this->firstIteration)
     {
@@ -130,18 +126,14 @@ void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t byt
         std::getline(is, this->pendingLine);
         this->firstIteration = false;
     }
-    
+
     atlasagent::Logger()->debug("Extracted Line: {}", this->pendingLine);
-        
-    if (this->asyncPipe)
-    {
-        AsyncRead();
-    }
+    AsyncRead();
 }
 
 void Perfspect::AsyncRead()
 {
-    boost::asio::async_read_until(*this->asyncPipe, this->buffer, '\n',
+    boost::asio::async_read_until(*this->asyncPipe, *this->buffer, '\n',
         [this](const boost::system::error_code& ec, std::size_t bytes_transferred) {
             this->ExtractLine(ec, bytes_transferred);
         });
@@ -149,18 +141,14 @@ void Perfspect::AsyncRead()
 
 ReadResult Perfspect::ReadOutput()
 {
-    // Process any pending async operations
-    this->ioContext.poll();
-
+    this->ioContext->poll();
     if (this->lastAsyncError.failed() || this->pendingLine.empty() == true)
     {
         return {std::nullopt, this->lastAsyncError};
     }
 
     ReadResult result {this->pendingLine, this->lastAsyncError};
-    
     this->pendingLine.clear();
-    
     return result;
 }
 

@@ -95,9 +95,9 @@ class Perfspect
     std::unique_ptr<boost::process::child> scriptProcess;
     
     // Asio components for async reading
-    boost::asio::io_context ioContext;
+    std::unique_ptr<boost::asio::io_context> ioContext;
     std::unique_ptr<boost::process::async_pipe> asyncPipe;
-    boost::asio::streambuf buffer;
+    std::unique_ptr<boost::asio::streambuf> buffer;
     std::string pendingLine;
     boost::system::error_code lastAsyncError;
 };
