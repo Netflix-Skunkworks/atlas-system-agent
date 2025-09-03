@@ -6,12 +6,16 @@
 #include <lib/util/src/util.h>
 #include <lib/logger/src/logger.h>
 
+using atlasagent::Logger;
 
 
 
 
 int main()
 {
+    auto logger = Logger();
+    logger->set_level(spdlog::level::debug);
+
     Config config(WriterConfig(WriterTypes::Unix));
     Registry registry(config);
 
@@ -29,6 +33,6 @@ int main()
     while (true)
     {
         perfspectMetrics->GatherMetrics();
-        sleep(2);
+        sleep(5);
     }
 }
