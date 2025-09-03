@@ -12,6 +12,7 @@
 #include <lib/collectors/nvml/src/gpumetrics.h>
 #include <lib/collectors/ntp/src/ntp.h>
 #include <lib/collectors/perf_metrics/src/perf_metrics.h>
+#include <lib/collectors/perfspect/src/perfspect.h>
 #include <lib/collectors/pressure_stall/src/pressure_stall.h>
 #include <lib/collectors/proc/src/proc.h>
 #include <lib/collectors/service_monitor/src/service_monitor.h>
@@ -312,6 +313,13 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         Logger()->info("Service Monitoring is disabled.");
     }
 
+    std::optional<Perfspect> perfspectMetrics{};
+    auto instanceInfo = Perfspect::IsValidInstance();
+    if (instanceInfo.has_value())
+    {
+        perfspectMetrics.emplace(registry, instanceInfo.value());
+    }
+
     // Create an EBS collector object to monitor EBS devices if any configs are valid
     std::optional<EBSCollector> ebsMetrics{};
     std::optional<std::unordered_set<std::string> > ebsConfig{parse_ebs_config_directory(EBSConstants::ConfigPath)};
@@ -352,6 +360,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
     auto now = system_clock::now();
     auto next_run = now;
     auto next_slow_run = now + seconds(60);
+    auto next_hi_res_run = now + seconds(5);
     std::chrono::nanoseconds time_to_sleep;
 
     do
@@ -359,6 +368,12 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         auto start = system_clock::now();
         gather_peak_system_metrics(&proc);
         gather_scaling_metrics(&cpufreq);
+
+        if (start >= next_hi_res_run)
+        {
+            perfspectMetrics->GatherMetrics();
+            next_hi_res_run += seconds(5);
+        }
 
         if (start >= next_slow_run)
         {

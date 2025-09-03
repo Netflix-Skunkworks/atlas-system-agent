@@ -1,15 +1,9 @@
-
-
-
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <lib/collectors/perfspect/src/perfspect.h>
 #include <lib/util/src/util.h>
 #include <lib/logger/src/logger.h>
 
 using atlasagent::Logger;
-
-
-
 
 int main()
 {
@@ -28,8 +22,6 @@ int main()
     }
 
     perfspectMetrics.emplace(&registry, instanceInfo.value());
-    
-
     while (true)
     {
         perfspectMetrics->GatherMetrics();
