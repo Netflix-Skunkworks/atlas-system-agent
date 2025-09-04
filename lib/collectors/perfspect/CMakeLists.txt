@@ -11,6 +11,23 @@ target_link_libraries(perfspect
     spectator-registry
     Boost::boost
     logger
+    util
+)
+
+add_executable(perfspect_test
+    test/perfspect_test.cpp
+)
+
+target_link_libraries(perfspect_test
+    perfspect
+    gtest::gtest
+)
+
+# Register the test with CTest
+add_test(
+    NAME perfspect_test
+    COMMAND perfspect_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
 add_executable(perfspect_example

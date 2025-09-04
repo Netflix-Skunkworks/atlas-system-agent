@@ -22,6 +22,36 @@ Perfspect::Perfspect(Registry* registry, const std::pair<char, char> &instanceIn
     atlasagent::Logger()->info("Perfspect initialized for instance type: {}:{}", instanceInfo.first, instanceInfo.second);
 };
 
+std::optional<std::pair<char, char>> ParseProductName(const std::string& productName)
+{
+    if (productName.size() < 3)
+    {
+        atlasagent::Logger()->debug("Product name too short to parse: {}", productName);
+        return std::nullopt;
+    }
+
+    char generation = productName[1];
+    
+    // Find the dot separator - it must be present in valid EC2 instance names
+    auto dot_pos = productName.find('.');
+    if (dot_pos == std::string::npos)
+    {
+        atlasagent::Logger()->debug("No dot separator found in product name: {}", productName);
+        return std::nullopt;
+    }
+    
+    // Find the first occurrence of a processor symbol after position 1 but before the dot
+    auto processor_pos = productName.find_first_of(std::string{PerfspectConstants::amdSymbol, PerfspectConstants::intelSymbol}, 2);
+    if (processor_pos == std::string::npos || processor_pos >= dot_pos)
+    {
+        atlasagent::Logger()->debug("Could not find processor id before dot in product name: {}", productName);
+        return std::nullopt;
+    }
+    
+    return std::make_pair(generation, productName[processor_pos]);
+}
+
+
 std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
 {
     if (atlasagent::is_file_present(PerfspectConstants::BinaryLocation) == false)
@@ -38,15 +68,15 @@ std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
         return std::nullopt;
     }
 
-    size_t dot = product_name.find('.');
-    if (dot == std::string::npos || dot < 3) 
+    auto parsedProductName = ParseProductName(product_name);
+    if (parsedProductName.has_value() == false)
     {
         atlasagent::Logger()->debug("Invalid product name format: {}", product_name);
         return std::nullopt;
     }
 
-    char generation = product_name[1];
-    char processor = product_name[2];
+    char generation = parsedProductName.value().first;
+    char processor = parsedProductName.value().second;
     
     int gen_value;
     auto result = std::from_chars(&generation, &generation + 1, gen_value);

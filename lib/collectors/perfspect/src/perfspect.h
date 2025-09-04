@@ -50,6 +50,9 @@ struct ReadResult
     boost::system::error_code error;
 };
 
+// Function to parse EC2 instance product name into generation and processor type
+std::optional<std::pair<char, char>> ParseProductName(const std::string& productName);
+
 class Perfspect
 {
    public:
