@@ -8,15 +8,16 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <algorithm>
-#include <sstream>
 #include <fstream>
-#include <chrono>
 #include <filesystem>
-
+#include <charconv>
 
 Perfspect::Perfspect(Registry* registry, const std::pair<char, char> &instanceInfo) 
-    : registry_(registry), isAmd(instanceInfo.second == 'a'), version(instanceInfo.first)
+    : registry_(registry), isAmd(instanceInfo.second == 'a'), version(instanceInfo.first), 
+      cpuFrequencyGauge(registry->CreateGauge(PerfspectConstants::metricFrequency)),
+      cyclesCounter(registry->CreateCounter(PerfspectConstants::metricCycles)),
+      instructionsCounter(registry->CreateCounter(PerfspectConstants::metricInstructions)),
+      l2CacheMissesCounter(registry->CreateCounter(PerfspectConstants::metricL2CacheMisses))
 {
     atlasagent::Logger()->debug("Perfspect initialized for instance type: {}{}", instanceInfo.first, instanceInfo.second);
 };
@@ -128,7 +129,6 @@ bool Perfspect::CleanupProcess() try
 catch (const std::exception& e)
 {
     atlasagent::Logger()->error("Failed to cleanup child process", e.what());
-    CleanupProcess();
     return false;
 }
 
@@ -153,6 +153,13 @@ void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t byt
         return;
     }
 
+    // Assert no bytes remain in buffer after single line extraction
+    if (this->buffer->in_avail() != 0)
+    {
+        atlasagent::Logger()->error("Buffer still has {} bytes available after line extraction, expected 0", this->buffer->in_avail());
+    }
+
+
     this->pendingLine = std::move(line);
     atlasagent::Logger()->debug("Extracted line: {}", this->pendingLine);
     AsyncRead();
@@ -174,8 +181,7 @@ ReadResult Perfspect::ReadOutput()
         return {std::nullopt, this->lastAsyncError};
     }
 
-    ReadResult result {this->pendingLine, this->lastAsyncError};
-    this->pendingLine.clear();
+    ReadResult result {std::move(this->pendingLine), this->lastAsyncError};
     return result;
 }
 
@@ -198,10 +204,16 @@ std::optional<PerfspectData> ParsePerfspectLine(const std::string& line) try
     }
     
     PerfspectData data{};
-    data.cpuFrequency = std::stof(std::string(parts[4]));
-    data.cyclesPerSecond = std::stof(std::string(parts[5]));
-    data.instructionsPerSecond = std::stof(std::string(parts[6]));
-    data.l2CacheMissesPerSecond = std::stof(std::string(parts[7]));
+    
+    auto res1 = std::from_chars(parts[4].data(), parts[4].data() + parts[4].size(), data.cpuFrequency);
+    auto res2 = std::from_chars(parts[5].data(), parts[5].data() + parts[5].size(), data.cyclesPerSecond);
+    auto res3 = std::from_chars(parts[6].data(), parts[6].data() + parts[6].size(), data.instructionsPerSecond);
+    auto res4 = std::from_chars(parts[7].data(), parts[7].data() + parts[7].size(), data.l2CacheMissesPerSecond);
+
+    if (res1.ec != std::errc() || res2.ec != std::errc() || res3.ec != std::errc() || res4.ec != std::errc())
+    {
+        return std::nullopt;
+    }
     
     return data;
 }
@@ -218,11 +230,10 @@ void Perfspect::SendMetrics(const PerfspectData &data)
         data.instructionsPerSecond, data.instructionsPerSecond * 5,
         data.l2CacheMissesPerSecond, data.l2CacheMissesPerSecond * 5);
     
-    
-    detail::perfspectGauge(this->registry_, PerfspectConstants::metricFrequency).Set(data.cpuFrequency);
-    detail::perfspectCounter(this->registry_, PerfspectConstants::metricCycles).Increment(data.cyclesPerSecond * PerfspectConstants::interval);
-    detail::perfspectCounter(this->registry_, PerfspectConstants::metricInstructions).Increment(data.instructionsPerSecond * PerfspectConstants::interval);
-    detail::perfspectCounter(this->registry_, PerfspectConstants::metricL2CacheMisses).Increment(data.l2CacheMissesPerSecond * PerfspectConstants::interval);
+    this->cpuFrequencyGauge.Set(data.cpuFrequency);
+    this->cyclesCounter.Increment(data.cyclesPerSecond * PerfspectConstants::interval);
+    this->instructionsCounter.Increment(data.instructionsPerSecond * PerfspectConstants::interval);
+    this->l2CacheMissesCounter.Increment(data.l2CacheMissesPerSecond * PerfspectConstants::interval);
 }
 
 bool Perfspect::GatherMetrics()

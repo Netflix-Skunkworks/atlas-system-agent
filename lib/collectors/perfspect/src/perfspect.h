@@ -3,7 +3,6 @@
 #include <boost/process.hpp>
 #include <boost/asio.hpp>
 
-#include <vector>
 #include <string>
 #include <memory>
 #include <optional>
@@ -39,23 +38,6 @@ struct PerfspectData
     float l2CacheMissesPerSecond{};
 };
 
-
-namespace detail
-{
-inline auto perfspectGauge(Registry* registry, const std::string_view name, const char* id = nullptr)
-{
-    return id == nullptr 
-        ? registry->CreateGauge(std::string(name))
-        : registry->CreateGauge(std::string(name), {{"id", id}});
-}
-inline auto perfspectCounter(Registry* registry, const std::string_view name, const char* id = nullptr)
-{
-    return id == nullptr 
-        ? registry->CreateCounter(std::string(name))
-        : registry->CreateCounter(std::string(name), {{"id", id}});
-}
-
-}  // namespace detail
 
 // Store both result and error
 struct ReadResult 
@@ -100,4 +82,10 @@ class Perfspect
     std::unique_ptr<boost::asio::streambuf> buffer;
     std::string pendingLine;
     boost::system::error_code lastAsyncError;
+
+    // Metrics
+    Gauge cpuFrequencyGauge;
+    Counter cyclesCounter;
+    Counter instructionsCounter;
+    Counter l2CacheMissesCounter;
 };
