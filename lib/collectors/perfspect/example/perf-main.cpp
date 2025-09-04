@@ -17,7 +17,7 @@ int main()
     auto instanceInfo = Perfspect::IsValidInstance();
     if (instanceInfo.has_value() == false)
     {
-        Logger::error("Perfspect", "No valid AMD instance found, exiting");
+        Logger::error("Could not run PerfSpect on this machine.");
         return 1;
     }
 

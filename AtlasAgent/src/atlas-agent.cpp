@@ -319,6 +319,11 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
     {
         perfspectMetrics.emplace(registry, instanceInfo.value());
     }
+    else
+    {
+        
+        Logger()->info("PerfSpect Monitoring is disabled.");
+    }
 
     // Create an EBS collector object to monitor EBS devices if any configs are valid
     std::optional<EBSCollector> ebsMetrics{};
@@ -369,7 +374,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         gather_peak_system_metrics(&proc);
         gather_scaling_metrics(&cpufreq);
 
-        if (start >= next_hi_res_run)
+        if (perfspectMetrics.has_value() && start >= next_hi_res_run)
         {
             perfspectMetrics->GatherMetrics();
             next_hi_res_run += seconds(5);
