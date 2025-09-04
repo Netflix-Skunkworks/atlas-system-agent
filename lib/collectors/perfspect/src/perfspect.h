@@ -28,6 +28,10 @@ struct PerfspectConstants
     static constexpr auto metricInstructions{"cpu.perfspect.instructions"};
     static constexpr auto metricL2CacheMisses{"cpu.perfspect.l2CacheMisses"};
     static constexpr auto interval{5};
+    static constexpr auto minGeneration{7};
+    static constexpr auto amdSymbol{'a'};
+    static constexpr auto intelSymbol{'i'};
+    static constexpr auto productNamePath{"/sys/devices/virtual/dmi/id/product_name"};
 };
 
 struct PerfspectData

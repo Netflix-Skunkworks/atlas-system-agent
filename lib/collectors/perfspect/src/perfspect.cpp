@@ -13,7 +13,7 @@
 #include <charconv>
 
 Perfspect::Perfspect(Registry* registry, const std::pair<char, char> &instanceInfo) 
-    : registry_(registry), isAmd(instanceInfo.second == 'a'), version(instanceInfo.first), 
+    : registry_(registry), isAmd(instanceInfo.second == PerfspectConstants::amdSymbol), version(instanceInfo.first), 
       cpuFrequencyGauge(registry->CreateGauge(PerfspectConstants::metricFrequency)),
       cyclesCounter(registry->CreateCounter(PerfspectConstants::metricCycles)),
       instructionsCounter(registry->CreateCounter(PerfspectConstants::metricInstructions)),
@@ -30,7 +30,7 @@ std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
         return std::nullopt;
     }
 
-    std::ifstream file("/sys/devices/virtual/dmi/id/product_name");
+    std::ifstream file(PerfspectConstants::productNamePath);
     std::string product_name;
     if (!file.is_open() || !std::getline(file, product_name))
     {
@@ -48,7 +48,9 @@ std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
     char generation = product_name[1];
     char processor = product_name[2];
     
-    bool valid = std::isdigit(generation) && (generation >= '7') && (processor == 'i' || processor == 'a');
+    int gen_value;
+    auto result = std::from_chars(&generation, &generation + 1, gen_value);
+    bool valid = (result.ec == std::errc()) && (gen_value >= PerfspectConstants::minGeneration) && (processor == PerfspectConstants::intelSymbol || processor == PerfspectConstants::amdSymbol);
     if (valid == false) 
     {
         atlasagent::Logger()->debug("Invalid instance: {} (gen: {}, proc: {})", product_name, generation, processor);
