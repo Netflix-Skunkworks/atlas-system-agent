@@ -42,21 +42,20 @@ struct PerfspectData
     float l2CacheMissesPerSecond{};
 };
 
-
-// Store both result and error
-struct ReadResult 
+struct ReadResult
 {
     std::optional<std::string> data;
     boost::system::error_code error;
 };
 
 // Function to parse EC2 instance product name into generation and processor type
+// Public for testing purposes
 std::optional<std::pair<char, char>> ParseProductName(const std::string& productName);
 
 class Perfspect
 {
    public:
-    Perfspect(Registry* registry, const std::pair<char, char> &instanceInfo);
+    Perfspect(Registry* registry, const std::pair<char, char>& instanceInfo);
     ~Perfspect() { CleanupProcess(); };
 
     // Abide by the C++ rule of 5
@@ -73,7 +72,7 @@ class Perfspect
     bool CleanupProcess();
     void ExtractLine(const boost::system::error_code& ec, std::size_t bytes_transferred);
     ReadResult ReadOutput();
-    void SendMetrics(const PerfspectData &data);
+    void SendMetrics(const PerfspectData& data);
     bool StartScript();
 
     Registry* registry_;
@@ -82,7 +81,7 @@ class Perfspect
     char version;
 
     std::unique_ptr<boost::process::child> scriptProcess;
-    
+
     // Asio components for async reading
     std::unique_ptr<boost::asio::io_context> ioContext;
     std::unique_ptr<boost::process::async_pipe> asyncPipe;
