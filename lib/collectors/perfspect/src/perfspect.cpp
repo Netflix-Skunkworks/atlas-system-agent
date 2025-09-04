@@ -19,7 +19,7 @@ Perfspect::Perfspect(Registry* registry, const std::pair<char, char> &instanceIn
       instructionsCounter(registry->CreateCounter(PerfspectConstants::metricInstructions)),
       l2CacheMissesCounter(registry->CreateCounter(PerfspectConstants::metricL2CacheMisses))
 {
-    atlasagent::Logger()->debug("Perfspect initialized for instance type: {}{}", instanceInfo.first, instanceInfo.second);
+    atlasagent::Logger()->info("Perfspect initialized for instance type: {}{}", instanceInfo.first, instanceInfo.second);
 };
 
 std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
@@ -225,7 +225,7 @@ catch (const std::exception& e)
 
 void Perfspect::SendMetrics(const PerfspectData &data)
 {
-    atlasagent::Logger()->info("Sending: Frequency: {}, Cycles/sec: {} * 5 = {}, Instructions/sec: {} * 5 = {}, L2 Cache Misses/sec: {} * 5 = {}", 
+    atlasagent::Logger()->debug("Sending: Frequency: {}, Cycles/sec: {} * 5 = {}, Instructions/sec: {} * 5 = {}, L2 Cache Misses/sec: {} * 5 = {}", 
         data.cpuFrequency, data.cyclesPerSecond, data.cyclesPerSecond * 5, 
         data.instructionsPerSecond, data.instructionsPerSecond * 5,
         data.l2CacheMissesPerSecond, data.l2CacheMissesPerSecond * 5);
