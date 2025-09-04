@@ -140,17 +140,21 @@ void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t byt
         atlasagent::Logger()->error("Async read failed: {}", lastAsyncError.message());
         return;
     }
-    
+
     std::istream is(this->buffer.get());
-    std::getline(is, this->pendingLine);
+    std::string line;
+    std::getline(is, line);
+
     if (this->firstIteration)
     {
-        atlasagent::Logger()->debug("First iteration skipping: {}", this->pendingLine);
-        std::getline(is, this->pendingLine);
         this->firstIteration = false;
+        atlasagent::Logger()->debug("Skipping header line: {}", line);
+        AsyncRead();
+        return;
     }
 
-    atlasagent::Logger()->debug("Extracted Line: {}", this->pendingLine);
+    this->pendingLine = std::move(line);
+    atlasagent::Logger()->debug("Extracted line: {}", this->pendingLine);
     AsyncRead();
 }
 
