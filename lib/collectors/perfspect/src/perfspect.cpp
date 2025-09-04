@@ -71,7 +71,7 @@ std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
     auto parsedProductName = ParseProductName(product_name);
     if (parsedProductName.has_value() == false)
     {
-        atlasagent::Logger()->debug("Invalid product name format: {}", product_name);
+        atlasagent::Logger()->debug("Invalid product credentials for PerfSpect: {}", product_name);
         return std::nullopt;
     }
 
