@@ -19,7 +19,7 @@ Perfspect::Perfspect(Registry* registry, const std::pair<char, char> &instanceIn
       instructionsCounter(registry->CreateCounter(PerfspectConstants::metricInstructions)),
       l2CacheMissesCounter(registry->CreateCounter(PerfspectConstants::metricL2CacheMisses))
 {
-    atlasagent::Logger()->info("Perfspect initialized for instance type: {}{}", instanceInfo.first, instanceInfo.second);
+    atlasagent::Logger()->info("Perfspect initialized for instance type: {}:{}", instanceInfo.first, instanceInfo.second);
 };
 
 std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
@@ -49,7 +49,6 @@ std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
     char processor = product_name[2];
     
     bool valid = std::isdigit(generation) && (generation >= '7') && (processor == 'i' || processor == 'a');
-    
     if (valid == false) 
     {
         atlasagent::Logger()->debug("Invalid instance: {} (gen: {}, proc: {})", product_name, generation, processor);
@@ -144,8 +143,7 @@ void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t byt
     std::istream is(this->buffer.get());
     std::string line;
     std::getline(is, line);
-
-    if (this->firstIteration)
+    if (this->firstIteration) // skip the first line which is the header line from perfspect output
     {
         this->firstIteration = false;
         atlasagent::Logger()->debug("Skipping header line: {}", line);
@@ -154,11 +152,11 @@ void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t byt
     }
 
     // Assert no bytes remain in buffer after single line extraction
+    // PerfSpect is only emitting at 5 second intervals
     if (this->buffer->in_avail() != 0)
     {
         atlasagent::Logger()->error("Buffer still has {} bytes available after line extraction, expected 0", this->buffer->in_avail());
     }
-
 
     this->pendingLine = std::move(line);
     atlasagent::Logger()->debug("Extracted line: {}", this->pendingLine);
@@ -167,6 +165,20 @@ void Perfspect::ExtractLine(const boost::system::error_code& ec, std::size_t byt
 
 void Perfspect::AsyncRead()
 {
+    // This function initiates an asynchronous read from the PerfSpect process output.
+    // The I/O behavior is expected to follow a specific pattern:
+    // 1. Initial Output: PerfSpect first emits a two-line burst containing a header
+    //    followed by the first data line ("header\ndata\n"). We handle this by
+    //    skipping the header and processing the data line.
+    // 2. Subsequent Output: After initialization, PerfSpect is configured to emit a single
+    //    data line every 5 seconds.
+    //
+    // IMPORTANT: This implementation is not robust against data bursts. If multiple lines
+    // arrive in quick succession, `ioContext->poll()` will execute all ready handlers
+    // sequentially within the same call. This will cause the `pendingLine` member to be
+    // overwritten, resulting in the loss of all but the last metric from the burst.
+    // The code's correctness fundamentally relies on the assumption that PerfSpect
+    // only emits a single line of data per interval.
     boost::asio::async_read_until(*this->asyncPipe, *this->buffer, '\n',
         [this](const boost::system::error_code& ec, std::size_t bytes_transferred) {
             this->ExtractLine(ec, bytes_transferred);
@@ -175,7 +187,8 @@ void Perfspect::AsyncRead()
 
 ReadResult Perfspect::ReadOutput()
 {
-    this->ioContext->poll();
+    // If there are no completed async reads, this will return immediately without blocking
+    this->ioContext->poll(); 
     if (this->lastAsyncError.failed() || this->pendingLine.empty() == true)
     {
         return {std::nullopt, this->lastAsyncError};
@@ -189,17 +202,22 @@ std::optional<PerfspectData> ParsePerfspectLine(const std::string& line) try
 {
     std::vector<std::string_view> parts;
     std::string_view sv(line);
-    
     size_t start = 0;
     size_t pos = 0;
     
-    while ((pos = sv.find(',', start)) != std::string_view::npos) {
+    // Split the csv data at each comma
+    while ((pos = sv.find(',', start)) != std::string_view::npos)
+    {
         parts.emplace_back(sv.substr(start, pos - start));
         start = pos + 1;
     }
     parts.emplace_back(sv.substr(start));
     
-    if (parts.size() != 8) {
+    // PerfSpect is expected to emit exactly 8 comma-delimited metrics.
+    // If this count changes, it indicates the nflx-perfspect binary has been updated
+    // and our parsing logic may no longer be compatible with the new output format.
+    if (parts.size() != 8)
+    {
         return std::nullopt;
     }
     
@@ -249,7 +267,7 @@ bool Perfspect::GatherMetrics()
     atlasagent::Logger()->debug("Checking for PerfSpect metrics...");
     auto result = this->ReadOutput();
     
-    // If there was an error reading, restart the PerfSpect process
+    // If there was an error reading, restart the PerfSpect process we cant handle a corrupted stream
     if (result.error.failed())
     {
         atlasagent::Logger()->error("Failed to read PerfSpect output: {}", result.error.message());
@@ -258,7 +276,9 @@ bool Perfspect::GatherMetrics()
         return false;
     }
 
-    // If no data was returned, continue waiting for more output
+    // PerfSpect requires 4-7 seconds to startup
+    // We may try to GatherMetrics before it has produced any output, 
+    // so we need to handle that case gracefully
     if (result.data.has_value() == false)
     {
         atlasagent::Logger()->debug("No new perfspect output available yet");
