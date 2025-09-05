@@ -306,11 +306,6 @@ catch (const std::exception& e)
 std::optional<std::vector<std::string>> read_file(const std::string& filePath)
 try
 {
-    if (is_file_present(filePath.c_str()) == false)
-    {
-        return std::nullopt;
-    }
-
     std::ifstream file(filePath);
     if (file.is_open() == false)
     {
