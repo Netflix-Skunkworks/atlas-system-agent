@@ -6,6 +6,10 @@
 #include <cstring>
 #include <utility>
 
+#include <iostream>
+#include "proc_stat.h"
+
+
 namespace atlasagent
 {
 
@@ -773,6 +777,86 @@ void Proc::cpu_stats() noexcept
         prev_cpu_vals[cpu_num] = per_cpu_vals;
     }
     num_procs.Set(cpu_count);
+}
+
+void Proc::UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lines)
+{
+    auto aggregate_line = cpu_lines[0];
+    static std::optional<CpuStatFields> previous_aggregate_stats;
+    static CpuGauges utilizationGauges(registry_, "sys.cpu.utilization");
+    CpuStatFields currentStats(aggregate_line);
+    if (previous_aggregate_stats.has_value())
+    {
+        auto computed_vals = currentStats.computeGaugeValues(previous_aggregate_stats.value());
+        utilizationGauges.update(computed_vals);
+    }
+
+    previous_aggregate_stats = currentStats;
+    return;
+}
+
+void Proc::UpdateCoreUtilization(std::vector<std::vector<std::string>> cpu_lines)
+{
+    static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
+    static std::unordered_map<std::string, CpuStatFields> previous_cpu_stats;
+    for (const auto& fields : cpu_lines)
+    {
+        if (fields[0] == "cpu")
+        {
+            continue;  // skip the aggregate line
+        }
+        auto key = fields[0]; // e.g., "cpu0"
+        CpuStatFields currentStats(fields);
+        auto it = previous_cpu_stats.find(key);
+        if (it != previous_cpu_stats.end())
+        {
+            const auto & prevStats = it->second;
+            auto computed_vals = currentStats.computeGaugeValues(prevStats);
+            auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice +
+                         computed_vals.wait + computed_vals.interrupt;
+            coresDistSummary.Record(usage);
+        }
+        previous_cpu_stats[key] = currentStats;
+    }
+
+    return;
+}
+
+void Proc::UpdateNumProcs(std::vector<std::vector<std::string>> cpu_lines)
+{
+    // Number of Processors is number of "cpuN" lines
+    static auto num_procs = registry_->CreateGauge("sys.cpu.numProcessors");
+    num_procs.Set(cpu_lines.size() - 1); // subtract 1 for the aggregate "cpu" line
+    return;
+}
+
+void print_stats(const std::vector<std::vector<std::string>>& cpu_lines)
+{
+    for (const auto& fields : cpu_lines)
+    {
+        for (const auto& field : fields)
+        {
+            std::cout << field << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+
+void Proc::cpu_stats_new() noexcept
+{
+    auto stat_data = read_lines_fields(this->path_prefix_, "stat");
+    std::vector<std::vector<std::string>> cpu_lines;
+    for (const auto& fields : stat_data)
+    {
+        if (fields.size() > 0 && starts_with(fields[0].c_str(), "cpu"))
+        {
+            cpu_lines.push_back(fields);
+        }
+    }
+
+    UpdateUtilizationGauges(cpu_lines);
+    UpdateCoreUtilization(cpu_lines);
+    UpdateNumProcs(cpu_lines);
 }
 
 void Proc::memory_stats() noexcept

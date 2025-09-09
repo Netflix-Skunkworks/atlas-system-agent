@@ -19,6 +19,7 @@ class Proc
     void netstat_stats() noexcept;
     void loadavg_stats() noexcept;
     void cpu_stats() noexcept;
+    void cpu_stats_new() noexcept;
     void peak_cpu_stats() noexcept;
     void memory_stats() noexcept;
     void process_stats() noexcept;
@@ -28,6 +29,10 @@ class Proc
     [[nodiscard]] bool is_container() const noexcept;
 
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
+
+    void UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lines);
+    void UpdateCoreUtilization(std::vector<std::vector<std::string>> cpu_lines);
+    void UpdateNumProcs(std::vector<std::vector<std::string>> cpu_lines);
 
    private:
     Registry* registry_;

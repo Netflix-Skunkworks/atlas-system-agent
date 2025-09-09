@@ -19,6 +19,17 @@ add_executable(proc_test
     test/proc_test.cpp
 )
 
+add_executable(proc_example
+    test/proc_example.cpp
+)
+
+target_link_libraries(proc_example
+    proc
+    logger
+    spectator-registry
+    util
+)
+
 target_link_libraries(proc_test
     proc
     logger
