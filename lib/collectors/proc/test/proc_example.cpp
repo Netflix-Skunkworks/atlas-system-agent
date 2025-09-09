@@ -7,14 +7,14 @@ using atlasagent::Logger;
 
 int main()
 {
-    auto logger = Logger();
-    logger->set_level(spdlog::level::debug);
+    // auto logger = Logger();
+    // logger->set_level(spdlog::level::debug);
 
-    Config config(WriterConfig(WriterTypes::Memory));
-    Registry registry(config);
+    // Config config(WriterConfig(WriterTypes::Memory));
+    // Registry registry(config);
 
-    atlasagent::Proc proc{&registry, {{"nf.test", "extra"}}};
+    // atlasagent::Proc proc{&registry, {{"nf.test", "extra"}}};
 
-    proc.cpu_stats_new();
+    // proc.cpu_stats_new();
 
 }

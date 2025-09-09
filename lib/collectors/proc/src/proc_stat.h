@@ -3,6 +3,7 @@
 #include <string>
 #include <cstdlib>
 #include <cstdint>
+#include <unordered_map>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
@@ -112,16 +113,18 @@ class CpuStatFields
     uint64_t total;  // computed as sum of all above fields
 };
 
-class CpuGauges
+template<typename GaugeType>
+class CpuGaugesTemplate
 {
 public:
-    CpuGauges(Registry* registry, const char* name)
-        : user_gauge(registry->CreateGauge(name, {{"id", "user"}})),        // id = "user"
-          system_gauge(registry->CreateGauge(name, {{"id", "system"}})),    // id = "system"  
-          stolen_gauge(registry->CreateGauge(name, {{"id", "stolen"}})),    // id = "stolen"
-          nice_gauge(registry->CreateGauge(name, {{"id", "nice"}})),        // id = "nice"
-          wait_gauge(registry->CreateGauge(name, {{"id", "wait"}})),        // id = "wait"
-          interrupt_gauge(registry->CreateGauge(name, {{"id", "interrupt"}})) // id = "interrupt"
+    template<typename CreateGaugeFn>
+    CpuGaugesTemplate(Registry* registry, const char* name, CreateGaugeFn createGauge)
+        : user_gauge(createGauge(registry, name, {{"id", "user"}})),        // id = "user"
+          system_gauge(createGauge(registry, name, {{"id", "system"}})),    // id = "system"  
+          stolen_gauge(createGauge(registry, name, {{"id", "stolen"}})),    // id = "stolen"
+          nice_gauge(createGauge(registry, name, {{"id", "nice"}})),        // id = "nice"
+          wait_gauge(createGauge(registry, name, {{"id", "wait"}})),        // id = "wait"
+          interrupt_gauge(createGauge(registry, name, {{"id", "interrupt"}})) // id = "interrupt"
     {
     }
 
@@ -136,40 +139,23 @@ public:
     }
 
 private:
-    Gauge user_gauge;
-    Gauge system_gauge;
-    Gauge stolen_gauge;
-    Gauge nice_gauge;
-    Gauge wait_gauge;
-    Gauge interrupt_gauge;
+    GaugeType user_gauge;
+    GaugeType system_gauge;
+    GaugeType stolen_gauge;
+    GaugeType nice_gauge;
+    GaugeType wait_gauge;
+    GaugeType interrupt_gauge;
 };
 
-class PeakCpuGauges
-{
-public:
-    PeakCpuGauges(Registry* registry, const char* name)
-        : peak_user_gauge(registry->CreateMaxGauge(name, {{"id", "user"}})),        // id = "user"
-          peak_system_gauge(registry->CreateMaxGauge(name, {{"id", "system"}})),    // id = "system"  
-          peak_stolen_gauge(registry->CreateMaxGauge(name, {{"id", "stolen"}})),    // id = "stolen"
-          peak_nice_gauge(registry->CreateMaxGauge(name, {{"id", "nice"}})),        // id = "nice"
-          peak_wait_gauge(registry->CreateMaxGauge(name, {{"id", "wait"}})),        // id = "wait"
-          peak_interrupt_gauge(registry->CreateMaxGauge(name, {{"id", "interrupt"}})) // id = "interrupt"
-    {
-    }
-    void update(const Cpu_Gauge_Values& vals)
-    {
-        peak_user_gauge.Set(vals.user);
-        peak_system_gauge.Set(vals.system);
-        peak_stolen_gauge.Set(vals.stolen);
-        peak_nice_gauge.Set(vals.nice);
-        peak_wait_gauge.Set(vals.wait);
-        peak_interrupt_gauge.Set(vals.interrupt);
-    }
-private:
-    MaxGauge peak_user_gauge;
-    MaxGauge peak_system_gauge;
-    MaxGauge peak_stolen_gauge;
-    MaxGauge peak_nice_gauge;
-    MaxGauge peak_wait_gauge;
-    MaxGauge peak_interrupt_gauge;
-};
+// Factory functions for easy construction
+inline CpuGaugesTemplate<Gauge> CreateCpuGauges(Registry* registry, const char* name) {
+    return CpuGaugesTemplate<Gauge>(registry, name, [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags) {
+        return reg->CreateGauge(n, tags);
+    });
+}
+
+inline CpuGaugesTemplate<MaxGauge> CreatePeakCpuGauges(Registry* registry, const char* name) {
+    return CpuGaugesTemplate<MaxGauge>(registry, name, [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags) {
+        return reg->CreateMaxGauge(n, tags);
+    });
+}

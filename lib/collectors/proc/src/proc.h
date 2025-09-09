@@ -19,9 +19,7 @@ class Proc
     void netstat_stats() noexcept;
     void loadavg_stats() noexcept;
     void cpu_stats() noexcept;
-    void cpu_stats_new() noexcept;
     void peak_cpu_stats() noexcept;
-    void peak_cpu_stats_new() noexcept;
     void memory_stats() noexcept;
     void process_stats() noexcept;
     void socket_stats() noexcept;

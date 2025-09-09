@@ -14,7 +14,7 @@ namespace
 {
 
 using atlasagent::Logger;
-/*
+
 TEST(Proc, ParseNetwork)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -254,7 +254,7 @@ TEST(Proc, IsContainer)
     proc.set_prefix("testdata/resources/proc-host");
     EXPECT_FALSE(proc.is_container());
 }
-*/
+
 TEST(Proc, CpuStats)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -263,16 +263,16 @@ TEST(Proc, CpuStats)
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 
-    proc.cpu_stats_new();
-    proc.peak_cpu_stats_new();
+    proc.cpu_stats();
+    proc.peak_cpu_stats();
     auto messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 1);
     EXPECT_EQ(messages.at(0), "g:sys.cpu.numProcessors:2.000000\n");
 
     memoryWriter->Clear();
     proc.set_prefix("testdata/resources/proc2");
-    proc.cpu_stats_new();
-    proc.peak_cpu_stats_new();
+    proc.cpu_stats();
+    proc.peak_cpu_stats();
     messages = memoryWriter->GetMessages();
 
     EXPECT_EQ(15, messages.size());
@@ -292,7 +292,7 @@ TEST(Proc, CpuStats)
     EXPECT_EQ(messages.at(13), "m:sys.cpu.peakUtilization,id=wait:0.001324\n");
     EXPECT_EQ(messages.at(14), "m:sys.cpu.peakUtilization,id=interrupt:7857889221593.793945\n");
 }
-/*
+
 TEST(Proc, UptimeStats)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -438,95 +438,6 @@ TEST(Proc, ProcessStats)
     EXPECT_EQ(messages.at(0), "g:sys.currentProcesses:2.000000\n");
     EXPECT_EQ(messages.at(1), "g:sys.currentThreads:5.000000\n");
 }
-*/
-
-
-// TEST(Proc, CpuStats2)
-// {
-//     auto config = Config(WriterConfig(WriterTypes::Memory));
-//     auto r = Registry(config);
-//     atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "/home/ebadeaux/cpumetrics/atlas-system-agent/lib/collectors/proc/data/old/"};
-
-//     proc.cpu_stats_new();
-//     proc.set_prefix("/home/ebadeaux/cpumetrics/atlas-system-agent/lib/collectors/proc/data/new/");
-//     proc.cpu_stats_new();
-    
-//     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-//     auto oldMessages = memoryWriter->GetMessages();
-//     std::sort(oldMessages.begin(), oldMessages.end());
-
-
-//     memoryWriter->Clear();
-//     proc.set_prefix("/home/ebadeaux/cpumetrics/atlas-system-agent/lib/collectors/proc/data/old/");
-//     proc.cpu_stats();
-//     proc.set_prefix("/home/ebadeaux/cpumetrics/atlas-system-agent/lib/collectors/proc/data/new/");
-//     proc.cpu_stats();
-
-    
-//     auto newMessages = memoryWriter->GetMessages();
-//     std::sort(newMessages.begin(), newMessages.end());
-    
-//     // Print messages side by side for comparison
-//     std::cout << "\n=== CPU STATS COMPARISON ===" << std::endl;
-//     std::cout << std::left << std::setw(50) << "cpu_stats_new() Output" << " | " << "cpu_stats() Output" << std::endl;
-//     std::cout << std::string(50, '-') << " | " << std::string(50, '-') << std::endl;
-    
-//     size_t maxSize = std::max(oldMessages.size(), newMessages.size());
-//     for (size_t i = 0; i < maxSize; ++i) {
-//         std::string oldMsg = (i < oldMessages.size()) ? oldMessages[i] : "";
-//         std::string newMsg = (i < newMessages.size()) ? newMessages[i] : "";
-        
-//         // Remove newlines for cleaner output
-//         if (!oldMsg.empty() && oldMsg.back() == '\n') oldMsg.pop_back();
-//         if (!newMsg.empty() && newMsg.back() == '\n') newMsg.pop_back();
-        
-//         std::cout << std::left << std::setw(50) << oldMsg << " | " << newMsg << std::endl;
-//     }
-//     std::cout << "==============================" << std::endl;
-    
-//     EXPECT_EQ(newMessages, oldMessages);
-// }
-
-
-// TEST(Proc, PeakCpuStats2)
-// {
-//     auto config = Config(WriterConfig(WriterTypes::Memory));
-//     auto r = Registry(config);
-//     atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "/home/ebadeaux/cpumetrics/atlas-system-agent/lib/collectors/proc/data/old/"};
-
-//     proc.peak_cpu_stats_new();
-//     proc.set_prefix("/home/ebadeaux/cpumetrics/atlas-system-agent/lib/collectors/proc/data/new/");
-//     proc.peak_cpu_stats_new();
-    
-//     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-//     auto oldMessages = memoryWriter->GetMessages();
-//     std::sort(oldMessages.begin(), oldMessages.end());
-
-//     memoryWriter->Clear();
-//     proc.set_prefix("/home/ebadeaux/cpumetrics/atlas-system-agent/lib/collectors/proc/data/old/");
-//     proc.peak_cpu_stats();
-//     proc.set_prefix("/home/ebadeaux/cpumetrics/atlas-system-agent/lib/collectors/proc/data/new/");
-//     proc.peak_cpu_stats();  
-
-//     auto newMessages = memoryWriter->GetMessages();
-//     std::sort(newMessages.begin(), newMessages.end());
-
-//     // Print messages side by side for comparison
-//     std::cout << "\n=== PEAK CPU STATS COMPARISON ===" << std::endl;
-//     std::cout << std::left << std::setw(50) << "peak_cpu_stats_new() Output" << " | " << "peak_cpu_stats() Output" << std::endl;
-//     std::cout << std::string(50, '-') << " | " << std::string(50, '-') << std::endl;    
-//     size_t maxSize = std::max(oldMessages.size(), newMessages.size());
-//     for (size_t i = 0; i < maxSize; ++i) {
-//         std::string oldMsg = (i < oldMessages.size()) ? oldMessages[i] : "";
-//         std::string newMsg = (i < newMessages.size()) ? newMessages[i] : "";
-//         // Remove newlines for cleaner output
-//         if (!oldMsg.empty() && oldMsg.back() == '\n') oldMsg.pop_back();
-//         if (!newMsg.empty() && newMsg.back() == '\n') newMsg.pop_back();
-//         std::cout << std::left << std::setw(50) << oldMsg << " | " << newMsg << std::endl;
-//     }
-//     std::cout << "==============================" << std::endl;
-// }
-
 
 
 

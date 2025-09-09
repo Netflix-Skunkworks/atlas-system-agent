@@ -499,115 +499,6 @@ bool Proc::is_container() const noexcept
 
 void Proc::set_prefix(const std::string& new_prefix) noexcept { path_prefix_ = new_prefix; }
 
-namespace detail
-{
-struct cpu_gauge_vals
-{
-    double user;
-    double system;
-    double stolen;
-    double nice;
-    double wait;
-    double interrupt;
-};
-
-template <typename Reg, typename G>
-struct cpu_gauges
-{
-    using gauge_ptr = std::shared_ptr<G>;
-    using gauge_maker_t = std::function<gauge_ptr(Reg* registry, const char* name, const char* id)>;
-    cpu_gauges(Reg* registry, const char* name, const gauge_maker_t& gauge_maker)
-        : user_gauge(gauge_maker(registry, name, "user")),
-          system_gauge(gauge_maker(registry, name, "system")),
-          stolen_gauge(gauge_maker(registry, name, "stolen")),
-          nice_gauge(gauge_maker(registry, name, "nice")),
-          wait_gauge(gauge_maker(registry, name, "wait")),
-          interrupt_gauge(gauge_maker(registry, name, "interrupt"))
-    {
-    }
-
-    gauge_ptr user_gauge;
-    gauge_ptr system_gauge;
-    gauge_ptr stolen_gauge;
-    gauge_ptr nice_gauge;
-    gauge_ptr wait_gauge;
-    gauge_ptr interrupt_gauge;
-
-    void update(const cpu_gauge_vals& vals)
-    {
-        user_gauge->Set(vals.user);
-        system_gauge->Set(vals.system);
-        stolen_gauge->Set(vals.stolen);
-        nice_gauge->Set(vals.nice);
-        wait_gauge->Set(vals.wait);
-        interrupt_gauge->Set(vals.interrupt);
-    }
-};
-
-struct stat_vals
-{
-    static constexpr const char* CPU_STATS_LINE = " %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu";
-    u_long user{0}, nice{0}, system{0}, idle{0}, iowait{0}, irq{0}, softirq{0}, steal{0}, guest{0}, guest_nice{0};
-    double total{NAN};
-
-    static stat_vals parse(const char* line)
-    {
-        stat_vals result;
-        auto ret =
-            sscanf(line, CPU_STATS_LINE, &result.user, &result.nice, &result.system, &result.idle, &result.iowait,
-                   &result.irq, &result.softirq, &result.steal, &result.guest, &result.guest_nice);
-        if (ret < 7)
-        {
-            Logger()->info("Unable to parse cpu stats from '{}' - only {} fields were read", line, ret);
-            return result;
-        }
-        result.total = static_cast<double>(result.user) + result.nice + result.system + result.idle + result.iowait +
-                       result.irq + result.softirq;
-        if (ret > 7)
-        {
-            result.total += result.steal + result.guest + result.guest_nice;
-        }
-        else
-        {
-            result.steal = result.guest = result.guest_nice = 0;
-        }
-        return result;
-    }
-
-    bool has_been_updated() const noexcept { return !std::isnan(total); }
-
-    stat_vals() = default;
-
-    cpu_gauge_vals compute_vals(const stat_vals& prev) const noexcept
-    {
-        cpu_gauge_vals vals{};
-        auto delta_total = total - prev.total;
-        auto delta_user = user - prev.user;
-        auto delta_system = system - prev.system;
-        auto delta_stolen = steal - prev.steal;
-        auto delta_nice = nice - prev.nice;
-        auto delta_interrupt = (irq + softirq) - (prev.irq + prev.softirq);
-        auto delta_wait = iowait > prev.iowait ? iowait - prev.iowait : 0;
-
-        if (delta_total > 0)
-        {
-            vals.user = 100.0 * delta_user / delta_total;
-            vals.system = 100.0 * delta_system / delta_total;
-            vals.stolen = 100.0 * delta_stolen / delta_total;
-            vals.nice = 100.0 * delta_nice / delta_total;
-            vals.wait = 100.0 * delta_wait / delta_total;
-            vals.interrupt = 100.0 * delta_interrupt / delta_total;
-        }
-        else
-        {
-            vals.user = vals.system = vals.stolen = vals.nice = vals.wait = vals.interrupt = 0.0;
-        }
-        return vals;
-    }
-};
-
-}  // namespace detail
-
 inline void set_if_present(const std::unordered_map<std::string, int64_t>& stats, const char* key,
                            const MonotonicCounter& ctr)
 {
@@ -690,35 +581,6 @@ void Proc::vmstats() noexcept
 
 void Proc::peak_cpu_stats() noexcept
 {
-    static detail::cpu_gauges<Registry, MaxGauge> peakUtilizationGauges{
-        registry_, "sys.cpu.peakUtilization",
-        [](Registry* r, const char* name, const char* id) -> std::shared_ptr<MaxGauge>
-        { return std::make_shared<MaxGauge>(r->CreateMaxGauge(name, {{"id", id}})); }};
-
-    static detail::stat_vals prev;
-
-    auto fp = open_file(path_prefix_, "stat");
-    if (fp == nullptr)
-    {
-        return;
-    }
-    char line[1024];
-    auto ret = fgets(line, sizeof line, fp);
-    if (ret == nullptr)
-    {
-        return;
-    }
-    detail::stat_vals vals = detail::stat_vals::parse(line + 3);  // 'cpu'
-    if (prev.has_been_updated())
-    {
-        auto gauge_vals = vals.compute_vals(prev);
-        peakUtilizationGauges.update(gauge_vals);
-    }
-    prev = vals;
-}
-
-void Proc::peak_cpu_stats_new() noexcept
-{
     auto stat_data = read_lines_fields(this->path_prefix_, "stat");
     std::vector<std::vector<std::string>> cpu_lines;
     for (const auto& fields : stat_data)
@@ -729,7 +591,7 @@ void Proc::peak_cpu_stats_new() noexcept
         }
     }
 
-    static PeakCpuGauges peakUtilizationGauges(registry_, "sys.cpu.peakUtilization");
+    static auto peakUtilizationGauges = CreatePeakCpuGauges(registry_, "sys.cpu.peakUtilization");
     static std::optional<CpuStatFields> previous_aggregate_stats;
     CpuStatFields currentStats(cpu_lines[0]);
     if (previous_aggregate_stats.has_value())
@@ -741,73 +603,11 @@ void Proc::peak_cpu_stats_new() noexcept
     return;
 }
 
-void Proc::cpu_stats() noexcept
-{
-    static auto num_procs = registry_->CreateGauge("sys.cpu.numProcessors");
-
-    static detail::cpu_gauges<Registry, Gauge> utilizationGauges{
-        registry_, "sys.cpu.utilization", [](Registry* r, const char* name, const char* id)
-        { return std::make_shared<Gauge>(r->CreateGauge(name, {{"id", id}})); }};
-
-    static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
-    static detail::stat_vals prev_vals;
-    static std::unordered_map<int, detail::stat_vals> prev_cpu_vals;
-
-    auto fp = open_file(path_prefix_, "stat");
-    if (fp == nullptr)
-    {
-        return;
-    }
-    char line[1024];
-    auto ret = fgets(line, sizeof line, fp);
-    if (ret == nullptr)
-    {
-        return;
-    }
-    detail::stat_vals vals = detail::stat_vals::parse(line + 3);  // 'cpu'
-    if (prev_vals.has_been_updated())
-    {
-        auto gauge_vals = vals.compute_vals(prev_vals);
-        utilizationGauges.update(gauge_vals);
-    }
-    prev_vals = vals;
-
-    // get the per-cpu metrics
-    auto cpu_count = 0;
-    while (fgets(line, sizeof line, fp) != nullptr)
-    {
-        if (strncmp(line, "cpu", 3) != 0)
-        {
-            break;
-        }
-        cpu_count += 1;
-        int cpu_num;
-        sscanf(line, "cpu%d ", &cpu_num);
-        char* p = line + 4;
-        while (*p != ' ')
-        {
-            ++p;
-        }
-        detail::stat_vals per_cpu_vals = detail::stat_vals::parse(p);
-        auto it = prev_cpu_vals.find(cpu_num);
-        if (it != prev_cpu_vals.end())
-        {
-            auto& prev = it->second;
-            auto computed_vals = per_cpu_vals.compute_vals(prev);
-            auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice +
-                         computed_vals.wait + computed_vals.interrupt;
-            coresDistSummary.Record(usage);
-        }
-        prev_cpu_vals[cpu_num] = per_cpu_vals;
-    }
-    num_procs.Set(cpu_count);
-}
-
 void Proc::UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lines)
 {
     auto aggregate_line = cpu_lines[0];
     static std::optional<CpuStatFields> previous_aggregate_stats;
-    static CpuGauges utilizationGauges(registry_, "sys.cpu.utilization");
+    static auto utilizationGauges = CreateCpuGauges(registry_, "sys.cpu.utilization");
     CpuStatFields currentStats(aggregate_line);
     if (previous_aggregate_stats.has_value())
     {
@@ -854,19 +654,7 @@ void Proc::UpdateNumProcs(std::vector<std::vector<std::string>> cpu_lines)
     return;
 }
 
-void print_stats(const std::vector<std::vector<std::string>>& cpu_lines)
-{
-    for (const auto& fields : cpu_lines)
-    {
-        for (const auto& field : fields)
-        {
-            std::cout << field << " ";
-        }
-        std::cout << std::endl;
-    }
-}
-
-void Proc::cpu_stats_new() noexcept
+void Proc::cpu_stats() noexcept
 {
     auto stat_data = read_lines_fields(this->path_prefix_, "stat");
     std::vector<std::vector<std::string>> cpu_lines;
