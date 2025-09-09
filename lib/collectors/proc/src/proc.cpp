@@ -717,6 +717,30 @@ void Proc::peak_cpu_stats() noexcept
     prev = vals;
 }
 
+void Proc::peak_cpu_stats_new() noexcept
+{
+    auto stat_data = read_lines_fields(this->path_prefix_, "stat");
+    std::vector<std::vector<std::string>> cpu_lines;
+    for (const auto& fields : stat_data)
+    {
+        if (fields.size() > 0 && starts_with(fields[0].c_str(), "cpu"))
+        {
+            cpu_lines.push_back(fields);
+        }
+    }
+
+    static PeakCpuGauges peakUtilizationGauges(registry_, "sys.cpu.peakUtilization");
+    static std::optional<CpuStatFields> previous_aggregate_stats;
+    CpuStatFields currentStats(cpu_lines[0]);
+    if (previous_aggregate_stats.has_value())
+    {
+        auto computed_vals = currentStats.computeGaugeValues(previous_aggregate_stats.value());
+        peakUtilizationGauges.update(computed_vals);
+    }
+    previous_aggregate_stats = currentStats;
+    return;
+}
+
 void Proc::cpu_stats() noexcept
 {
     static auto num_procs = registry_->CreateGauge("sys.cpu.numProcessors");
@@ -788,7 +812,7 @@ void Proc::UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lin
     if (previous_aggregate_stats.has_value())
     {
         auto computed_vals = currentStats.computeGaugeValues(previous_aggregate_stats.value());
-        utilizationGauges.update(computed_vals);
+        utilizationGauges.update(computed_vals);        
     }
 
     previous_aggregate_stats = currentStats;

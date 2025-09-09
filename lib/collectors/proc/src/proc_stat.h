@@ -143,3 +143,33 @@ private:
     Gauge wait_gauge;
     Gauge interrupt_gauge;
 };
+
+class PeakCpuGauges
+{
+public:
+    PeakCpuGauges(Registry* registry, const char* name)
+        : peak_user_gauge(registry->CreateMaxGauge(name, {{"id", "user"}})),        // id = "user"
+          peak_system_gauge(registry->CreateMaxGauge(name, {{"id", "system"}})),    // id = "system"  
+          peak_stolen_gauge(registry->CreateMaxGauge(name, {{"id", "stolen"}})),    // id = "stolen"
+          peak_nice_gauge(registry->CreateMaxGauge(name, {{"id", "nice"}})),        // id = "nice"
+          peak_wait_gauge(registry->CreateMaxGauge(name, {{"id", "wait"}})),        // id = "wait"
+          peak_interrupt_gauge(registry->CreateMaxGauge(name, {{"id", "interrupt"}})) // id = "interrupt"
+    {
+    }
+    void update(const Cpu_Gauge_Values& vals)
+    {
+        peak_user_gauge.Set(vals.user);
+        peak_system_gauge.Set(vals.system);
+        peak_stolen_gauge.Set(vals.stolen);
+        peak_nice_gauge.Set(vals.nice);
+        peak_wait_gauge.Set(vals.wait);
+        peak_interrupt_gauge.Set(vals.interrupt);
+    }
+private:
+    MaxGauge peak_user_gauge;
+    MaxGauge peak_system_gauge;
+    MaxGauge peak_stolen_gauge;
+    MaxGauge peak_nice_gauge;
+    MaxGauge peak_wait_gauge;
+    MaxGauge peak_interrupt_gauge;
+};
