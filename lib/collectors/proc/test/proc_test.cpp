@@ -263,16 +263,14 @@ TEST(Proc, CpuStats)
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 
-    proc.cpu_stats();
-    proc.peak_cpu_stats();
+    proc.CpuStats(true);
     auto messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 1);
     EXPECT_EQ(messages.at(0), "g:sys.cpu.numProcessors:2.000000\n");
 
     memoryWriter->Clear();
     proc.set_prefix("testdata/resources/proc2");
-    proc.cpu_stats();
-    proc.peak_cpu_stats();
+    proc.CpuStats(true);
     messages = memoryWriter->GetMessages();
 
     EXPECT_EQ(15, messages.size());

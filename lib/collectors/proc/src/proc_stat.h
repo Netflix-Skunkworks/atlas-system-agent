@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <unordered_map>
+#include <charconv>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
@@ -20,14 +21,6 @@ struct Cpu_Gauge_Values
 class CpuStatFields
 {
    public:
-    // Default constructor
-    CpuStatFields() 
-        : user(0), nice(0), system(0), idle(0), iowait(0), irq(0), softirq(0), steal(0), guest(0), guest_nice(0), total(0)
-    {
-    }
-
-    // Constructor that takes a vector of strings like: ["cpu0", "5209", "0", "5559", "263846", "286", "0", "5538", "0",
-    // "0", "0"]
     CpuStatFields(const std::vector<std::string>& fields)
         : user(0),
           nice(0),
@@ -44,26 +37,39 @@ class CpuStatFields
         // Skip the first element (CPU name like "cpu0") and parse the numeric fields
         if (fields.size() >= 8)
         {  // Minimum required fields (user through softirq)
-            user = std::strtoull(fields[1].c_str(), nullptr, 10);
-            nice = std::strtoull(fields[2].c_str(), nullptr, 10);
-            system = std::strtoull(fields[3].c_str(), nullptr, 10);
-            idle = std::strtoull(fields[4].c_str(), nullptr, 10);
-            iowait = std::strtoull(fields[5].c_str(), nullptr, 10);
-            irq = std::strtoull(fields[6].c_str(), nullptr, 10);
-            softirq = std::strtoull(fields[7].c_str(), nullptr, 10);
+            auto result1 = std::from_chars(fields[1].data(), fields[1].data() + fields[1].size(), user);
+            auto result2 = std::from_chars(fields[2].data(), fields[2].data() + fields[2].size(), nice);
+            auto result3 = std::from_chars(fields[3].data(), fields[3].data() + fields[3].size(), system);
+            auto result4 = std::from_chars(fields[4].data(), fields[4].data() + fields[4].size(), idle);
+            auto result5 = std::from_chars(fields[5].data(), fields[5].data() + fields[5].size(), iowait);
+            auto result6 = std::from_chars(fields[6].data(), fields[6].data() + fields[6].size(), irq);
+            auto result7 = std::from_chars(fields[7].data(), fields[7].data() + fields[7].size(), softirq);
+
+            // Check for parsing errors in required fields
+            if (result1.ec != std::errc{} || result2.ec != std::errc{} || result3.ec != std::errc{} || 
+                result4.ec != std::errc{} || result5.ec != std::errc{} || result6.ec != std::errc{} || 
+                result7.ec != std::errc{})
+            {
+                // Reset to zero on parse error
+                user = nice = system = idle = iowait = irq = softirq = steal = guest = guest_nice = total = 0;
+                return;
+            }
 
             // Optional fields for newer kernels
             if (fields.size() >= 9)
             {
-                steal = std::strtoull(fields[8].c_str(), nullptr, 10);
+                auto result8 = std::from_chars(fields[8].data(), fields[8].data() + fields[8].size(), steal);
+                if (result8.ec != std::errc{}) steal = 0;
             }
             if (fields.size() >= 10)
             {
-                guest = std::strtoull(fields[9].c_str(), nullptr, 10);
+                auto result9 = std::from_chars(fields[9].data(), fields[9].data() + fields[9].size(), guest);
+                if (result9.ec != std::errc{}) guest = 0;
             }
             if (fields.size() >= 11)
             {
-                guest_nice = std::strtoull(fields[10].c_str(), nullptr, 10);
+                auto result10 = std::from_chars(fields[10].data(), fields[10].data() + fields[10].size(), guest_nice);
+                if (result10.ec != std::errc{}) guest_nice = 0;
             }
 
             // Calculate total
@@ -113,18 +119,18 @@ class CpuStatFields
     uint64_t total;  // computed as sum of all above fields
 };
 
-template<typename GaugeType>
+template <typename GaugeType>
 class CpuGaugesTemplate
 {
-public:
-    template<typename CreateGaugeFn>
+   public:
+    template <typename CreateGaugeFn>
     CpuGaugesTemplate(Registry* registry, const char* name, CreateGaugeFn createGauge)
-        : user_gauge(createGauge(registry, name, {{"id", "user"}})),        // id = "user"
-          system_gauge(createGauge(registry, name, {{"id", "system"}})),    // id = "system"  
-          stolen_gauge(createGauge(registry, name, {{"id", "stolen"}})),    // id = "stolen"
-          nice_gauge(createGauge(registry, name, {{"id", "nice"}})),        // id = "nice"
-          wait_gauge(createGauge(registry, name, {{"id", "wait"}})),        // id = "wait"
-          interrupt_gauge(createGauge(registry, name, {{"id", "interrupt"}})) // id = "interrupt"
+        : user_gauge(createGauge(registry, name, {{"id", "user"}})),
+          system_gauge(createGauge(registry, name, {{"id", "system"}})),
+          stolen_gauge(createGauge(registry, name, {{"id", "stolen"}})),
+          nice_gauge(createGauge(registry, name, {{"id", "nice"}})),
+          wait_gauge(createGauge(registry, name, {{"id", "wait"}})),
+          interrupt_gauge(createGauge(registry, name, {{"id", "interrupt"}}))
     {
     }
 
@@ -138,7 +144,7 @@ public:
         interrupt_gauge.Set(vals.interrupt);
     }
 
-private:
+   private:
     GaugeType user_gauge;
     GaugeType system_gauge;
     GaugeType stolen_gauge;
@@ -148,14 +154,16 @@ private:
 };
 
 // Factory functions for easy construction
-inline CpuGaugesTemplate<Gauge> CreateCpuGauges(Registry* registry, const char* name) {
-    return CpuGaugesTemplate<Gauge>(registry, name, [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags) {
-        return reg->CreateGauge(n, tags);
-    });
+inline CpuGaugesTemplate<Gauge> CreateCpuGauges(Registry* registry, const char* name)
+{
+    return CpuGaugesTemplate<Gauge>(
+        registry, name, [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
+        { return reg->CreateGauge(n, tags); });
 }
 
-inline CpuGaugesTemplate<MaxGauge> CreatePeakCpuGauges(Registry* registry, const char* name) {
-    return CpuGaugesTemplate<MaxGauge>(registry, name, [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags) {
-        return reg->CreateMaxGauge(n, tags);
-    });
+inline CpuGaugesTemplate<MaxGauge> CreatePeakCpuGauges(Registry* registry, const char* name)
+{
+    return CpuGaugesTemplate<MaxGauge>(
+        registry, name, [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
+        { return reg->CreateMaxGauge(n, tags); });
 }

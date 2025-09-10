@@ -9,7 +9,6 @@
 #include <iostream>
 #include "proc_stat.h"
 
-
 namespace atlasagent
 {
 
@@ -579,21 +578,11 @@ void Proc::vmstats() noexcept
     }
 }
 
-void Proc::peak_cpu_stats() noexcept
+void Proc::PeakCpuStats(std::vector<std::string> aggregateLine) noexcept
 {
-    auto stat_data = read_lines_fields(this->path_prefix_, "stat");
-    std::vector<std::vector<std::string>> cpu_lines;
-    for (const auto& fields : stat_data)
-    {
-        if (fields.size() > 0 && starts_with(fields[0].c_str(), "cpu"))
-        {
-            cpu_lines.push_back(fields);
-        }
-    }
-
     static auto peakUtilizationGauges = CreatePeakCpuGauges(registry_, "sys.cpu.peakUtilization");
     static std::optional<CpuStatFields> previous_aggregate_stats;
-    CpuStatFields currentStats(cpu_lines[0]);
+    CpuStatFields currentStats(aggregateLine);
     if (previous_aggregate_stats.has_value())
     {
         auto computed_vals = currentStats.computeGaugeValues(previous_aggregate_stats.value());
@@ -612,7 +601,7 @@ void Proc::UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lin
     if (previous_aggregate_stats.has_value())
     {
         auto computed_vals = currentStats.computeGaugeValues(previous_aggregate_stats.value());
-        utilizationGauges.update(computed_vals);        
+        utilizationGauges.update(computed_vals);
     }
 
     previous_aggregate_stats = currentStats;
@@ -629,18 +618,18 @@ void Proc::UpdateCoreUtilization(std::vector<std::vector<std::string>> cpu_lines
         {
             continue;  // skip the aggregate line
         }
-        auto key = fields[0]; // e.g., "cpu0"
+        auto key = fields[0];  // e.g., "cpu0"
         CpuStatFields currentStats(fields);
         auto it = previous_cpu_stats.find(key);
         if (it != previous_cpu_stats.end())
         {
-            const auto & prevStats = it->second;
+            const auto& prevStats = it->second;
             auto computed_vals = currentStats.computeGaugeValues(prevStats);
             auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice +
                          computed_vals.wait + computed_vals.interrupt;
             coresDistSummary.Record(usage);
         }
-        previous_cpu_stats[key] = currentStats;
+        previous_cpu_stats.emplace(key, currentStats);
     }
 
     return;
@@ -650,14 +639,14 @@ void Proc::UpdateNumProcs(std::vector<std::vector<std::string>> cpu_lines)
 {
     // Number of Processors is number of "cpuN" lines
     static auto num_procs = registry_->CreateGauge("sys.cpu.numProcessors");
-    num_procs.Set(cpu_lines.size() - 1); // subtract 1 for the aggregate "cpu" line
+    num_procs.Set(cpu_lines.size() - 1);  // subtract 1 for the aggregate "cpu" line
     return;
 }
 
-void Proc::cpu_stats() noexcept
+void Proc::CpuStats(bool fiveSecondMetrics) noexcept
 {
-    auto stat_data = read_lines_fields(this->path_prefix_, "stat");
     std::vector<std::vector<std::string>> cpu_lines;
+    auto stat_data = read_lines_fields(this->path_prefix_, "stat");
     for (const auto& fields : stat_data)
     {
         if (fields.size() > 0 && starts_with(fields[0].c_str(), "cpu"))
@@ -666,9 +655,16 @@ void Proc::cpu_stats() noexcept
         }
     }
 
-    UpdateUtilizationGauges(cpu_lines);
-    UpdateCoreUtilization(cpu_lines);
-    UpdateNumProcs(cpu_lines);
+    // If 5-second metrics are enabled, collect additional detailed metrics
+    if (fiveSecondMetrics)
+    {
+        UpdateUtilizationGauges(cpu_lines);
+        UpdateCoreUtilization(cpu_lines);
+        UpdateNumProcs(cpu_lines);
+    }
+
+    // Always collect peak stats (called every 1 second)
+    PeakCpuStats(cpu_lines[0]);
 }
 
 void Proc::memory_stats() noexcept
