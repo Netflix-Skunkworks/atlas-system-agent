@@ -657,7 +657,7 @@ std::vector<std::vector<std::string>> Proc::ParseProcStatFile() noexcept
     return cpu_lines;
 }
 
-void Proc::CpuStats(bool fiveSecondMetrics) noexcept
+void Proc::CpuStats(bool fiveSecondMetrics, bool sixtySecondMetricsEnabled) noexcept
 {
     auto cpu_lines = ParseProcStatFile();
     if (cpu_lines.empty())
@@ -665,12 +665,17 @@ void Proc::CpuStats(bool fiveSecondMetrics) noexcept
         return;
     }
 
+    // If 60-second metrics are enabled, collect utilization metrics
+    if (sixtySecondMetricsEnabled)
+    {
+        UpdateUtilizationGauges(cpu_lines);
+        UpdateNumProcs(cpu_lines);
+    }
+
     // If 5-second metrics are enabled, collect additional detailed metrics
     if (fiveSecondMetrics)
     {
-        UpdateUtilizationGauges(cpu_lines);
         UpdateCoreUtilization(cpu_lines);
-        UpdateNumProcs(cpu_lines);
     }
 
     // Always collect peak stats (called every 1 second)

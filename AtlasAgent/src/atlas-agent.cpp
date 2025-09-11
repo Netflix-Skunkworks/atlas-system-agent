@@ -75,9 +75,9 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
     proc->uptime_stats();
 }
 #else
-static void gather_peak_system_metrics(Proc* proc, bool fiveSecondMetricsEnabled) 
+static void gather_peak_system_metrics(Proc* proc, bool fiveSecondMetricsEnabled, bool sixtySecondMetricsEnabled) 
 {
-    proc->CpuStats(fiveSecondMetricsEnabled);
+    proc->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 }
 
 static void gather_scaling_metrics(CpuFreq* cpufreq)
@@ -380,13 +380,15 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
         
         // Gather one second metrics
-        // Five second metrics are also gathered here so we do not read /proc/stat twice
-        gather_peak_system_metrics(&proc, fiveSecondMetricsEnabled);
+        // Proc has been modified to optionally gather 5 second and 60 second metrics during this call
+        // This prevents having to read proc/stat multiple times if both 5 and 60 second metrics are enabled
+        gather_peak_system_metrics(&proc, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
         gather_scaling_metrics(&cpufreq);
 
         // If it's time to gather the 5 second metrics
         if (fiveSecondMetricsEnabled == true)
         {
+            Logger()->debug("Gathering 5 second metrics");
             if (perfspectMetrics.has_value())
             {
                 perfspectMetrics->GatherMetrics();
@@ -397,6 +399,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         // If it's time to gather the 60 second metrics
         if (sixtySecondMetricsEnabled == true)
         {
+            Logger()->debug("Gathering 60 second metrics");
             gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
             perf_metrics.collect();
             if (gpu)

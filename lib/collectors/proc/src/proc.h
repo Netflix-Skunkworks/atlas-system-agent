@@ -18,7 +18,7 @@ class Proc
     void snmp_stats() noexcept;
     void netstat_stats() noexcept;
     void loadavg_stats() noexcept;
-    void CpuStats(bool fiveSecondMetrics = false) noexcept;
+    void CpuStats(bool fiveSecondMetrics, bool sixtySecondMetricsEnabled) noexcept;
     void memory_stats() noexcept;
     void process_stats() noexcept;
     void socket_stats() noexcept;

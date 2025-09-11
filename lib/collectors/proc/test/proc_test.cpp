@@ -263,14 +263,14 @@ TEST(Proc, CpuStats)
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 
-    proc.CpuStats(true);
+    proc.CpuStats(true, true);
     auto messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 1);
     EXPECT_EQ(messages.at(0), "g:sys.cpu.numProcessors:2.000000\n");
 
     memoryWriter->Clear();
     proc.set_prefix("testdata/resources/proc2");
-    proc.CpuStats(true);
+    proc.CpuStats(true, true);
     messages = memoryWriter->GetMessages();
 
     EXPECT_EQ(15, messages.size());
@@ -280,9 +280,9 @@ TEST(Proc, CpuStats)
     EXPECT_EQ(messages.at(3), "g:sys.cpu.utilization,id=nice:0.000510\n");
     EXPECT_EQ(messages.at(4), "g:sys.cpu.utilization,id=wait:0.001324\n");
     EXPECT_EQ(messages.at(5), "g:sys.cpu.utilization,id=interrupt:7857889221593.793945\n");
-    EXPECT_EQ(messages.at(6), "d:sys.cpu.coreUtilization:254183268679903.093750\n");
-    EXPECT_EQ(messages.at(7), "d:sys.cpu.coreUtilization:338348793412414.750000\n");
-    EXPECT_EQ(messages.at(8), "g:sys.cpu.numProcessors:8.000000\n");
+    EXPECT_EQ(messages.at(6), "g:sys.cpu.numProcessors:8.000000\n");
+    EXPECT_EQ(messages.at(7), "d:sys.cpu.coreUtilization:254183268679903.093750\n");
+    EXPECT_EQ(messages.at(8), "d:sys.cpu.coreUtilization:338348793412414.750000\n");
     EXPECT_EQ(messages.at(9), "m:sys.cpu.peakUtilization,id=user:7857889221593.500000\n");
     EXPECT_EQ(messages.at(10), "m:sys.cpu.peakUtilization,id=system:0.024642\n");
     EXPECT_EQ(messages.at(11), "m:sys.cpu.peakUtilization,id=stolen:0.001503\n");
