@@ -97,10 +97,6 @@ class CpuStatFields
             vals.wait = 100.0 * delta_wait / delta_total;
             vals.interrupt = 100.0 * delta_interrupt / delta_total;
         }
-        else
-        {
-            vals.user = vals.system = vals.stolen = vals.nice = vals.wait = vals.interrupt = 0.0;
-        }
         return vals;
     }
 

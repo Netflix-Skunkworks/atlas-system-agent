@@ -26,6 +26,7 @@ class Proc
     void vmstats() noexcept;
     [[nodiscard]] bool is_container() const noexcept;
 
+    std::vector<std::vector<std::string>> ParseProcStatFile() noexcept;
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
    private:
@@ -33,7 +34,6 @@ class Proc
     void UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lines);
     void UpdateCoreUtilization(std::vector<std::vector<std::string>> cpu_lines);
     void UpdateNumProcs(std::vector<std::vector<std::string>> cpu_lines);
-
     void handle_line(FILE* fp) noexcept;
     void parse_ip_stats(const char* buf) noexcept;
     void parse_tcp_stats(const char* buf) noexcept;

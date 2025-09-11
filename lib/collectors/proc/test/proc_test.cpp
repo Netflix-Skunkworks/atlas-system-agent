@@ -437,6 +437,22 @@ TEST(Proc, ProcessStats)
     EXPECT_EQ(messages.at(1), "g:sys.currentThreads:5.000000\n");
 }
 
+TEST(Proc, ParseProcStat)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    atlasagent::Proc proc{&r, {{}}, "lib/collectors/proc/test/data/source1"};
 
-
+    auto cpu_lines = proc.ParseProcStatFile();
+    std::vector<std::string> expectedLine1 = {"cpu",  "177007", "523", "69813", "8596645", "5663", "0", "6983", "0", "0", "0"};
+    std::vector<std::string> expectedFinalLine = {"cpu31", "5461", "0", "1763", "269410", "67", "0", "0", "0", "0", "0"};
+    
+    for (const auto& line : cpu_lines)
+    {
+        EXPECT_EQ(line.size(), 11);
+    }
+    EXPECT_EQ(cpu_lines.size(), 33);
+    EXPECT_EQ(cpu_lines.at(0), expectedLine1);
+    EXPECT_EQ(cpu_lines.at(32), expectedFinalLine);
+}
 }  // namespace

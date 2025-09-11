@@ -643,7 +643,7 @@ void Proc::UpdateNumProcs(std::vector<std::vector<std::string>> cpu_lines)
     return;
 }
 
-void Proc::CpuStats(bool fiveSecondMetrics) noexcept
+std::vector<std::vector<std::string>> Proc::ParseProcStatFile() noexcept
 {
     std::vector<std::vector<std::string>> cpu_lines;
     auto stat_data = read_lines_fields(this->path_prefix_, "stat");
@@ -653,6 +653,16 @@ void Proc::CpuStats(bool fiveSecondMetrics) noexcept
         {
             cpu_lines.push_back(fields);
         }
+    }
+    return cpu_lines;
+}
+
+void Proc::CpuStats(bool fiveSecondMetrics) noexcept
+{
+    auto cpu_lines = ParseProcStatFile();
+    if (cpu_lines.empty())
+    {
+        return;
     }
 
     // If 5-second metrics are enabled, collect additional detailed metrics

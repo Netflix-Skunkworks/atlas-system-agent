@@ -379,7 +379,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
         
-        // One second metrics
+        // Gather one second metrics
         // Five second metrics are also gathered here so we do not read /proc/stat twice
         gather_peak_system_metrics(&proc, fiveSecondMetricsEnabled);
         gather_scaling_metrics(&cpufreq);
