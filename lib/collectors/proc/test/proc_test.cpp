@@ -441,18 +441,18 @@ TEST(Proc, ParseProcStat)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{}}, "lib/collectors/proc/test/data/source1"};
+    atlasagent::Proc proc{&r, {{}}, "testdata/resources/proc"};
 
     auto cpu_lines = proc.ParseProcStatFile();
-    std::vector<std::string> expectedLine1 = {"cpu",  "177007", "523", "69813", "8596645", "5663", "0", "6983", "0", "0", "0"};
-    std::vector<std::string> expectedFinalLine = {"cpu31", "5461", "0", "1763", "269410", "67", "0", "0", "0", "0", "0"};
+    std::vector<std::string> expectedLine1 = {"cpu", "888323", "1687", "28308", "19198842", "3236", "0", "6908", "8986", "0", "0"};
+    std::vector<std::string> expectedFinalLine = {"cpu1", "313235", "940", "12757", "9713236", "1709", "0", "6646", "4094", "0", "0"};
     
     for (const auto& line : cpu_lines)
     {
         EXPECT_EQ(line.size(), 11);
     }
-    EXPECT_EQ(cpu_lines.size(), 33);
+    EXPECT_EQ(cpu_lines.size(), 3);
     EXPECT_EQ(cpu_lines.at(0), expectedLine1);
-    EXPECT_EQ(cpu_lines.at(32), expectedFinalLine);
+    EXPECT_EQ(cpu_lines.at(2), expectedFinalLine);
 }
 }  // namespace
