@@ -1,6 +1,7 @@
 #include "proc.h"
 #include <lib/util/src/util.h>
 #include <absl/strings/str_split.h>
+#include <absl/strings/str_join.h>
 #include <absl/strings/numbers.h>
 #include <cinttypes>
 #include <cstring>
@@ -578,7 +579,7 @@ void Proc::vmstats() noexcept
     }
 }
 
-void Proc::PeakCpuStats(std::vector<std::string> aggregateLine) noexcept
+void Proc::PeakCpuStats(const std::vector<std::string> &aggregateLine) noexcept
 {
     static auto peakUtilizationGauges = CreatePeakCpuGauges(registry_, "sys.cpu.peakUtilization");
     static std::optional<CpuStatFields> previous_aggregate_stats;
@@ -592,12 +593,11 @@ void Proc::PeakCpuStats(std::vector<std::string> aggregateLine) noexcept
     return;
 }
 
-void Proc::UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lines)
+void Proc::UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine)
 {
-    auto aggregate_line = cpu_lines[0];
     static std::optional<CpuStatFields> previous_aggregate_stats;
     static auto utilizationGauges = CreateCpuGauges(registry_, "sys.cpu.utilization");
-    CpuStatFields currentStats(aggregate_line);
+    CpuStatFields currentStats(aggregateLine);
     if (previous_aggregate_stats.has_value())
     {
         auto computed_vals = currentStats.computeGaugeValues(previous_aggregate_stats.value());
@@ -608,16 +608,13 @@ void Proc::UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lin
     return;
 }
 
-void Proc::UpdateCoreUtilization(std::vector<std::vector<std::string>> cpu_lines)
+void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cpu_lines)
 {
     static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
     static std::unordered_map<std::string, CpuStatFields> previous_cpu_stats;
-    for (const auto& fields : cpu_lines)
+    for (unsigned int i = 1; i < cpu_lines.size(); ++i)
     {
-        if (fields[0] == "cpu")
-        {
-            continue;  // skip the aggregate line
-        }
+        const auto& fields = cpu_lines[i];
         auto key = fields[0];  // e.g., "cpu0"
         CpuStatFields currentStats(fields);
         auto it = previous_cpu_stats.find(key);
@@ -635,11 +632,10 @@ void Proc::UpdateCoreUtilization(std::vector<std::vector<std::string>> cpu_lines
     return;
 }
 
-void Proc::UpdateNumProcs(std::vector<std::vector<std::string>> cpu_lines)
+void Proc::UpdateNumProcs(const unsigned int numberProcessors)
 {
-    // Number of Processors is number of "cpuN" lines
     static auto num_procs = registry_->CreateGauge("sys.cpu.numProcessors");
-    num_procs.Set(cpu_lines.size() - 1);  // subtract 1 for the aggregate "cpu" line
+    num_procs.Set(numberProcessors);
     return;
 }
 
@@ -651,13 +647,18 @@ std::vector<std::vector<std::string>> Proc::ParseProcStatFile() noexcept
     {
         if (fields.size() > 0 && starts_with(fields[0].c_str(), "cpu"))
         {
+            if (fields.size() != 11)
+            {
+                Logger()->error("Malformed cpu line in /proc/stat: {}", absl::StrJoin(fields, " "));
+                return  {};
+            }
             cpu_lines.push_back(fields);
         }
     }
     return cpu_lines;
 }
 
-void Proc::CpuStats(bool fiveSecondMetrics, bool sixtySecondMetricsEnabled) noexcept
+void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept
 {
     auto cpu_lines = ParseProcStatFile();
     if (cpu_lines.empty())
@@ -668,8 +669,8 @@ void Proc::CpuStats(bool fiveSecondMetrics, bool sixtySecondMetricsEnabled) noex
     // If 60-second metrics are enabled, collect utilization metrics
     if (sixtySecondMetricsEnabled)
     {
-        UpdateUtilizationGauges(cpu_lines);
-        UpdateNumProcs(cpu_lines);
+        UpdateUtilizationGauges(cpu_lines[0]);  // Pass the aggregate line (first line)
+        UpdateNumProcs(cpu_lines.size() - 1);     // Pass number of processors & subtract 1 for the aggregate "cpu" line
     }
 
     // If 5-second metrics are enabled, collect additional detailed metrics

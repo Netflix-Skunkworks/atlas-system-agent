@@ -18,7 +18,7 @@ class Proc
     void snmp_stats() noexcept;
     void netstat_stats() noexcept;
     void loadavg_stats() noexcept;
-    void CpuStats(bool fiveSecondMetrics, bool sixtySecondMetricsEnabled) noexcept;
+    void CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept;
     void memory_stats() noexcept;
     void process_stats() noexcept;
     void socket_stats() noexcept;
@@ -30,10 +30,11 @@ class Proc
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
    private:
-    void PeakCpuStats(std::vector<std::string> aggregateLine) noexcept;
-    void UpdateUtilizationGauges(std::vector<std::vector<std::string>> cpu_lines);
-    void UpdateCoreUtilization(std::vector<std::vector<std::string>> cpu_lines);
-    void UpdateNumProcs(std::vector<std::vector<std::string>> cpu_lines);
+    void PeakCpuStats(const std::vector<std::string> &aggregateLine) noexcept;
+    void UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine);
+    void UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cpu_lines);
+    void UpdateNumProcs(const unsigned int numberProcessors);
+    
     void handle_line(FILE* fp) noexcept;
     void parse_ip_stats(const char* buf) noexcept;
     void parse_tcp_stats(const char* buf) noexcept;

@@ -44,32 +44,18 @@ class CpuStatFields
             auto result5 = std::from_chars(fields[5].data(), fields[5].data() + fields[5].size(), iowait);
             auto result6 = std::from_chars(fields[6].data(), fields[6].data() + fields[6].size(), irq);
             auto result7 = std::from_chars(fields[7].data(), fields[7].data() + fields[7].size(), softirq);
+            auto result8 = std::from_chars(fields[8].data(), fields[8].data() + fields[8].size(), steal);
+            auto result9 = std::from_chars(fields[9].data(), fields[9].data() + fields[9].size(), guest);
+            auto result10 = std::from_chars(fields[10].data(), fields[10].data() + fields[10].size(), guest_nice);
 
             // Check for parsing errors in required fields
             if (result1.ec != std::errc{} || result2.ec != std::errc{} || result3.ec != std::errc{} || 
                 result4.ec != std::errc{} || result5.ec != std::errc{} || result6.ec != std::errc{} || 
-                result7.ec != std::errc{})
+                result7.ec != std::errc{} || result8.ec != std::errc{} || result9.ec != std::errc{} || result10.ec != std::errc{})
             {
                 // Reset to zero on parse error
                 user = nice = system = idle = iowait = irq = softirq = steal = guest = guest_nice = total = 0;
                 return;
-            }
-
-            // Optional fields for newer kernels
-            if (fields.size() >= 9)
-            {
-                auto result8 = std::from_chars(fields[8].data(), fields[8].data() + fields[8].size(), steal);
-                if (result8.ec != std::errc{}) steal = 0;
-            }
-            if (fields.size() >= 10)
-            {
-                auto result9 = std::from_chars(fields[9].data(), fields[9].data() + fields[9].size(), guest);
-                if (result9.ec != std::errc{}) guest = 0;
-            }
-            if (fields.size() >= 11)
-            {
-                auto result10 = std::from_chars(fields[10].data(), fields[10].data() + fields[10].size(), guest_nice);
-                if (result10.ec != std::errc{}) guest_nice = 0;
             }
 
             // Calculate total
