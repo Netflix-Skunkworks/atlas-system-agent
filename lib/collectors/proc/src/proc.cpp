@@ -612,23 +612,26 @@ void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cp
 {
     static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
     static std::unordered_map<std::string, CpuStatFields> previous_cpu_stats;
-    for (unsigned int i = 1; i < cpu_lines.size(); ++i)
+    
+    for (size_t i = 1; i < cpu_lines.size(); ++i)
     {
         const auto& fields = cpu_lines[i];
-        auto key = fields[0];  // e.g., "cpu0"
+        const auto& key = fields[0];  // e.g., "cpu0" - avoid copy by using const reference
         CpuStatFields currentStats(fields);
-        auto it = previous_cpu_stats.find(key);
-        if (it != previous_cpu_stats.end())
+        
+        auto [it, inserted] = previous_cpu_stats.try_emplace(key, currentStats);
+        if (inserted == false)
         {
             const auto& prevStats = it->second;
             auto computed_vals = ComputeGaugeValues(prevStats, currentStats);
             auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice +
                          computed_vals.wait + computed_vals.interrupt;
             coresDistSummary.Record(usage);
+            
+            // Update the stored stats for next iteration
+            it->second = currentStats;
         }
-        previous_cpu_stats.emplace(key, currentStats);
     }
-
     return;
 }
 
