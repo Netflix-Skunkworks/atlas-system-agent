@@ -2,6 +2,7 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 #include <lib/collectors/proc/src/proc.h>
+#include <lib/collectors/proc/src/proc_stat.h>
 
 #include <fmt/ostream.h>
 #include <gtest/gtest.h>
@@ -454,5 +455,18 @@ TEST(Proc, ParseProcStat)
     EXPECT_EQ(cpu_lines.size(), 3);
     EXPECT_EQ(cpu_lines.at(0), expectedLine1);
     EXPECT_EQ(cpu_lines.at(2), expectedFinalLine);
+
+    CpuStatFields fields(cpu_lines.at(0));
+    EXPECT_EQ(fields.user, 888323);
+    EXPECT_EQ(fields.nice, 1687);
+    EXPECT_EQ(fields.system, 28308);
+    EXPECT_EQ(fields.idle, 19198842);
+    EXPECT_EQ(fields.iowait, 3236);
+    EXPECT_EQ(fields.irq, 0);
+    EXPECT_EQ(fields.softirq, 6908);
+    EXPECT_EQ(fields.steal, 8986);
+    EXPECT_EQ(fields.guest, 0);
+    EXPECT_EQ(fields.guest_nice, 0);
+
 }
 }  // namespace

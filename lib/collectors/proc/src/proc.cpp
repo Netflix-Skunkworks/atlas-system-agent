@@ -586,7 +586,7 @@ void Proc::PeakCpuStats(const std::vector<std::string> &aggregateLine) noexcept
     CpuStatFields currentStats(aggregateLine);
     if (previous_aggregate_stats.has_value())
     {
-        auto computed_vals = currentStats.computeGaugeValues(previous_aggregate_stats.value());
+        auto computed_vals = ComputeGaugeValues(previous_aggregate_stats.value(), currentStats);
         peakUtilizationGauges.update(computed_vals);
     }
     previous_aggregate_stats = currentStats;
@@ -595,12 +595,12 @@ void Proc::PeakCpuStats(const std::vector<std::string> &aggregateLine) noexcept
 
 void Proc::UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine)
 {
-    static std::optional<CpuStatFields> previous_aggregate_stats;
     static auto utilizationGauges = CreateCpuGauges(registry_, "sys.cpu.utilization");
+    static std::optional<CpuStatFields> previous_aggregate_stats;
     CpuStatFields currentStats(aggregateLine);
     if (previous_aggregate_stats.has_value())
     {
-        auto computed_vals = currentStats.computeGaugeValues(previous_aggregate_stats.value());
+        auto computed_vals = ComputeGaugeValues(previous_aggregate_stats.value(), currentStats);
         utilizationGauges.update(computed_vals);
     }
 
@@ -621,7 +621,7 @@ void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cp
         if (it != previous_cpu_stats.end())
         {
             const auto& prevStats = it->second;
-            auto computed_vals = currentStats.computeGaugeValues(prevStats);
+            auto computed_vals = ComputeGaugeValues(prevStats, currentStats);
             auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice +
                          computed_vals.wait + computed_vals.interrupt;
             coresDistSummary.Record(usage);
@@ -641,19 +641,22 @@ void Proc::UpdateNumProcs(const unsigned int numberProcessors)
 
 std::vector<std::vector<std::string>> Proc::ParseProcStatFile() noexcept
 {
-    std::vector<std::vector<std::string>> cpu_lines;
     auto stat_data = read_lines_fields(this->path_prefix_, "stat");
-    for (const auto& fields : stat_data)
+    if (stat_data.empty()) return {};
+
+    std::vector<std::vector<std::string>> cpu_lines;
+    cpu_lines.reserve(stat_data.size());
+    for (auto& fields : stat_data)
     {
-        if (fields.size() > 0 && starts_with(fields[0].c_str(), "cpu"))
+        if (fields.empty()) continue; // skip blanks
+        if (!starts_with(fields[0].c_str(), "cpu")) continue; // non CPU line
+
+        if (fields.size() != 11)
         {
-            if (fields.size() != 11)
-            {
-                Logger()->error("Malformed cpu line in /proc/stat: {}", absl::StrJoin(fields, " "));
-                return  {};
-            }
-            cpu_lines.push_back(fields);
+            Logger()->error("Malformed cpu line in /proc/stat: expected 11 fields, got {}: {}", fields.size(), absl::StrJoin(fields, " "));
+            return {}; // semantics: abort on first malformed line
         }
+        cpu_lines.emplace_back(std::move(fields));
     }
     return cpu_lines;
 }

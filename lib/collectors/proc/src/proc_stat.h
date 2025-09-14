@@ -1,4 +1,4 @@
-
+#pragma once
 #include <vector>
 #include <string>
 #include <cstdlib>
@@ -21,72 +21,24 @@ struct Cpu_Gauge_Values
 class CpuStatFields
 {
    public:
-    CpuStatFields(const std::vector<std::string>& fields)
-        : user(0),
-          nice(0),
-          system(0),
-          idle(0),
-          iowait(0),
-          irq(0),
-          softirq(0),
-          steal(0),
-          guest(0),
-          guest_nice(0),
-          total(0)
+    CpuStatFields(const std::vector<std::string>& fields) 
+        : user(0), nice(0), system(0), idle(0), iowait(0), irq(0), softirq(0), steal(0), guest(0), guest_nice(0), total(0)
     {
-        // Skip the first element (CPU name like "cpu0") and parse the numeric fields
-        if (fields.size() >= 8)
-        {  // Minimum required fields (user through softirq)
-            auto result1 = std::from_chars(fields[1].data(), fields[1].data() + fields[1].size(), user);
-            auto result2 = std::from_chars(fields[2].data(), fields[2].data() + fields[2].size(), nice);
-            auto result3 = std::from_chars(fields[3].data(), fields[3].data() + fields[3].size(), system);
-            auto result4 = std::from_chars(fields[4].data(), fields[4].data() + fields[4].size(), idle);
-            auto result5 = std::from_chars(fields[5].data(), fields[5].data() + fields[5].size(), iowait);
-            auto result6 = std::from_chars(fields[6].data(), fields[6].data() + fields[6].size(), irq);
-            auto result7 = std::from_chars(fields[7].data(), fields[7].data() + fields[7].size(), softirq);
-            auto result8 = std::from_chars(fields[8].data(), fields[8].data() + fields[8].size(), steal);
-            auto result9 = std::from_chars(fields[9].data(), fields[9].data() + fields[9].size(), guest);
-            auto result10 = std::from_chars(fields[10].data(), fields[10].data() + fields[10].size(), guest_nice);
-
-            // Check for parsing errors in required fields
-            if (result1.ec != std::errc{} || result2.ec != std::errc{} || result3.ec != std::errc{} || 
-                result4.ec != std::errc{} || result5.ec != std::errc{} || result6.ec != std::errc{} || 
-                result7.ec != std::errc{} || result8.ec != std::errc{} || result9.ec != std::errc{} || result10.ec != std::errc{})
-            {
-                // Reset to zero on parse error
+        uint64_t* values[] = {&user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal, &guest, &guest_nice};
+        
+        // Parse all fields in a loop
+        for (int i = 0; i < 10; ++i) {
+            if (auto result = std::from_chars(fields[i+1].data(), fields[i+1].data() + fields[i+1].size(), *values[i]); 
+                result.ec != std::errc{}) {
+                // Reset all on any parse error
                 user = nice = system = idle = iowait = irq = softirq = steal = guest = guest_nice = total = 0;
                 return;
             }
-
-            // Calculate total
-            total = user + nice + system + idle + iowait + irq + softirq + steal + guest + guest_nice;
         }
+        
+        total = user + nice + system + idle + iowait + irq + softirq + steal + guest + guest_nice;
     }
 
-    Cpu_Gauge_Values computeGaugeValues(const CpuStatFields& prev) const
-    {
-        Cpu_Gauge_Values vals{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-        auto delta_total = total - prev.total;
-        auto delta_user = user - prev.user;
-        auto delta_system = system - prev.system;
-        auto delta_stolen = steal - prev.steal;
-        auto delta_nice = nice - prev.nice;
-        auto delta_interrupt = (irq + softirq) - (prev.irq + prev.softirq);
-        auto delta_wait = iowait > prev.iowait ? iowait - prev.iowait : 0;
-
-        if (delta_total > 0)
-        {
-            vals.user = 100.0 * delta_user / delta_total;
-            vals.system = 100.0 * delta_system / delta_total;
-            vals.stolen = 100.0 * delta_stolen / delta_total;
-            vals.nice = 100.0 * delta_nice / delta_total;
-            vals.wait = 100.0 * delta_wait / delta_total;
-            vals.interrupt = 100.0 * delta_interrupt / delta_total;
-        }
-        return vals;
-    }
-
-   private:
     uint64_t user;
     uint64_t nice;
     uint64_t system;
@@ -100,6 +52,29 @@ class CpuStatFields
 
     uint64_t total;  // computed as sum of all above fields
 };
+
+inline Cpu_Gauge_Values ComputeGaugeValues(const CpuStatFields& prev, const CpuStatFields& current)
+{
+    Cpu_Gauge_Values vals{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    auto delta_total = current.total - prev.total;
+    auto delta_user = current.user - prev.user;
+    auto delta_system = current.system - prev.system;
+    auto delta_stolen = current.steal - prev.steal;
+    auto delta_nice = current.nice - prev.nice;
+    auto delta_interrupt = (current.irq + current.softirq) - (prev.irq + prev.softirq);
+    auto delta_wait = current.iowait > prev.iowait ? current.iowait - prev.iowait : 0;
+
+    if (delta_total > 0)
+    {
+        vals.user = 100.0 * delta_user / delta_total;
+        vals.system = 100.0 * delta_system / delta_total;
+        vals.stolen = 100.0 * delta_stolen / delta_total;
+        vals.nice = 100.0 * delta_nice / delta_total;
+        vals.wait = 100.0 * delta_wait / delta_total;
+        vals.interrupt = 100.0 * delta_interrupt / delta_total;
+    }
+    return vals;
+}
 
 template <typename GaugeType>
 class CpuGaugesTemplate
