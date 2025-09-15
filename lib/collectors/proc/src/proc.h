@@ -26,11 +26,11 @@ class Proc
     void vmstats() noexcept;
     [[nodiscard]] bool is_container() const noexcept;
 
-    std::vector<std::vector<std::string>> ParseProcStatFile() noexcept;
+    std::vector<std::vector<std::string>> ParseProcStatFile();
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
    private:
-    void PeakCpuStats(const std::vector<std::string> &aggregateLine) noexcept;
+    void PeakCpuStats(const std::vector<std::string> &aggregateLine);
     void UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine);
     void UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cpu_lines);
     void UpdateNumProcs(const unsigned int numberProcessors);

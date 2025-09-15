@@ -32,7 +32,7 @@ class CpuStatFields
                 result.ec != std::errc{}) {
                 // Reset all on any parse error
                 user = nice = system = idle = iowait = irq = softirq = steal = guest = guest_nice = total = 0;
-                return;
+                throw std::invalid_argument("Invalid CPU stat field: " + fields[i+1]);
             }
         }
         

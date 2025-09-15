@@ -579,7 +579,7 @@ void Proc::vmstats() noexcept
     }
 }
 
-void Proc::PeakCpuStats(const std::vector<std::string> &aggregateLine) noexcept
+void Proc::PeakCpuStats(const std::vector<std::string> &aggregateLine) try
 {
     static auto peakUtilizationGauges = CreatePeakCpuGauges(registry_, "sys.cpu.peakUtilization");
     static std::optional<CpuStatFields> previous_aggregate_stats;
@@ -592,8 +592,13 @@ void Proc::PeakCpuStats(const std::vector<std::string> &aggregateLine) noexcept
     previous_aggregate_stats = currentStats;
     return;
 }
+catch (const std::exception& ex)
+{
+    Logger()->error("Exception updating peak CPU stats: {}", ex.what());
+    return;
+}
 
-void Proc::UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine)
+void Proc::UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine) try 
 {
     static auto utilizationGauges = CreateCpuGauges(registry_, "sys.cpu.utilization");
     static std::optional<CpuStatFields> previous_aggregate_stats;
@@ -607,8 +612,13 @@ void Proc::UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine
     previous_aggregate_stats = currentStats;
     return;
 }
+catch (const std::exception& ex)
+{
+    Logger()->error("Exception updating utilization gauges: {}", ex.what());
+    return;
+}
 
-void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cpu_lines)
+void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cpu_lines) try 
 {
     static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
     static std::unordered_map<std::string, CpuStatFields> previous_cpu_stats;
@@ -634,6 +644,11 @@ void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cp
     }
     return;
 }
+catch (const std::exception& ex)
+{
+    Logger()->error("Exception updating core utilization: {}", ex.what());
+    return;
+}
 
 void Proc::UpdateNumProcs(const unsigned int numberProcessors)
 {
@@ -642,7 +657,7 @@ void Proc::UpdateNumProcs(const unsigned int numberProcessors)
     return;
 }
 
-std::vector<std::vector<std::string>> Proc::ParseProcStatFile() noexcept
+std::vector<std::vector<std::string>> Proc::ParseProcStatFile() try
 {
     auto stat_data = read_lines_fields(this->path_prefix_, "stat");
     if (stat_data.empty()) return {};
@@ -662,6 +677,11 @@ std::vector<std::vector<std::string>> Proc::ParseProcStatFile() noexcept
         cpu_lines.emplace_back(std::move(fields));
     }
     return cpu_lines;
+}
+catch (const std::exception& ex)
+{
+    Logger()->error("Exception reading /proc/stat: {}", ex.what());
+    return {};
 }
 
 void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept
