@@ -2,14 +2,13 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 #include <lib/collectors/proc/src/proc.h>
-#include <lib/collectors/proc/src/proc_stat.h>
+#include <lib/collectors/proc/src/proc_cpu.h>
 
 #include <fmt/ostream.h>
 #include <gtest/gtest.h>
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
-
 
 namespace
 {
@@ -281,12 +280,12 @@ TEST(Proc, CpuStats)
     EXPECT_EQ(messages.at(3), "g:sys.cpu.utilization,id=nice:0.029293\n");
     EXPECT_EQ(messages.at(4), "g:sys.cpu.utilization,id=wait:0.011066\n");
     EXPECT_EQ(messages.at(5), "g:sys.cpu.utilization,id=interrupt:0.002278\n");
-    
+
     EXPECT_EQ(messages.at(6), "g:sys.cpu.numProcessors:3.000000\n");
     EXPECT_EQ(messages.at(7), "d:sys.cpu.coreUtilization:5.528345\n");
     EXPECT_EQ(messages.at(8), "d:sys.cpu.coreUtilization:14.059896\n");
     EXPECT_EQ(messages.at(9), "d:sys.cpu.coreUtilization:7.583136\n");
-    
+
     EXPECT_EQ(messages.at(10), "m:sys.cpu.peakUtilization,id=user:11.314429\n");
     EXPECT_EQ(messages.at(11), "m:sys.cpu.peakUtilization,id=system:1.291190\n");
     EXPECT_EQ(messages.at(12), "m:sys.cpu.peakUtilization,id=stolen:0.006184\n");
@@ -448,9 +447,11 @@ TEST(Proc, ParseProcStat)
     atlasagent::Proc proc{&r, {{}}, "testdata/resources/proc"};
 
     auto cpu_lines = proc.ParseProcStatFile();
-    std::vector<std::string> expectedLine1 = {"cpu", "718817", "7438", "186499", "51562797", "19187", "0", "1034", "2173", "0", "0"};
-    std::vector<std::string> expectedFinalLine = {"cpu7", "96918", "847", "23741", "6437381", "3394", "0", "164", "11", "0", "0"};
-    
+    std::vector<std::string> expectedLine1 = {"cpu", "718817", "7438", "186499", "51562797", "19187",
+                                              "0",   "1034",   "2173", "0",      "0"};
+    std::vector<std::string> expectedFinalLine = {"cpu7", "96918", "847", "23741", "6437381", "3394",
+                                                  "0",    "164",   "11",  "0",     "0"};
+
     for (const auto& line : cpu_lines)
     {
         EXPECT_EQ(line.size(), 11);
@@ -474,8 +475,8 @@ TEST(Proc, ParseProcStat)
 
 TEST(Proc, ComputeGaugeValues)
 {
-    std::vector<std::string> prevLine = {"cpu",  "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"};
-    std::vector<std::string> currentLine = {"cpu",  "5", "15", "10", "10", "10", "10", "10", "10", "10", "10"};
+    std::vector<std::string> prevLine = {"cpu", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"};
+    std::vector<std::string> currentLine = {"cpu", "5", "15", "10", "10", "10", "10", "10", "10", "10", "10"};
 
     CpuStatFields prevFields(prevLine);
     CpuStatFields currentFields(currentLine);
@@ -487,6 +488,7 @@ TEST(Proc, ComputeGaugeValues)
     EXPECT_EQ(deltaPercentages.nice, 15);
     EXPECT_EQ(deltaPercentages.wait, 10);
     EXPECT_EQ(deltaPercentages.interrupt, 20);
+    EXPECT_EQ(deltaPercentages.guest, 20);
 }
 
 }  // namespace

@@ -75,15 +75,12 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
     proc->uptime_stats();
 }
 #else
-static void gather_peak_system_metrics(Proc* proc, bool fiveSecondMetricsEnabled, bool sixtySecondMetricsEnabled) 
+static void gather_peak_system_metrics(Proc* proc, bool fiveSecondMetricsEnabled, bool sixtySecondMetricsEnabled)
 {
     proc->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 }
 
-static void gather_scaling_metrics(CpuFreq* cpufreq)
-{ 
-    cpufreq->Stats(); 
-}
+static void gather_scaling_metrics(CpuFreq* cpufreq) { cpufreq->Stats(); }
 
 static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool, Ntp* ntp, PressureStall* pressureStall,
                                        Aws* aws)
@@ -326,7 +323,6 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
     }
     else
     {
-        
         Logger()->info("PerfSpect Monitoring is disabled.");
     }
 
@@ -378,7 +374,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         auto start = system_clock::now();
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
-        
+
         // Gather one second metrics
         // Proc has been modified to optionally gather 5 second and 60 second metrics during this call
         // This prevents having to read proc/stat multiple times if both 5 and 60 second metrics are enabled

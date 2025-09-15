@@ -1,4 +1,6 @@
 #include "proc.h"
+#include "proc_cpu.h"
+
 #include <lib/util/src/util.h>
 #include <absl/strings/str_split.h>
 #include <absl/strings/str_join.h>
@@ -8,7 +10,6 @@
 #include <utility>
 
 #include <iostream>
-#include "proc_stat.h"
 
 namespace atlasagent
 {
@@ -579,7 +580,7 @@ void Proc::vmstats() noexcept
     }
 }
 
-void Proc::PeakCpuStats(const std::vector<std::string> &aggregateLine) try
+void Proc::PeakCpuStats(const std::vector<std::string>& aggregateLine) try
 {
     static auto peakUtilizationGauges = CreatePeakCpuGauges(registry_, "sys.cpu.peakUtilization");
     static std::optional<CpuStatFields> previous_aggregate_stats;
@@ -598,7 +599,7 @@ catch (const std::exception& ex)
     return;
 }
 
-void Proc::UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine) try 
+void Proc::UpdateUtilizationGauges(const std::vector<std::string>& aggregateLine) try
 {
     static auto utilizationGauges = CreateCpuGauges(registry_, "sys.cpu.utilization");
     static std::optional<CpuStatFields> previous_aggregate_stats;
@@ -618,26 +619,26 @@ catch (const std::exception& ex)
     return;
 }
 
-void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cpu_lines) try 
+void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpu_lines) try
 {
     static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
     static std::unordered_map<std::string, CpuStatFields> previous_cpu_stats;
-    
+
     for (size_t i = 1; i < cpu_lines.size(); ++i)
     {
         const auto& fields = cpu_lines[i];
         const auto& key = fields[0];  // e.g., "cpu0" - avoid copy by using const reference
         CpuStatFields currentStats(fields);
-        
+
         auto [it, inserted] = previous_cpu_stats.try_emplace(key, currentStats);
         if (inserted == false)
         {
             const auto& prevStats = it->second;
             auto computed_vals = ComputeGaugeValues(prevStats, currentStats);
             auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice +
-                         computed_vals.wait + computed_vals.interrupt;
+                         computed_vals.wait + computed_vals.interrupt + computed_vals.guest;
             coresDistSummary.Record(usage);
-            
+
             // Update the stored stats for next iteration
             it->second = currentStats;
         }
@@ -666,13 +667,14 @@ std::vector<std::vector<std::string>> Proc::ParseProcStatFile() try
     cpu_lines.reserve(stat_data.size());
     for (auto& fields : stat_data)
     {
-        if (fields.empty()) continue; // skip blanks
-        if (!starts_with(fields[0].c_str(), "cpu")) continue; // non CPU line
+        if (fields.empty()) continue;                          // skip blanks
+        if (!starts_with(fields[0].c_str(), "cpu")) continue;  // non CPU line
 
         if (fields.size() != 11)
         {
-            Logger()->error("Malformed cpu line in /proc/stat: expected 11 fields, got {}: {}", fields.size(), absl::StrJoin(fields, " "));
-            return {}; // semantics: abort on first malformed line
+            Logger()->error("Malformed cpu line in /proc/stat: expected 11 fields, got {}: {}", fields.size(),
+                            absl::StrJoin(fields, " "));
+            return {};  // semantics: abort on first malformed line
         }
         cpu_lines.emplace_back(std::move(fields));
     }
@@ -696,7 +698,7 @@ void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsE
     if (sixtySecondMetricsEnabled)
     {
         UpdateUtilizationGauges(cpu_lines[0]);  // Pass the aggregate line (first line)
-        UpdateNumProcs(cpu_lines.size() - 1);     // Pass number of processors & subtract 1 for the aggregate "cpu" line
+        UpdateNumProcs(cpu_lines.size() - 1);   // Pass number of processors & subtract 1 for the aggregate "cpu" line
     }
 
     // If 5-second metrics are enabled, collect additional detailed metrics

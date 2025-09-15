@@ -16,26 +16,40 @@ struct Cpu_Gauge_Values
     double nice;
     double wait;
     double interrupt;
+    double guest;
 };
 
 class CpuStatFields
 {
    public:
-    CpuStatFields(const std::vector<std::string>& fields) 
-        : user(0), nice(0), system(0), idle(0), iowait(0), irq(0), softirq(0), steal(0), guest(0), guest_nice(0), total(0)
+    CpuStatFields(const std::vector<std::string>& fields)
+        : user(0),
+          nice(0),
+          system(0),
+          idle(0),
+          iowait(0),
+          irq(0),
+          softirq(0),
+          steal(0),
+          guest(0),
+          guest_nice(0),
+          total(0)
     {
         uint64_t* values[] = {&user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal, &guest, &guest_nice};
-        
+
         // Parse all fields in a loop
-        for (int i = 0; i < 10; ++i) {
-            if (auto result = std::from_chars(fields[i+1].data(), fields[i+1].data() + fields[i+1].size(), *values[i]); 
-                result.ec != std::errc{}) {
+        for (int i = 0; i < 10; ++i)
+        {
+            if (auto result =
+                    std::from_chars(fields[i + 1].data(), fields[i + 1].data() + fields[i + 1].size(), *values[i]);
+                result.ec != std::errc{})
+            {
                 // Reset all on any parse error
                 user = nice = system = idle = iowait = irq = softirq = steal = guest = guest_nice = total = 0;
-                throw std::invalid_argument("Invalid CPU stat field: " + fields[i+1]);
+                throw std::invalid_argument("Invalid CPU stat field: " + fields[i + 1]);
             }
         }
-        
+
         total = user + nice + system + idle + iowait + irq + softirq + steal + guest + guest_nice;
     }
 
@@ -63,6 +77,7 @@ inline Cpu_Gauge_Values ComputeGaugeValues(const CpuStatFields& prev, const CpuS
     auto delta_nice = current.nice - prev.nice;
     auto delta_interrupt = (current.irq + current.softirq) - (prev.irq + prev.softirq);
     auto delta_wait = current.iowait > prev.iowait ? current.iowait - prev.iowait : 0;
+    auto delta_guest = (current.guest + current.guest_nice) - (prev.guest + prev.guest_nice);
 
     if (delta_total > 0)
     {
@@ -72,6 +87,7 @@ inline Cpu_Gauge_Values ComputeGaugeValues(const CpuStatFields& prev, const CpuS
         vals.nice = 100.0 * delta_nice / delta_total;
         vals.wait = 100.0 * delta_wait / delta_total;
         vals.interrupt = 100.0 * delta_interrupt / delta_total;
+        vals.guest = 100 * delta_guest / delta_total;
     }
     return vals;
 }
@@ -114,13 +130,15 @@ class CpuGaugesTemplate
 inline CpuGaugesTemplate<Gauge> CreateCpuGauges(Registry* registry, const char* name)
 {
     return CpuGaugesTemplate<Gauge>(
-        registry, name, [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
+        registry, name,
+        [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
         { return reg->CreateGauge(n, tags); });
 }
 
 inline CpuGaugesTemplate<MaxGauge> CreatePeakCpuGauges(Registry* registry, const char* name)
 {
     return CpuGaugesTemplate<MaxGauge>(
-        registry, name, [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
+        registry, name,
+        [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
         { return reg->CreateMaxGauge(n, tags); });
 }

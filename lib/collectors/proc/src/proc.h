@@ -30,11 +30,11 @@ class Proc
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
    private:
-    void PeakCpuStats(const std::vector<std::string> &aggregateLine);
-    void UpdateUtilizationGauges(const std::vector<std::string> &aggregateLine);
-    void UpdateCoreUtilization(const std::vector<std::vector<std::string>> &cpu_lines);
+    void PeakCpuStats(const std::vector<std::string>& aggregateLine);
+    void UpdateUtilizationGauges(const std::vector<std::string>& aggregateLine);
+    void UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpu_lines);
     void UpdateNumProcs(const unsigned int numberProcessors);
-    
+
     void handle_line(FILE* fp) noexcept;
     void parse_ip_stats(const char* buf) noexcept;
     void parse_tcp_stats(const char* buf) noexcept;
