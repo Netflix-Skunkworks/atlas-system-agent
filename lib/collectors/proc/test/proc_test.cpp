@@ -267,29 +267,32 @@ TEST(Proc, CpuStats)
     proc.CpuStats(true, true);
     auto messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 1);
-    EXPECT_EQ(messages.at(0), "g:sys.cpu.numProcessors:2.000000\n");
+    EXPECT_EQ(messages.at(0), "g:sys.cpu.numProcessors:8.000000\n");
 
     memoryWriter->Clear();
     proc.set_prefix("testdata/resources/proc2");
     proc.CpuStats(true, true);
     messages = memoryWriter->GetMessages();
 
-    EXPECT_EQ(15, messages.size());
-    EXPECT_EQ(messages.at(0), "g:sys.cpu.utilization,id=user:7857889221593.500000\n");
-    EXPECT_EQ(messages.at(1), "g:sys.cpu.utilization,id=system:0.024642\n");
-    EXPECT_EQ(messages.at(2), "g:sys.cpu.utilization,id=stolen:0.001503\n");
-    EXPECT_EQ(messages.at(3), "g:sys.cpu.utilization,id=nice:0.000510\n");
-    EXPECT_EQ(messages.at(4), "g:sys.cpu.utilization,id=wait:0.001324\n");
-    EXPECT_EQ(messages.at(5), "g:sys.cpu.utilization,id=interrupt:7857889221593.793945\n");
-    EXPECT_EQ(messages.at(6), "g:sys.cpu.numProcessors:8.000000\n");
-    EXPECT_EQ(messages.at(7), "d:sys.cpu.coreUtilization:254183268679903.093750\n");
-    EXPECT_EQ(messages.at(8), "d:sys.cpu.coreUtilization:338348793412414.750000\n");
-    EXPECT_EQ(messages.at(9), "m:sys.cpu.peakUtilization,id=user:7857889221593.500000\n");
-    EXPECT_EQ(messages.at(10), "m:sys.cpu.peakUtilization,id=system:0.024642\n");
-    EXPECT_EQ(messages.at(11), "m:sys.cpu.peakUtilization,id=stolen:0.001503\n");
-    EXPECT_EQ(messages.at(12), "m:sys.cpu.peakUtilization,id=nice:0.000510\n");
-    EXPECT_EQ(messages.at(13), "m:sys.cpu.peakUtilization,id=wait:0.001324\n");
-    EXPECT_EQ(messages.at(14), "m:sys.cpu.peakUtilization,id=interrupt:7857889221593.793945\n");
+    EXPECT_EQ(16, messages.size());
+    EXPECT_EQ(messages.at(0), "g:sys.cpu.utilization,id=user:11.314429\n");
+    EXPECT_EQ(messages.at(1), "g:sys.cpu.utilization,id=system:1.291190\n");
+    EXPECT_EQ(messages.at(2), "g:sys.cpu.utilization,id=stolen:0.006184\n");
+    EXPECT_EQ(messages.at(3), "g:sys.cpu.utilization,id=nice:0.029293\n");
+    EXPECT_EQ(messages.at(4), "g:sys.cpu.utilization,id=wait:0.011066\n");
+    EXPECT_EQ(messages.at(5), "g:sys.cpu.utilization,id=interrupt:0.002278\n");
+    
+    EXPECT_EQ(messages.at(6), "g:sys.cpu.numProcessors:3.000000\n");
+    EXPECT_EQ(messages.at(7), "d:sys.cpu.coreUtilization:5.528345\n");
+    EXPECT_EQ(messages.at(8), "d:sys.cpu.coreUtilization:14.059896\n");
+    EXPECT_EQ(messages.at(9), "d:sys.cpu.coreUtilization:7.583136\n");
+    
+    EXPECT_EQ(messages.at(10), "m:sys.cpu.peakUtilization,id=user:11.314429\n");
+    EXPECT_EQ(messages.at(11), "m:sys.cpu.peakUtilization,id=system:1.291190\n");
+    EXPECT_EQ(messages.at(12), "m:sys.cpu.peakUtilization,id=stolen:0.006184\n");
+    EXPECT_EQ(messages.at(13), "m:sys.cpu.peakUtilization,id=nice:0.029293\n");
+    EXPECT_EQ(messages.at(14), "m:sys.cpu.peakUtilization,id=wait:0.011066\n");
+    EXPECT_EQ(messages.at(15), "m:sys.cpu.peakUtilization,id=interrupt:0.002278\n");
 }
 
 TEST(Proc, UptimeStats)
@@ -316,9 +319,9 @@ TEST(Proc, VmStats)
     auto messages = memoryWriter->GetMessages();
 
     EXPECT_EQ(messages.size(), 9);
-    EXPECT_EQ(messages.at(0), "C:vmstat.procs.count:67395.000000\n");
-    EXPECT_EQ(messages.at(1), "g:vmstat.procs,id=running:2.000000\n");
-    EXPECT_EQ(messages.at(2), "g:vmstat.procs,id=blocked:1.000000\n");
+    EXPECT_EQ(messages.at(0), "C:vmstat.procs.count:537838.000000\n");
+    EXPECT_EQ(messages.at(1), "g:vmstat.procs,id=running:1.000000\n");
+    EXPECT_EQ(messages.at(2), "g:vmstat.procs,id=blocked:0.000000\n");
     EXPECT_EQ(messages.at(3), "C:vmstat.paging,id=in:459380.000000\n");
     EXPECT_EQ(messages.at(4), "C:vmstat.paging,id=out:939162.000000\n");
     EXPECT_EQ(messages.at(5), "C:vmstat.swapping,id=in:0.000000\n");
@@ -332,9 +335,9 @@ TEST(Proc, VmStats)
     messages = memoryWriter->GetMessages();
 
     EXPECT_EQ(messages.size(), 9);
-    EXPECT_EQ(messages.at(0), "C:vmstat.procs.count:67995.000000\n");
+    EXPECT_EQ(messages.at(0), "C:vmstat.procs.count:540697.000000\n");
     EXPECT_EQ(messages.at(1), "g:vmstat.procs,id=running:3.000000\n");
-    EXPECT_EQ(messages.at(2), "g:vmstat.procs,id=blocked:2.000000\n");
+    EXPECT_EQ(messages.at(2), "g:vmstat.procs,id=blocked:4.000000\n");
     EXPECT_EQ(messages.at(3), "C:vmstat.paging,id=in:459380.000000\n");
     EXPECT_EQ(messages.at(4), "C:vmstat.paging,id=out:939418.000000\n");
     EXPECT_EQ(messages.at(5), "C:vmstat.swapping,id=in:0.000000\n");
@@ -445,28 +448,45 @@ TEST(Proc, ParseProcStat)
     atlasagent::Proc proc{&r, {{}}, "testdata/resources/proc"};
 
     auto cpu_lines = proc.ParseProcStatFile();
-    std::vector<std::string> expectedLine1 = {"cpu", "888323", "1687", "28308", "19198842", "3236", "0", "6908", "8986", "0", "0"};
-    std::vector<std::string> expectedFinalLine = {"cpu1", "313235", "940", "12757", "9713236", "1709", "0", "6646", "4094", "0", "0"};
+    std::vector<std::string> expectedLine1 = {"cpu", "718817", "7438", "186499", "51562797", "19187", "0", "1034", "2173", "0", "0"};
+    std::vector<std::string> expectedFinalLine = {"cpu7", "96918", "847", "23741", "6437381", "3394", "0", "164", "11", "0", "0"};
     
     for (const auto& line : cpu_lines)
     {
         EXPECT_EQ(line.size(), 11);
     }
-    EXPECT_EQ(cpu_lines.size(), 3);
+    EXPECT_EQ(cpu_lines.size(), 9);
     EXPECT_EQ(cpu_lines.at(0), expectedLine1);
-    EXPECT_EQ(cpu_lines.at(2), expectedFinalLine);
+    EXPECT_EQ(cpu_lines.at(8), expectedFinalLine);
 
     CpuStatFields fields(cpu_lines.at(0));
-    EXPECT_EQ(fields.user, 888323);
-    EXPECT_EQ(fields.nice, 1687);
-    EXPECT_EQ(fields.system, 28308);
-    EXPECT_EQ(fields.idle, 19198842);
-    EXPECT_EQ(fields.iowait, 3236);
+    EXPECT_EQ(fields.user, 718817);
+    EXPECT_EQ(fields.nice, 7438);
+    EXPECT_EQ(fields.system, 186499);
+    EXPECT_EQ(fields.idle, 51562797);
+    EXPECT_EQ(fields.iowait, 19187);
     EXPECT_EQ(fields.irq, 0);
-    EXPECT_EQ(fields.softirq, 6908);
-    EXPECT_EQ(fields.steal, 8986);
+    EXPECT_EQ(fields.softirq, 1034);
+    EXPECT_EQ(fields.steal, 2173);
     EXPECT_EQ(fields.guest, 0);
     EXPECT_EQ(fields.guest_nice, 0);
-
 }
+
+TEST(Proc, ComputeGaugeValues)
+{
+    std::vector<std::string> prevLine = {"cpu",  "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"};
+    std::vector<std::string> currentLine = {"cpu",  "5", "15", "10", "10", "10", "10", "10", "10", "10", "10"};
+
+    CpuStatFields prevFields(prevLine);
+    CpuStatFields currentFields(currentLine);
+    auto deltaPercentages = ComputeGaugeValues(prevFields, currentFields);
+
+    EXPECT_EQ(deltaPercentages.user, 5);
+    EXPECT_EQ(deltaPercentages.system, 10);
+    EXPECT_EQ(deltaPercentages.stolen, 10);
+    EXPECT_EQ(deltaPercentages.nice, 15);
+    EXPECT_EQ(deltaPercentages.wait, 10);
+    EXPECT_EQ(deltaPercentages.interrupt, 20);
+}
+
 }  // namespace

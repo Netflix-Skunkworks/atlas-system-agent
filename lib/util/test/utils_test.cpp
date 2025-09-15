@@ -7,9 +7,9 @@ namespace
 TEST(Utils, ReadLinesFields)
 {
     auto lines = atlasagent::read_lines_fields("testdata/resources/proc", "stat");
-    auto expected = std::vector<std::string>{"ctxt", "290595647"};
-    EXPECT_EQ(lines.size(), 10);
-    EXPECT_EQ(lines[4], expected);
+    auto expected = std::vector<std::string>{"ctxt", "97596359"};
+    EXPECT_EQ(lines.size(), 16);
+    EXPECT_EQ(lines[10], expected);
 }
 
 TEST(Utils, ReadNumVectorFromFile)
