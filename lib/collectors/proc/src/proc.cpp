@@ -1,6 +1,9 @@
 #include "proc.h"
+#include "proc_cpu.h"
+
 #include <lib/util/src/util.h>
 #include <absl/strings/str_split.h>
+#include <absl/strings/str_join.h>
 #include <absl/strings/numbers.h>
 #include <cinttypes>
 #include <cstring>
@@ -8,6 +11,13 @@
 
 namespace atlasagent
 {
+
+struct ProcStatConstants
+{
+    static constexpr unsigned int FirstProcessorIndex{1};
+    static constexpr auto CpuPrefix = "cpu";
+    static constexpr size_t ExpectedCpuFields = 11;
+};
 
 inline void discard_line(FILE* fp)
 {
@@ -495,115 +505,6 @@ bool Proc::is_container() const noexcept
 
 void Proc::set_prefix(const std::string& new_prefix) noexcept { path_prefix_ = new_prefix; }
 
-namespace detail
-{
-struct cpu_gauge_vals
-{
-    double user;
-    double system;
-    double stolen;
-    double nice;
-    double wait;
-    double interrupt;
-};
-
-template <typename Reg, typename G>
-struct cpu_gauges
-{
-    using gauge_ptr = std::shared_ptr<G>;
-    using gauge_maker_t = std::function<gauge_ptr(Reg* registry, const char* name, const char* id)>;
-    cpu_gauges(Reg* registry, const char* name, const gauge_maker_t& gauge_maker)
-        : user_gauge(gauge_maker(registry, name, "user")),
-          system_gauge(gauge_maker(registry, name, "system")),
-          stolen_gauge(gauge_maker(registry, name, "stolen")),
-          nice_gauge(gauge_maker(registry, name, "nice")),
-          wait_gauge(gauge_maker(registry, name, "wait")),
-          interrupt_gauge(gauge_maker(registry, name, "interrupt"))
-    {
-    }
-
-    gauge_ptr user_gauge;
-    gauge_ptr system_gauge;
-    gauge_ptr stolen_gauge;
-    gauge_ptr nice_gauge;
-    gauge_ptr wait_gauge;
-    gauge_ptr interrupt_gauge;
-
-    void update(const cpu_gauge_vals& vals)
-    {
-        user_gauge->Set(vals.user);
-        system_gauge->Set(vals.system);
-        stolen_gauge->Set(vals.stolen);
-        nice_gauge->Set(vals.nice);
-        wait_gauge->Set(vals.wait);
-        interrupt_gauge->Set(vals.interrupt);
-    }
-};
-
-struct stat_vals
-{
-    static constexpr const char* CPU_STATS_LINE = " %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu";
-    u_long user{0}, nice{0}, system{0}, idle{0}, iowait{0}, irq{0}, softirq{0}, steal{0}, guest{0}, guest_nice{0};
-    double total{NAN};
-
-    static stat_vals parse(const char* line)
-    {
-        stat_vals result;
-        auto ret =
-            sscanf(line, CPU_STATS_LINE, &result.user, &result.nice, &result.system, &result.idle, &result.iowait,
-                   &result.irq, &result.softirq, &result.steal, &result.guest, &result.guest_nice);
-        if (ret < 7)
-        {
-            Logger()->info("Unable to parse cpu stats from '{}' - only {} fields were read", line, ret);
-            return result;
-        }
-        result.total = static_cast<double>(result.user) + result.nice + result.system + result.idle + result.iowait +
-                       result.irq + result.softirq;
-        if (ret > 7)
-        {
-            result.total += result.steal + result.guest + result.guest_nice;
-        }
-        else
-        {
-            result.steal = result.guest = result.guest_nice = 0;
-        }
-        return result;
-    }
-
-    bool has_been_updated() const noexcept { return !std::isnan(total); }
-
-    stat_vals() = default;
-
-    cpu_gauge_vals compute_vals(const stat_vals& prev) const noexcept
-    {
-        cpu_gauge_vals vals{};
-        auto delta_total = total - prev.total;
-        auto delta_user = user - prev.user;
-        auto delta_system = system - prev.system;
-        auto delta_stolen = steal - prev.steal;
-        auto delta_nice = nice - prev.nice;
-        auto delta_interrupt = (irq + softirq) - (prev.irq + prev.softirq);
-        auto delta_wait = iowait > prev.iowait ? iowait - prev.iowait : 0;
-
-        if (delta_total > 0)
-        {
-            vals.user = 100.0 * delta_user / delta_total;
-            vals.system = 100.0 * delta_system / delta_total;
-            vals.stolen = 100.0 * delta_stolen / delta_total;
-            vals.nice = 100.0 * delta_nice / delta_total;
-            vals.wait = 100.0 * delta_wait / delta_total;
-            vals.interrupt = 100.0 * delta_interrupt / delta_total;
-        }
-        else
-        {
-            vals.user = vals.system = vals.stolen = vals.nice = vals.wait = vals.interrupt = 0.0;
-        }
-        return vals;
-    }
-};
-
-}  // namespace detail
-
 inline void set_if_present(const std::unordered_map<std::string, int64_t>& stats, const char* key,
                            const MonotonicCounter& ctr)
 {
@@ -684,95 +585,134 @@ void Proc::vmstats() noexcept
     }
 }
 
-void Proc::peak_cpu_stats() noexcept
+void Proc::PeakCpuStats(const std::vector<std::string>& aggregateLine) try
 {
-    static detail::cpu_gauges<Registry, MaxGauge> peakUtilizationGauges{
-        registry_, "sys.cpu.peakUtilization",
-        [](Registry* r, const char* name, const char* id) -> std::shared_ptr<MaxGauge>
-        { return std::make_shared<MaxGauge>(r->CreateMaxGauge(name, {{"id", id}})); }};
-
-    static detail::stat_vals prev;
-
-    auto fp = open_file(path_prefix_, "stat");
-    if (fp == nullptr)
+    static auto peakUtilizationGauges = CreatePeakCpuGauges(registry_, "sys.cpu.peakUtilization");
+    static std::optional<CpuStatFields> previousAggregateStats;
+    CpuStatFields currentStats(aggregateLine);
+    if (previousAggregateStats.has_value())
     {
-        return;
+        auto computedVals = ComputeGaugeValues(previousAggregateStats.value(), currentStats);
+        peakUtilizationGauges.update(computedVals);
     }
-    char line[1024];
-    auto ret = fgets(line, sizeof line, fp);
-    if (ret == nullptr)
-    {
-        return;
-    }
-    detail::stat_vals vals = detail::stat_vals::parse(line + 3);  // 'cpu'
-    if (prev.has_been_updated())
-    {
-        auto gauge_vals = vals.compute_vals(prev);
-        peakUtilizationGauges.update(gauge_vals);
-    }
-    prev = vals;
+    previousAggregateStats = currentStats;
+    return;
+}
+catch (const std::exception& ex)
+{
+    Logger()->error("Exception updating peak CPU stats: {}", ex.what());
+    return;
 }
 
-void Proc::cpu_stats() noexcept
+void Proc::UpdateUtilizationGauges(const std::vector<std::string>& aggregateLine) try
+{
+    static auto utilizationGauges = CreateCpuGauges(registry_, "sys.cpu.utilization");
+    static std::optional<CpuStatFields> previousAggregateStats;
+    CpuStatFields currentStats(aggregateLine);
+    if (previousAggregateStats.has_value())
+    {
+        auto computedVals = ComputeGaugeValues(previousAggregateStats.value(), currentStats);
+        utilizationGauges.update(computedVals);
+    }
+    previousAggregateStats = currentStats;
+    return;
+}
+catch (const std::exception& ex)
+{
+    Logger()->error("Exception updating utilization gauges: {}", ex.what());
+    return;
+}
+
+void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpuLines) try
+{
+    static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
+    static std::unordered_map<std::string, CpuStatFields> previousCpuStats;
+
+    for (unsigned int i = ProcStatConstants::FirstProcessorIndex; i < cpuLines.size(); ++i)
+    {
+        const auto& fields = cpuLines[i];
+        const auto& key = fields[0];
+        CpuStatFields currentStats(fields);
+
+        auto [it, inserted] = previousCpuStats.try_emplace(key, currentStats);
+        if (inserted == false)
+        {
+            const auto& prevStats = it->second;
+            auto computedVals = ComputeGaugeValues(prevStats, currentStats);
+            auto usage = computedVals.user + computedVals.system + computedVals.stolen + computedVals.nice +
+                         computedVals.wait + computedVals.interrupt + computedVals.guest;
+            coresDistSummary.Record(usage);
+
+            // Update the stored stats for next iteration
+            it->second = currentStats;
+        }
+    }
+    return;
+}
+catch (const std::exception& ex)
+{
+    Logger()->error("Exception updating core utilization: {}", ex.what());
+    return;
+}
+
+void Proc::UpdateNumProcs(const unsigned int numberProcessors)
 {
     static auto num_procs = registry_->CreateGauge("sys.cpu.numProcessors");
+    num_procs.Set(numberProcessors);
+    return;
+}
 
-    static detail::cpu_gauges<Registry, Gauge> utilizationGauges{
-        registry_, "sys.cpu.utilization", [](Registry* r, const char* name, const char* id)
-        { return std::make_shared<Gauge>(r->CreateGauge(name, {{"id", id}})); }};
+std::vector<std::vector<std::string>> Proc::ParseProcStatFile() try
+{
+    auto stat_data = read_lines_fields(this->path_prefix_, "stat");
+    if (stat_data.empty()) return {};
 
-    static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
-    static detail::stat_vals prev_vals;
-    static std::unordered_map<int, detail::stat_vals> prev_cpu_vals;
+    std::vector<std::vector<std::string>> cpu_lines;
+    cpu_lines.reserve(stat_data.size());
+    for (auto& fields : stat_data)
+    {
+        if (fields.empty()) continue;                          // skip blanks
+        if (!starts_with(fields[0].c_str(), ProcStatConstants::CpuPrefix)) continue;  // non CPU line
 
-    auto fp = open_file(path_prefix_, "stat");
-    if (fp == nullptr)
+        if (fields.size() != ProcStatConstants::ExpectedCpuFields)
+        {
+            Logger()->error("Malformed cpu line in /proc/stat: expected 11 fields, got {}: {}", fields.size(),
+                            absl::StrJoin(fields, " "));
+            return {};  // semantics: abort on first malformed line
+        }
+        cpu_lines.emplace_back(std::move(fields));
+    }
+    return cpu_lines;
+}
+catch (const std::exception& ex)
+{
+    Logger()->error("Exception reading /proc/stat: {}", ex.what());
+    return {};
+}
+
+void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept
+{
+    auto cpuLines = ParseProcStatFile();
+    if (cpuLines.empty())
     {
         return;
     }
-    char line[1024];
-    auto ret = fgets(line, sizeof line, fp);
-    if (ret == nullptr)
-    {
-        return;
-    }
-    detail::stat_vals vals = detail::stat_vals::parse(line + 3);  // 'cpu'
-    if (prev_vals.has_been_updated())
-    {
-        auto gauge_vals = vals.compute_vals(prev_vals);
-        utilizationGauges.update(gauge_vals);
-    }
-    prev_vals = vals;
 
-    // get the per-cpu metrics
-    auto cpu_count = 0;
-    while (fgets(line, sizeof line, fp) != nullptr)
+    // If 60-second metrics are enabled, collect utilization metrics
+    if (sixtySecondMetricsEnabled)
     {
-        if (strncmp(line, "cpu", 3) != 0)
-        {
-            break;
-        }
-        cpu_count += 1;
-        int cpu_num;
-        sscanf(line, "cpu%d ", &cpu_num);
-        char* p = line + 4;
-        while (*p != ' ')
-        {
-            ++p;
-        }
-        detail::stat_vals per_cpu_vals = detail::stat_vals::parse(p);
-        auto it = prev_cpu_vals.find(cpu_num);
-        if (it != prev_cpu_vals.end())
-        {
-            auto& prev = it->second;
-            auto computed_vals = per_cpu_vals.compute_vals(prev);
-            auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice +
-                         computed_vals.wait + computed_vals.interrupt;
-            coresDistSummary.Record(usage);
-        }
-        prev_cpu_vals[cpu_num] = per_cpu_vals;
+        UpdateUtilizationGauges(cpuLines[0]);  // Pass the aggregate line (first line)
+        UpdateNumProcs(cpuLines.size() - 1);   // Pass number of processors & subtract 1 for the aggregate "cpu" line
     }
-    num_procs.Set(cpu_count);
+
+    // If 5-second metrics are enabled, collect additional detailed metrics
+    if (fiveSecondMetrics)
+    {
+        UpdateCoreUtilization(cpuLines);
+    }
+
+    // Always collect peak stats (called every 1 second)
+    PeakCpuStats(cpuLines[0]);
 }
 
 void Proc::memory_stats() noexcept

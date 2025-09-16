@@ -18,8 +18,7 @@ class Proc
     void snmp_stats() noexcept;
     void netstat_stats() noexcept;
     void loadavg_stats() noexcept;
-    void cpu_stats() noexcept;
-    void peak_cpu_stats() noexcept;
+    void CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept;
     void memory_stats() noexcept;
     void process_stats() noexcept;
     void socket_stats() noexcept;
@@ -27,12 +26,14 @@ class Proc
     void vmstats() noexcept;
     [[nodiscard]] bool is_container() const noexcept;
 
+    std::vector<std::vector<std::string>> ParseProcStatFile();
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
    private:
-    Registry* registry_;
-    const std::unordered_map<std::string, std::string> net_tags_;
-    std::string path_prefix_;
+    void PeakCpuStats(const std::vector<std::string>& aggregateLine);
+    void UpdateUtilizationGauges(const std::vector<std::string>& aggregateLine);
+    void UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpu_lines);
+    void UpdateNumProcs(const unsigned int numberProcessors);
 
     void handle_line(FILE* fp) noexcept;
     void parse_ip_stats(const char* buf) noexcept;
@@ -42,6 +43,10 @@ class Proc
     void parse_udpv6_stats(const std::unordered_map<std::string, int64_t>& snmp_stats) noexcept;
     void parse_load_avg(const char* buf) noexcept;
     void parse_tcp_connections() noexcept;
+
+    Registry* registry_;
+    const std::unordered_map<std::string, std::string> net_tags_;
+    std::string path_prefix_;
 };
 
 namespace proc

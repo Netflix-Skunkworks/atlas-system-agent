@@ -75,7 +75,10 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
     proc->uptime_stats();
 }
 #else
-static void gather_peak_system_metrics(Proc* proc) { proc->peak_cpu_stats(); }
+static void gather_peak_system_metrics(Proc* proc, const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
+{
+    proc->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+}
 
 static void gather_scaling_metrics(CpuFreq* cpufreq) { cpufreq->Stats(); }
 
@@ -88,7 +91,6 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool,
     ntp->update_stats();
     pressureStall->update_stats();
     proc->arp_stats();
-    proc->cpu_stats();
     proc->loadavg_stats();
     proc->memory_stats();
     proc->netstat_stats();
@@ -321,7 +323,6 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
     }
     else
     {
-        
         Logger()->info("PerfSpect Monitoring is disabled.");
     }
 
@@ -364,24 +365,37 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
 
     auto now = system_clock::now();
     auto next_run = now;
-    auto next_slow_run = now + seconds(60);
-    auto next_hi_res_run = now + seconds(5);
+    auto next_sixty_second_run = now + seconds(60);
+    auto next_five_second_run = now + seconds(5);
     std::chrono::nanoseconds time_to_sleep;
 
     do
     {
         auto start = system_clock::now();
-        gather_peak_system_metrics(&proc);
+        bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
+        bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
+
+        // Gather one second metrics
+        // Proc has been modified to optionally gather 5 second and 60 second metrics during this call
+        // This prevents having to read proc/stat multiple times if both 5 and 60 second metrics are enabled
+        gather_peak_system_metrics(&proc, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
         gather_scaling_metrics(&cpufreq);
 
-        if (perfspectMetrics.has_value() && start >= next_hi_res_run)
+        // If it's time to gather the 5 second metrics
+        if (fiveSecondMetricsEnabled == true)
         {
-            perfspectMetrics->GatherMetrics();
-            next_hi_res_run += seconds(5);
+            Logger()->debug("Gathering 5 second metrics");
+            if (perfspectMetrics.has_value())
+            {
+                perfspectMetrics->GatherMetrics();
+            }
+            next_five_second_run += seconds(5);
         }
 
-        if (start >= next_slow_run)
+        // If it's time to gather the 60 second metrics
+        if (sixtySecondMetricsEnabled == true)
         {
+            Logger()->debug("Gathering 60 second metrics");
             gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
             perf_metrics.collect();
             if (gpu)
@@ -409,7 +423,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
 
             auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
             Logger()->debug("Published system metrics (delay={})", elapsed);
-            next_slow_run += seconds(60);
+            next_sixty_second_run += seconds(60);
         }
 
         next_run += seconds(1);
