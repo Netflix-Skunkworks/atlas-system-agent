@@ -75,7 +75,7 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
     proc->uptime_stats();
 }
 #else
-static void gather_peak_system_metrics(Proc* proc, bool fiveSecondMetricsEnabled, bool sixtySecondMetricsEnabled)
+static void gather_peak_system_metrics(Proc* proc, const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
 {
     proc->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 }

@@ -9,10 +9,15 @@
 #include <cstring>
 #include <utility>
 
-#include <iostream>
-
 namespace atlasagent
 {
+
+struct ProcStatConstants
+{
+    static constexpr unsigned int FirstProcessorIndex{1};
+    static constexpr auto CpuPrefix = "cpu";
+    static constexpr size_t ExpectedCpuFields = 11;
+};
 
 inline void discard_line(FILE* fp)
 {
@@ -583,14 +588,14 @@ void Proc::vmstats() noexcept
 void Proc::PeakCpuStats(const std::vector<std::string>& aggregateLine) try
 {
     static auto peakUtilizationGauges = CreatePeakCpuGauges(registry_, "sys.cpu.peakUtilization");
-    static std::optional<CpuStatFields> previous_aggregate_stats;
+    static std::optional<CpuStatFields> previousAggregateStats;
     CpuStatFields currentStats(aggregateLine);
-    if (previous_aggregate_stats.has_value())
+    if (previousAggregateStats.has_value())
     {
-        auto computed_vals = ComputeGaugeValues(previous_aggregate_stats.value(), currentStats);
-        peakUtilizationGauges.update(computed_vals);
+        auto computedVals = ComputeGaugeValues(previousAggregateStats.value(), currentStats);
+        peakUtilizationGauges.update(computedVals);
     }
-    previous_aggregate_stats = currentStats;
+    previousAggregateStats = currentStats;
     return;
 }
 catch (const std::exception& ex)
@@ -602,15 +607,14 @@ catch (const std::exception& ex)
 void Proc::UpdateUtilizationGauges(const std::vector<std::string>& aggregateLine) try
 {
     static auto utilizationGauges = CreateCpuGauges(registry_, "sys.cpu.utilization");
-    static std::optional<CpuStatFields> previous_aggregate_stats;
+    static std::optional<CpuStatFields> previousAggregateStats;
     CpuStatFields currentStats(aggregateLine);
-    if (previous_aggregate_stats.has_value())
+    if (previousAggregateStats.has_value())
     {
-        auto computed_vals = ComputeGaugeValues(previous_aggregate_stats.value(), currentStats);
-        utilizationGauges.update(computed_vals);
+        auto computedVals = ComputeGaugeValues(previousAggregateStats.value(), currentStats);
+        utilizationGauges.update(computedVals);
     }
-
-    previous_aggregate_stats = currentStats;
+    previousAggregateStats = currentStats;
     return;
 }
 catch (const std::exception& ex)
@@ -619,24 +623,24 @@ catch (const std::exception& ex)
     return;
 }
 
-void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpu_lines) try
+void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpuLines) try
 {
     static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
-    static std::unordered_map<std::string, CpuStatFields> previous_cpu_stats;
+    static std::unordered_map<std::string, CpuStatFields> previousCpuStats;
 
-    for (size_t i = 1; i < cpu_lines.size(); ++i)
+    for (unsigned int i = ProcStatConstants::FirstProcessorIndex; i < cpuLines.size(); ++i)
     {
-        const auto& fields = cpu_lines[i];
-        const auto& key = fields[0];  // e.g., "cpu0" - avoid copy by using const reference
+        const auto& fields = cpuLines[i];
+        const auto& key = fields[0];
         CpuStatFields currentStats(fields);
 
-        auto [it, inserted] = previous_cpu_stats.try_emplace(key, currentStats);
+        auto [it, inserted] = previousCpuStats.try_emplace(key, currentStats);
         if (inserted == false)
         {
             const auto& prevStats = it->second;
-            auto computed_vals = ComputeGaugeValues(prevStats, currentStats);
-            auto usage = computed_vals.user + computed_vals.system + computed_vals.stolen + computed_vals.nice +
-                         computed_vals.wait + computed_vals.interrupt + computed_vals.guest;
+            auto computedVals = ComputeGaugeValues(prevStats, currentStats);
+            auto usage = computedVals.user + computedVals.system + computedVals.stolen + computedVals.nice +
+                         computedVals.wait + computedVals.interrupt + computedVals.guest;
             coresDistSummary.Record(usage);
 
             // Update the stored stats for next iteration
@@ -668,9 +672,9 @@ std::vector<std::vector<std::string>> Proc::ParseProcStatFile() try
     for (auto& fields : stat_data)
     {
         if (fields.empty()) continue;                          // skip blanks
-        if (!starts_with(fields[0].c_str(), "cpu")) continue;  // non CPU line
+        if (!starts_with(fields[0].c_str(), ProcStatConstants::CpuPrefix)) continue;  // non CPU line
 
-        if (fields.size() != 11)
+        if (fields.size() != ProcStatConstants::ExpectedCpuFields)
         {
             Logger()->error("Malformed cpu line in /proc/stat: expected 11 fields, got {}: {}", fields.size(),
                             absl::StrJoin(fields, " "));
@@ -688,8 +692,8 @@ catch (const std::exception& ex)
 
 void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept
 {
-    auto cpu_lines = ParseProcStatFile();
-    if (cpu_lines.empty())
+    auto cpuLines = ParseProcStatFile();
+    if (cpuLines.empty())
     {
         return;
     }
@@ -697,18 +701,18 @@ void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsE
     // If 60-second metrics are enabled, collect utilization metrics
     if (sixtySecondMetricsEnabled)
     {
-        UpdateUtilizationGauges(cpu_lines[0]);  // Pass the aggregate line (first line)
-        UpdateNumProcs(cpu_lines.size() - 1);   // Pass number of processors & subtract 1 for the aggregate "cpu" line
+        UpdateUtilizationGauges(cpuLines[0]);  // Pass the aggregate line (first line)
+        UpdateNumProcs(cpuLines.size() - 1);   // Pass number of processors & subtract 1 for the aggregate "cpu" line
     }
 
     // If 5-second metrics are enabled, collect additional detailed metrics
     if (fiveSecondMetrics)
     {
-        UpdateCoreUtilization(cpu_lines);
+        UpdateCoreUtilization(cpuLines);
     }
 
     // Always collect peak stats (called every 1 second)
-    PeakCpuStats(cpu_lines[0]);
+    PeakCpuStats(cpuLines[0]);
 }
 
 void Proc::memory_stats() noexcept
