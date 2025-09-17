@@ -58,12 +58,14 @@ std::unique_ptr<GpuMetrics> init_gpu(Registry* registry, std::unique_ptr<Nvml> l
 }
 
 #if defined(TITUS_SYSTEM_SERVICE)
-static void gather_peak_titus_metrics(CGroup* cGroup) { cGroup->cpu_peak_stats(); }
+static void gather_peak_titus_metrics(CGroup* cGroup, const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
+{ 
+    cGroup->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+}
 
 static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws)
 {
     aws->update_stats();
-    cGroup->cpu_stats();
     cGroup->memory_stats_v2();
     cGroup->memory_stats_std_v2();
     cGroup->network_stats();
@@ -243,15 +245,27 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
 
     auto now = system_clock::now();
     auto next_run = now;
-    auto next_slow_run = now + seconds(60);
+    auto next_sixty_second_run = now + seconds(60);
+    auto next_five_second_run = now + seconds(5);
     std::chrono::nanoseconds time_to_sleep;
 
     do
     {
         auto start = system_clock::now();
-        gather_peak_titus_metrics(&cGroup);
+        bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
+        bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
 
-        if (start >= next_slow_run)
+
+        gather_peak_titus_metrics(&cGroup, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+
+        // If its time to gather 5 second metrics, update the next run time
+        if (fiveSecondMetricsEnabled == true)
+        {
+            next_five_second_run += seconds(5);
+        }
+
+        // If its time to gather 60 second metrics, gather the metrics and update the next run time
+        if (sixtySecondMetricsEnabled == true)
         {
             gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
             perf_metrics.collect();
@@ -265,7 +279,7 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
             }
             auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
             Logger()->info("Published Titus metrics (delay={})", elapsed);
-            next_slow_run += seconds(60);
+            next_sixty_second_run += seconds(60);
         }
 
         next_run += seconds(1);

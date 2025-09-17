@@ -58,13 +58,10 @@ void CGroup::pressure_stall() noexcept
     }
 }
 
-void CGroup::cpu_throttle_v2() noexcept
+void CGroup::cpu_throttle_v2(const std::unordered_map<std::string, int64_t> &stats) noexcept
 {
-    std::unordered_map<std::string, int64_t> stats;
-    parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
-
     static auto prev_throttled_time = static_cast<int64_t>(-1);
-    auto cur_throttled_time = stats["throttled_usec"];
+    auto cur_throttled_time = stats.at("throttled_usec");
     if (prev_throttled_time >= 0)
     {
         auto seconds = (cur_throttled_time - prev_throttled_time) / MICROS;
@@ -75,34 +72,31 @@ void CGroup::cpu_throttle_v2() noexcept
     registry_->CreateMonotonicCounter("cgroup.cpu.numThrottled").Set(stats["nr_throttled"]);
 }
 
-void CGroup::cpu_time_v2() noexcept
+void CGroup::cpu_time_v2(const std::unordered_map<std::string, int64_t> &stats) noexcept
 {
-    std::unordered_map<std::string, int64_t> stats;
-    parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
-
     static auto prev_proc_time = static_cast<int64_t>(-1);
     if (prev_proc_time >= 0)
     {
-        auto secs = (stats["usage_usec"] - prev_proc_time) / MICROS;
+        auto secs = (stats.at("usage_usec") - prev_proc_time) / MICROS;
         registry_->CreateCounter("cgroup.cpu.processingTime").Increment(secs);
     }
-    prev_proc_time = stats["usage_usec"];
+    prev_proc_time = stats.at("usage_usec");
 
     static auto prev_sys_usage = static_cast<int64_t>(-1);
     if (prev_sys_usage >= 0)
     {
-        auto secs = (stats["system_usec"] - prev_sys_usage) / MICROS;
+        auto secs = (stats.at("system_usec") - prev_sys_usage) / MICROS;
         registry_->CreateCounter("cgroup.cpu.usageTime", {{"id", "system"}}).Increment(secs);
     }
-    prev_sys_usage = stats["system_usec"];
+    prev_sys_usage = stats.at("system_usec");
 
     static auto prev_user_usage = static_cast<int64_t>(-1);
     if (prev_user_usage >= 0)
     {
-        auto secs = (stats["user_usec"] - prev_user_usage) / MICROS;
+        auto secs = (stats.at("user_usec") - prev_user_usage) / MICROS;
         registry_->CreateCounter("cgroup.cpu.usageTime", {{"id", "user"}}).Increment(secs);
     }
-    prev_user_usage = stats["user_usec"];
+    prev_user_usage = stats.at("user_usec");
 }
 
 double CGroup::get_avail_cpu_time(double delta_t, double num_cpu) noexcept
@@ -168,7 +162,7 @@ void CGroup::cpu_utilization_v2(absl::Time now) noexcept
     prev_user_time = stats["user_usec"];
 }
 
-void CGroup::cpu_peak_utilization_v2(absl::Time now) noexcept
+void CGroup::cpu_peak_utilization_v2(absl::Time now, const std::unordered_map<std::string, int64_t> &stats) noexcept
 {
     static absl::Time last_updated;
     auto delta_t = absl::ToDoubleSeconds(now - last_updated);
@@ -177,24 +171,21 @@ void CGroup::cpu_peak_utilization_v2(absl::Time now) noexcept
     auto num_cpu = get_num_cpu();
     auto avail_cpu_time = get_avail_cpu_time(delta_t, num_cpu);
 
-    std::unordered_map<std::string, int64_t> stats;
-    parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
-
     static auto prev_system_time = static_cast<int64_t>(-1);
     if (prev_system_time >= 0)
     {
-        auto secs = (stats["system_usec"] - prev_system_time) / MICROS;
+        auto secs = (stats.at("system_usec") - prev_system_time) / MICROS;
         registry_->CreateMaxGauge("sys.cpu.peakUtilization", {{"id", "system"}}).Set((secs / avail_cpu_time) * 100);
     }
-    prev_system_time = stats["system_usec"];
+    prev_system_time = stats.at("system_usec");
 
     static auto prev_user_time = static_cast<int64_t>(-1);
     if (prev_user_time >= 0)
     {
-        auto secs = (stats["user_usec"] - prev_user_time) / MICROS;
+        auto secs = (stats.at("user_usec") - prev_user_time) / MICROS;
         registry_->CreateMaxGauge("sys.cpu.peakUtilization", {{"id", "user"}}).Set((secs / avail_cpu_time) * 100);
     }
-    prev_user_time = stats["user_usec"];
+    prev_user_time = stats.at("user_usec");
 }
 
 void CGroup::memory_stats_v2() noexcept
@@ -271,13 +262,26 @@ void CGroup::memory_stats_std_v2() noexcept
     }
 }
 
-void CGroup::do_cpu_stats(absl::Time now) noexcept
+void CGroup::CpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
 {
-    cpu_throttle_v2();
-    cpu_time_v2();
-    cpu_utilization_v2(now);
-}
 
-void CGroup::do_cpu_peak_stats(absl::Time now) noexcept { cpu_peak_utilization_v2(now); }
+    std::unordered_map<std::string, int64_t> stats;
+    parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
+
+    if (sixtySecondMetricsEnabled)
+    {
+        cpu_throttle_v2(stats);
+        cpu_utilization_v2(absl::Now()); // move to 5 second
+    }
+
+
+    if (fiveSecondMetricsEnabled)
+    {
+        cpu_time_v2(stats);
+    }
+    
+    // Always collect peak stats (called every 1 second)
+    cpu_peak_utilization_v2(absl::Now(), stats); // Good
+}
 
 }  // namespace atlasagent
