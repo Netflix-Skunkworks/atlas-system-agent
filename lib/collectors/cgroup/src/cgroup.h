@@ -10,7 +10,7 @@ class CGroup
 {
    public:
     explicit CGroup(Registry* registry, std::string path_prefix = "/sys/fs/cgroup") noexcept
-        : registry_(registry), path_prefix_(std::move(path_prefix))
+        : path_prefix_(std::move(path_prefix)), registry_(registry)
     {
     }
 
@@ -21,18 +21,21 @@ class CGroup
     void PressureStall() noexcept;
     void SetPrefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
-   private:
+   protected:
+    // For testing access
+    std::string path_prefix_;
+    double GetNumCpu() noexcept;
     void CpuThrottleV2(const std::unordered_map<std::string, int64_t>& stats) noexcept;
     void CpuTimeV2(const std::unordered_map<std::string, int64_t>& stats) noexcept;
     void CpuUtilizationV2(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept;
     void CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_map<std::string, int64_t>& stats,
                               const double cpuCount) noexcept;
     void CpuProcessingTime(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept;
+    
+   private:
     double GetAvailCpuTime(const double delta_t, const double cpuCount) noexcept;
-    double GetNumCpu() noexcept;
 
     Registry* registry_;
-    std::string path_prefix_;
 };
 
 }  // namespace atlasagent
