@@ -255,9 +255,13 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
 
+        // 1 second, 5 second, and 60 second CPU metrics are gathered here because they read from
+        // the same /proc/stat file
         gather_peak_titus_metrics(&cGroup, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 
         // If its time to gather 5 second metrics, update the next run time
+        // Currently we only have CPU metrics that run every 5 seconds, but if we add more in the future
+        // we can gather them here
         if (fiveSecondMetricsEnabled == true)
         {
             next_five_second_run += seconds(5);
