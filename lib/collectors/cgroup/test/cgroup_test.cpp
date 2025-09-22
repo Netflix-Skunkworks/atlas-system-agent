@@ -21,7 +21,7 @@ class CGroupTest : public atlasagent::CGroup
     using CGroup::CpuTimeV2;
     using CGroup::CpuUtilizationV2;
     using CGroup::CpuPeakUtilizationV2;
-    using CGroup::CpuProcessingTime;
+    using CGroup::CpuProcessingCapacity;
 };
 
 inline double megabits2bytes(int mbits) { return mbits * 125000; }
@@ -168,7 +168,7 @@ TEST(CGroup, ProcessingTime)
     // Use a fixed base time for consistent testing
     auto baseTime = absl::FromUnixSeconds(1000000000); // Fixed timestamp
     auto cpuCount = cGroup.GetNumCpu();
-    cGroup.CpuProcessingTime(baseTime, cpuCount, absl::Seconds(5));
+    cGroup.CpuProcessingCapacity(baseTime, cpuCount, absl::Seconds(5));
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     auto messages = memoryWriter->GetMessages();
@@ -176,7 +176,7 @@ TEST(CGroup, ProcessingTime)
     EXPECT_EQ(messages.at(0), "c:cgroup.cpu.processingCapacity:5.000000\n");
     memoryWriter->Clear();
 
-    cGroup.CpuProcessingTime(baseTime + absl::Seconds(30), cpuCount, absl::Seconds(5));
+    cGroup.CpuProcessingCapacity(baseTime + absl::Seconds(30), cpuCount, absl::Seconds(5));
 
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 1);

@@ -87,6 +87,7 @@ void CGroup::CpuTimeV2(const std::unordered_map<std::string, int64_t>& stats) no
     {
         auto secs = (stats.at("system_usec") - prev_sys_usage) / MICROS;
         registry_->CreateCounter("cgroup.cpu.usageTime", {{"id", "system"}}).Increment(secs);
+
     }
     prev_sys_usage = stats.at("system_usec");
 
@@ -118,7 +119,7 @@ double CGroup::GetNumCpu() noexcept
     return cpuCount;
 }
 
-void CGroup::CpuProcessingTime(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept
+void CGroup::CpuProcessingCapacity(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept
 {
     static absl::Time last_updated;
     if (last_updated == absl::UnixEpoch())
@@ -213,7 +214,7 @@ void CGroup::CpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecon
     if (fiveSecondMetricsEnabled)
     {
         CpuTimeV2(stats);
-        CpuProcessingTime(absl::Now(), cpuCount, absl::Seconds(5));
+        CpuProcessingCapacity(absl::Now(), cpuCount, absl::Seconds(5));
     }
 
     // Always collect peak stats (called every 1 second)

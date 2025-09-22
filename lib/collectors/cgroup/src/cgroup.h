@@ -30,7 +30,7 @@ class CGroup
     void CpuUtilizationV2(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept;
     void CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_map<std::string, int64_t>& stats,
                               const double cpuCount) noexcept;
-    void CpuProcessingTime(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept;
+    void CpuProcessingCapacity(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept;
     
    private:
     double GetAvailCpuTime(const double delta_t, const double cpuCount) noexcept;

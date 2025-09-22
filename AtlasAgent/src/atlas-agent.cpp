@@ -66,9 +66,9 @@ static void gather_peak_titus_metrics(CGroup* cGroup, const bool fiveSecondMetri
 static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws)
 {
     aws->update_stats();
-    cGroup->memory_stats_v2();
-    cGroup->memory_stats_std_v2();
-    cGroup->network_stats();
+    cGroup->MemoryStatsV2();
+    cGroup->MemoryStatsStdV2();
+    cGroup->NetworkStats();
     disk->titus_disk_stats();
     proc->netstat_stats();
     proc->network_stats();
@@ -254,7 +254,6 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
         auto start = system_clock::now();
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
-
 
         gather_peak_titus_metrics(&cGroup, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 
