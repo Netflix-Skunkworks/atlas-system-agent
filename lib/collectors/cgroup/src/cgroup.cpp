@@ -131,7 +131,7 @@ void CGroup::CpuProcessingCapacity(const absl::Time& now, const double cpuCount,
     registry_->CreateCounter("cgroup.cpu.processingCapacity").Increment(delta_t * cpuCount);
 }
 
-void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept
+void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, const std::unordered_map<std::string, int64_t>& stats, const absl::Duration& interval) noexcept
 {
     static absl::Time last_updated;
     if (last_updated == absl::UnixEpoch())
@@ -151,24 +151,21 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
     registry_->CreateGauge("sys.cpu.numProcessors").Set(cpuCount);
     registry_->CreateGauge("titus.cpu.requested").Set(cpuCount);
 
-    std::unordered_map<std::string, int64_t> stats;
-    parse_kv_from_file(path_prefix_, "cpu.stat", &stats);
-
     static auto prev_system_time = static_cast<int64_t>(-1);
     if (prev_system_time >= 0)
     {
-        auto secs = (stats["system_usec"] - prev_system_time) / MICROS;
+        auto secs = (stats.at("system_usec") - prev_system_time) / MICROS;
         registry_->CreateGauge("sys.cpu.utilization", {{"id", "system"}}).Set((secs / avail_cpu_time) * 100);
     }
-    prev_system_time = stats["system_usec"];
+    prev_system_time = stats.at("system_usec");
 
     static auto prev_user_time = static_cast<int64_t>(-1);
     if (prev_user_time >= 0)
     {
-        auto secs = (stats["user_usec"] - prev_user_time) / MICROS;
+        auto secs = (stats.at("user_usec") - prev_user_time) / MICROS;
         registry_->CreateGauge("sys.cpu.utilization", {{"id", "user"}}).Set((secs / avail_cpu_time) * 100);
     }
-    prev_user_time = stats["user_usec"];
+    prev_user_time = stats.at("user_usec");
 }
 
 void CGroup::CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_map<std::string, int64_t>& stats,
@@ -207,7 +204,7 @@ void CGroup::CpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecon
     if (sixtySecondMetricsEnabled)
     {
         CpuThrottleV2(stats);
-        CpuUtilizationV2(absl::Now(), cpuCount, absl::Seconds(60));
+        CpuUtilizationV2(absl::Now(), cpuCount, stats, absl::Seconds(60));
     }
 
     // Collect 5 second metrics if enabled

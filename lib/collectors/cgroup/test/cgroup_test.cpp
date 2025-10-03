@@ -106,10 +106,13 @@ TEST(CGroup, CpuUtilizationV2)
     CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
     setenv("TITUS_NUM_CPU", "1", 1);
 
+    std::unordered_map<std::string, int64_t> stats;
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+
     // Use a fixed base time for consistent testing
     auto baseTime = absl::FromUnixSeconds(1000000000); // Fixed timestamp
     auto cpuCount = cGroup.GetNumCpu();
-    cGroup.CpuUtilizationV2(baseTime, cpuCount, absl::Seconds(60));
+    cGroup.CpuUtilizationV2(baseTime, cpuCount, stats, absl::Seconds(60));
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     auto messages = memoryWriter->GetMessages();
@@ -121,7 +124,8 @@ TEST(CGroup, CpuUtilizationV2)
 
     // Second call after 60 seconds to compute utilization
     cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
-    cGroup.CpuUtilizationV2(baseTime + absl::Seconds(60), cpuCount, absl::Seconds(60));
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+    cGroup.CpuUtilizationV2(baseTime + absl::Seconds(60), cpuCount, stats, absl::Seconds(60));
     
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 5);

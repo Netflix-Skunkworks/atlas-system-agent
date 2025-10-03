@@ -27,7 +27,7 @@ class CGroup
     double GetNumCpu() noexcept;
     void CpuThrottleV2(const std::unordered_map<std::string, int64_t>& stats) noexcept;
     void CpuTimeV2(const std::unordered_map<std::string, int64_t>& stats) noexcept;
-    void CpuUtilizationV2(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept;
+    void CpuUtilizationV2(const absl::Time& now, const double cpuCount, const std::unordered_map<std::string, int64_t>& stats, const absl::Duration& interval) noexcept;
     void CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_map<std::string, int64_t>& stats,
                               const double cpuCount) noexcept;
     void CpuProcessingCapacity(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept;
