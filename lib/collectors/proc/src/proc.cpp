@@ -644,7 +644,7 @@ void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cp
     static auto counterCount = registry_->CreateCounter("sys.cpu.coreUtilization", {{"statistic", "count"}});
     static auto counterTotal = registry_->CreateCounter("sys.cpu.coreUtilization", {{"statistic", "totalAmount"}});
     static auto counterTotalSquares = registry_->CreateCounter("sys.cpu.coreUtilization", {{"statistic", "totalOfSquares"}});
-    static auto gaugeMean = registry_->CreateMaxGauge("sys.cpu.coreUtilization", {{"statistic", "max"}});
+    static auto gaugeMax = registry_->CreateMaxGauge("sys.cpu.coreUtilization", {{"statistic", "max"}});
 
     for (unsigned int i = ProcStatConstants::FirstProcessorIndex; i < cpuLines.size(); ++i)
     {
@@ -685,7 +685,7 @@ void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cp
         double avgUsage = maxUsage / 12.0;
 
         // Set the gauge mean to the max average usage
-        gaugeMean.Set(avgUsage);
+        gaugeMax.Set(avgUsage);
 
         previousCoreUsages.clear();
     }
