@@ -623,10 +623,28 @@ catch (const std::exception& ex)
     return;
 }
 
-void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpuLines) try
+void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpuLines, const bool sixtySecondMetricsEnabled) try
 {
-    static DistributionSummary coresDistSummary = registry_->CreateDistributionSummary("sys.cpu.coreUtilization");
+    /*
+    These metrics were previously recorded as a distribution summary, which behaved correctly
+    when collected at 60-second intervals. However, when we introduced 5-second collection intervals,
+    internal Netflix users were upset that the max usage values were no longer representative of the
+    max core usage across the minute. The 5-second max values would capture brief CPU spikes that
+    weren't indicative of sustained core utilization over a full minute.
+    
+    To address this issue, we now manually implement the internal representation of a distribution
+    summary by updating its constituent counter fields directly. This approach allows us to compute
+    the maximum average CPU usage across all cores over a 60-second window, rather than reporting
+    the maximum usage over individual 5-second intervals.
+    */
+    
     static std::unordered_map<std::string, CpuStatFields> previousCpuStats;
+    static std::unordered_map<std::string, double> previousCoreUsages;
+
+    static auto counterCount = registry_->CreateCounter("sys.cpu.coreUtilization", {{"statistic", "count"}});
+    static auto counterTotal = registry_->CreateCounter("sys.cpu.coreUtilization", {{"statistic", "totalAmount"}});
+    static auto counterTotalSquares = registry_->CreateCounter("sys.cpu.coreUtilization", {{"statistic", "totalOfSquares"}});
+    static auto gaugeMax = registry_->CreateMaxGauge("sys.cpu.coreUtilization", {{"statistic", "max"}});
 
     for (unsigned int i = ProcStatConstants::FirstProcessorIndex; i < cpuLines.size(); ++i)
     {
@@ -641,12 +659,37 @@ void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cp
             auto computedVals = ComputeGaugeValues(prevStats, currentStats);
             auto usage = computedVals.user + computedVals.system + computedVals.stolen + computedVals.nice +
                          computedVals.wait + computedVals.interrupt + computedVals.guest;
-            coresDistSummary.Record(usage);
+            
+            counterCount.Increment();
+            counterTotal.Increment(usage);
+            counterTotalSquares.Increment(usage * usage);
+            previousCoreUsages[key] += usage;
 
             // Update the stored stats for next iteration
             it->second = currentStats;
         }
     }
+
+    // If 60-second metrics are enabled, compute the max average usage across all cores over the minute
+    // previousCoreUsages will never be empty this is just for the unit test
+    if (sixtySecondMetricsEnabled && !previousCoreUsages.empty())
+    {
+        // Find the max usage in previousCoreUsages
+        double maxUsage = 0.0;
+        for (const auto& [key, usage] : previousCoreUsages)
+        {
+            maxUsage = std::max(maxUsage, usage);
+        }
+
+        // Divide the usage by 12 to get average over the minute
+        double avgUsage = maxUsage / 12.0;
+
+        // Set the gauge mean to the max average usage
+        gaugeMax.Set(avgUsage);
+
+        previousCoreUsages.clear();
+    }
+
     return;
 }
 catch (const std::exception& ex)
@@ -708,7 +751,7 @@ void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsE
     // If 5-second metrics are enabled, collect additional detailed metrics
     if (fiveSecondMetrics)
     {
-        UpdateCoreUtilization(cpuLines);
+        UpdateCoreUtilization(cpuLines, sixtySecondMetricsEnabled);
     }
 
     // Always collect peak stats (called every 1 second)

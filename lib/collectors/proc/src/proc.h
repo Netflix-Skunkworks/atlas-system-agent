@@ -32,7 +32,7 @@ class Proc
    private:
     void PeakCpuStats(const std::vector<std::string>& aggregateLine);
     void UpdateUtilizationGauges(const std::vector<std::string>& aggregateLine);
-    void UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpu_lines);
+    void UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cpu_lines, const bool sixtySecondMetricsEnabled);
     void UpdateNumProcs(const unsigned int numberProcessors);
 
     void handle_line(FILE* fp) noexcept;

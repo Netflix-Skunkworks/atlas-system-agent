@@ -273,7 +273,7 @@ TEST(Proc, CpuStats)
     proc.CpuStats(true, true);
     messages = memoryWriter->GetMessages();
 
-    EXPECT_EQ(16, messages.size());
+    EXPECT_EQ(23, messages.size());
     EXPECT_EQ(messages.at(0), "g:sys.cpu.utilization,id=user:11.314429\n");
     EXPECT_EQ(messages.at(1), "g:sys.cpu.utilization,id=system:1.291190\n");
     EXPECT_EQ(messages.at(2), "g:sys.cpu.utilization,id=stolen:0.006184\n");
@@ -282,16 +282,24 @@ TEST(Proc, CpuStats)
     EXPECT_EQ(messages.at(5), "g:sys.cpu.utilization,id=interrupt:0.002278\n");
 
     EXPECT_EQ(messages.at(6), "g:sys.cpu.numProcessors:3.000000\n");
-    EXPECT_EQ(messages.at(7), "d:sys.cpu.coreUtilization:5.528345\n");
-    EXPECT_EQ(messages.at(8), "d:sys.cpu.coreUtilization:14.059896\n");
-    EXPECT_EQ(messages.at(9), "d:sys.cpu.coreUtilization:7.583136\n");
+    EXPECT_EQ(messages.at(7), "c:sys.cpu.coreUtilization,statistic=count:1.000000\n");
+    EXPECT_EQ(messages.at(8), "c:sys.cpu.coreUtilization,statistic=totalAmount:5.528345\n");
+    EXPECT_EQ(messages.at(9), "c:sys.cpu.coreUtilization,statistic=totalOfSquares:30.562600\n");
 
-    EXPECT_EQ(messages.at(10), "m:sys.cpu.peakUtilization,id=user:11.314429\n");
-    EXPECT_EQ(messages.at(11), "m:sys.cpu.peakUtilization,id=system:1.291190\n");
-    EXPECT_EQ(messages.at(12), "m:sys.cpu.peakUtilization,id=stolen:0.006184\n");
-    EXPECT_EQ(messages.at(13), "m:sys.cpu.peakUtilization,id=nice:0.029293\n");
-    EXPECT_EQ(messages.at(14), "m:sys.cpu.peakUtilization,id=wait:0.011066\n");
-    EXPECT_EQ(messages.at(15), "m:sys.cpu.peakUtilization,id=interrupt:0.002278\n");
+    EXPECT_EQ(messages.at(10), "c:sys.cpu.coreUtilization,statistic=count:1.000000\n");
+    EXPECT_EQ(messages.at(11), "c:sys.cpu.coreUtilization,statistic=totalAmount:14.059896\n");
+    EXPECT_EQ(messages.at(12), "c:sys.cpu.coreUtilization,statistic=totalOfSquares:197.680671\n");
+    EXPECT_EQ(messages.at(13), "c:sys.cpu.coreUtilization,statistic=count:1.000000\n");
+    EXPECT_EQ(messages.at(14), "c:sys.cpu.coreUtilization,statistic=totalAmount:7.583136\n");
+    EXPECT_EQ(messages.at(15), "c:sys.cpu.coreUtilization,statistic=totalOfSquares:57.503949\n");
+    EXPECT_EQ(messages.at(16), "m:sys.cpu.coreUtilization,statistic=max:1.171658\n");
+
+    EXPECT_EQ(messages.at(17), "m:sys.cpu.peakUtilization,id=user:11.314429\n");
+    EXPECT_EQ(messages.at(18), "m:sys.cpu.peakUtilization,id=system:1.291190\n");
+    EXPECT_EQ(messages.at(19), "m:sys.cpu.peakUtilization,id=stolen:0.006184\n");
+    EXPECT_EQ(messages.at(20), "m:sys.cpu.peakUtilization,id=nice:0.029293\n");
+    EXPECT_EQ(messages.at(21), "m:sys.cpu.peakUtilization,id=wait:0.011066\n");
+    EXPECT_EQ(messages.at(22), "m:sys.cpu.peakUtilization,id=interrupt:0.002278\n");
 }
 
 TEST(Proc, UptimeStats)
