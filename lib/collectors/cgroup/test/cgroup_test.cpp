@@ -15,13 +15,13 @@ class CGroupTest : public atlasagent::CGroup
     }
 
     // Expose protected members and methods for testing
-    using CGroup::path_prefix_;
-    using CGroup::CpuThrottleV2;
-    using CGroup::GetNumCpu;
-    using CGroup::CpuTimeV2;
-    using CGroup::CpuUtilizationV2;
     using CGroup::CpuPeakUtilizationV2;
     using CGroup::CpuProcessingCapacity;
+    using CGroup::CpuThrottleV2;
+    using CGroup::CpuTimeV2;
+    using CGroup::CpuUtilizationV2;
+    using CGroup::GetNumCpu;
+    using CGroup::path_prefix_;
 };
 
 inline double megabits2bytes(int mbits) { return mbits * 125000; }
@@ -96,7 +96,7 @@ TEST(CGroup, CpuThrottleV2)
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 2);
     EXPECT_EQ(messages.at(0), "c:cgroup.cpu.throttledTime:6.000000\n");
-    EXPECT_EQ(messages.at(1), "C:cgroup.cpu.numThrottled:5.000000\n");\
+    EXPECT_EQ(messages.at(1), "C:cgroup.cpu.numThrottled:5.000000\n");
 }
 
 TEST(CGroup, CpuUtilizationV2)
@@ -110,7 +110,7 @@ TEST(CGroup, CpuUtilizationV2)
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
 
     // Use a fixed base time for consistent testing
-    auto baseTime = absl::FromUnixSeconds(1000000000); // Fixed timestamp
+    auto baseTime = absl::FromUnixSeconds(1000000000);  // Fixed timestamp
     auto cpuCount = cGroup.GetNumCpu();
     cGroup.CpuUtilizationV2(baseTime, cpuCount, stats, absl::Seconds(60));
 
@@ -126,7 +126,7 @@ TEST(CGroup, CpuUtilizationV2)
     cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
     cGroup.CpuUtilizationV2(baseTime + absl::Seconds(60), cpuCount, stats, absl::Seconds(60));
-    
+
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 5);
     EXPECT_EQ(messages.at(0), "g:cgroup.cpu.weight:100.000000\n");
@@ -149,12 +149,12 @@ TEST(CGroup, CpuTimeV2)
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     auto messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 0);
-    
+
     // Second call after 60 seconds to compute utilization
     cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
     cGroup.CpuTimeV2(stats);
-    
+
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 3);
     EXPECT_EQ(messages.at(0), "c:cgroup.cpu.processingTime:60.000000\n");
@@ -170,7 +170,7 @@ TEST(CGroup, ProcessingTime)
     setenv("TITUS_NUM_CPU", "1", 1);
 
     // Use a fixed base time for consistent testing
-    auto baseTime = absl::FromUnixSeconds(1000000000); // Fixed timestamp
+    auto baseTime = absl::FromUnixSeconds(1000000000);  // Fixed timestamp
     auto cpuCount = cGroup.GetNumCpu();
     cGroup.CpuProcessingCapacity(baseTime, cpuCount, absl::Seconds(5));
 
@@ -196,9 +196,8 @@ TEST(CGroup, CpuPeakUtilizationV2)
 
     std::unordered_map<std::string, int64_t> stats;
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
-    auto baseTime = absl::FromUnixSeconds(1000000000); // Fixed timestamp
+    auto baseTime = absl::FromUnixSeconds(1000000000);  // Fixed timestamp
     auto cpuCount = cGroup.GetNumCpu();
-
 
     cGroup.CpuPeakUtilizationV2(baseTime, stats, cpuCount);
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -208,7 +207,7 @@ TEST(CGroup, CpuPeakUtilizationV2)
     cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
     cGroup.CpuPeakUtilizationV2(baseTime + absl::Seconds(60), stats, cpuCount);
-    
+
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 2);
     EXPECT_EQ(messages.at(0), "m:sys.cpu.peakUtilization,id=system:66.666667\n");
@@ -251,4 +250,142 @@ TEST(CGroup, ParseMemoryV2)
     EXPECT_EQ(messages.at(14), "g:mem.availSwap:536870912.000000\n");
     EXPECT_EQ(messages.at(15), "g:mem.totalSwap:536870912.000000\n");
     EXPECT_EQ(messages.at(16), "g:mem.totalFree:1296650240.000000\n");
+}
+
+// Test case structure for invalid file tests
+struct InvalidFileTestCase
+{
+    std::string filename;
+    bool expectedResult;
+    std::string description;
+};
+
+// Common test cases that apply to both io.stat and io.max (excluding type-specific ones)
+std::vector<InvalidFileTestCase> GetCommonInvalidTestCases(const std::string& prefix)
+{
+    return {{prefix + ".duplicate_keys", false, "duplicate keys"},
+            {prefix + ".empty", true, "empty file (no lines to process)"},
+            {prefix + ".incomplete_lines", false, "incomplete lines"},
+            {prefix + ".invalid_keys", false, "invalid key names"},
+            {prefix + ".malformed_pairs", false, "malformed key=value pairs"},
+            {prefix + ".missing_fields", false, "missing required fields"},
+            {prefix + ".mixed_validity", false, "mixed valid/invalid lines"},
+            {prefix + ".non_numeric", false, "non-numeric values"},
+            {prefix + ".too_many_fields", false, "lines with too many fields"}};
+}
+
+TEST(CGroup, InvalidIOStats)
+{
+    auto testCases = GetCommonInvalidTestCases("io.stat");
+    // Add io.stat specific test case
+    testCases.push_back({"io.stat.negative_values", false, "negative values"});
+
+    // Create a simple device map for testing
+    std::unordered_map<std::string, std::string> deviceMap = {{"8:0", "sda"}, {"8:1", "sda1"}, {"259:0", "nvme0n1"}};
+
+    for (const auto& testCase : testCases)
+    {
+        auto lines = atlasagent::read_lines_fields("lib/collectors/cgroup/test/resources/invalid_tests/io.stat/",
+                                                   testCase.filename.c_str());
+        auto result = atlasagent::ParseIOLines(lines, deviceMap);
+
+        if (testCase.expectedResult)
+        {
+            // For empty files, success means returning an empty map
+            if (testCase.filename == "io.stat.empty")
+            {
+                EXPECT_TRUE(result.empty()) << "No data should be parsed from empty file";
+            }
+            else
+            {
+                EXPECT_FALSE(result.empty()) << "ParseIOLines should return non-empty map for " << testCase.description;
+            }
+        }
+        else
+        {
+            EXPECT_TRUE(result.empty()) << "ParseIOLines should return empty map for " << testCase.description;
+        }
+    }
+}
+
+TEST(CGroup, InvalidIOMaxStats)
+{
+    auto testCases = GetCommonInvalidTestCases("io.max");
+    // Add io.max specific test case
+    testCases.push_back({"io.max.negative_values", false, "negative values"});
+
+    for (const auto& testCase : testCases)
+    {
+        auto lines = atlasagent::read_lines_fields("lib/collectors/cgroup/test/resources/invalid_tests/io.max/",
+                                                   testCase.filename.c_str());
+        auto result = atlasagent::ParseIOThrottleLines(lines);
+
+        if (testCase.expectedResult)
+        {
+            // For empty files, success means returning an empty map
+            if (testCase.filename == "io.max.empty")
+            {
+                EXPECT_TRUE(result.empty()) << "No data should be parsed from empty file";
+            }
+            else
+            {
+                EXPECT_FALSE(result.empty())
+                    << "ParseIOThrottleLines should return non-empty map for " << testCase.description;
+            }
+        }
+        else
+        {
+            EXPECT_TRUE(result.empty()) << "ParseIOThrottleLines should return empty map for " << testCase.description;
+        }
+    }
+}
+
+TEST(CGroup, IOStats)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    cGroup.IOStats();
+    auto messages = memoryWriter->GetMessages();
+    EXPECT_TRUE(messages.empty());
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.IOStats();
+    messages = memoryWriter->GetMessages();
+
+    auto expectedMessages = std::vector<std::string>{"c:disk.io.bytes,id=read,dev=unknown:2000.000000\n",
+                                                     "c:disk.io.bytes,id=write,dev=unknown:2000.000000\n",
+                                                     "c:disk.io.ops,statistic=count,id=read,dev=unknown:2000.000000\n",
+                                                     "c:disk.io.ops,statistic=count,id=write,dev=unknown:2000.000000\n",
+
+                                                     "c:disk.io.bytes,id=read,dev=unknown:2000.000000\n",
+                                                     "c:disk.io.bytes,id=write,dev=unknown:2000.000000\n",
+                                                     "c:disk.io.ops,statistic=count,id=read,dev=unknown:2000.000000\n",
+                                                     "c:disk.io.ops,statistic=count,id=write,dev=unknown:2000.000000\n",
+                                                     "d:cgroup.disk.io.throttleActivityOperations,id=write,dev=unknown:40.000000\n",
+
+                                                     "c:disk.io.bytes,id=read,dev=unknown:500.000000\n",
+                                                     "c:disk.io.bytes,id=write,dev=unknown:500.000000\n",
+                                                     "c:disk.io.ops,statistic=count,id=read,dev=unknown:500.000000\n",
+                                                     "c:disk.io.ops,statistic=count,id=write,dev=unknown:500.000000\n",
+                                                     "d:cgroup.disk.io.throttleActivityBytes,id=read,dev=unknown:10.000000\n",
+                                                     "d:cgroup.disk.io.throttleActivityBytes,id=write,dev=unknown:10.000000\n",
+                                                     "d:cgroup.disk.io.throttleActivityOperations,id=read,dev=unknown:10.000000\n",
+                                                     "d:cgroup.disk.io.throttleActivityOperations,id=write,dev=unknown:10.000000\n",
+
+                                                     "c:disk.io.bytes,id=read,dev=unknown:500.000000\n",
+                                                     "c:disk.io.bytes,id=write,dev=unknown:500.000000\n",
+                                                     "c:disk.io.ops,statistic=count,id=read,dev=unknown:500.000000\n",
+                                                     "c:disk.io.ops,statistic=count,id=write,dev=unknown:500.000000\n",
+                                                     "d:cgroup.disk.io.throttleActivityOperations,id=read,dev=unknown:10.000000\n",
+                                                     "d:cgroup.disk.io.throttleActivityOperations,id=write,dev=unknown:10.000000\n"};
+    EXPECT_EQ(messages.size(), expectedMessages.size());
+
+    // Convert to sets to handle the unordered nature of unordered_map iteration
+    std::set<std::string> messageSet(messages.begin(), messages.end());
+    std::set<std::string> expectedSet(expectedMessages.begin(), expectedMessages.end());
+
+    EXPECT_EQ(messageSet, expectedSet);
 }
