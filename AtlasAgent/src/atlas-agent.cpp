@@ -264,6 +264,7 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
         // we can gather them here
         if (fiveSecondMetricsEnabled == true)
         {
+            cGroup.IOStats();
             next_five_second_run += seconds(5);
         }
 

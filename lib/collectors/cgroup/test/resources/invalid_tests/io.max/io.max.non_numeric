@@ -1,0 +1,2 @@
+8:0 rbps=abc wbps=1048576 riops=1000 wiops=500
+8:1 rbps=max wbps=def riops=2000 wiops=1000

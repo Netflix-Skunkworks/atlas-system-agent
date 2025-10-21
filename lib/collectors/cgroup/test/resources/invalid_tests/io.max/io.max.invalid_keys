@@ -1,0 +1,2 @@
+8:0 readbps=1048576 wbps=1048576 riops=1000 wiops=500
+8:1 rbps=max writebps=2097152 riops=2000 wiops=1000
