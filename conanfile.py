@@ -27,6 +27,8 @@ class AtlasSystemAgentConan(ConanFile):
     def requirements(self):
         # TODO: remove this when SystemD updates package for zstd
         self.requires("zstd/1.5.7", override=True)
+        # TODO: remove this when SystemD updates package for xz_utils
+        self.requires("xz_utils/5.8.1", override=True)
 
     def configure(self):
         self.options["libcurl"].with_c_ares = True
