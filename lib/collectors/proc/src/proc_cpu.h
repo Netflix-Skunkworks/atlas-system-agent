@@ -16,7 +16,6 @@ struct Cpu_Gauge_Values
     double nice;
     double wait;
     double interrupt;
-    double guest;
 };
 
 class CpuStatFields
@@ -32,8 +31,7 @@ class CpuStatFields
           softirq(0),
           steal(0),
           guest(0),
-          guest_nice(0),
-          total(0)
+          guest_nice(0)
     {
         uint64_t* values[] = {&user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal, &guest, &guest_nice};
 
@@ -45,12 +43,10 @@ class CpuStatFields
                 result.ec != std::errc{})
             {
                 // Reset all on any parse error
-                user = nice = system = idle = iowait = irq = softirq = steal = guest = guest_nice = total = 0;
+                user = nice = system = idle = iowait = irq = softirq = steal = guest = guest_nice = 0;
                 throw std::invalid_argument("Invalid CPU stat field: " + fields[i + 1]);
             }
         }
-
-        total = user + nice + system + idle + iowait + irq + softirq + steal + guest + guest_nice;
     }
 
     uint64_t user;
@@ -63,21 +59,27 @@ class CpuStatFields
     uint64_t steal;
     uint64_t guest;
     uint64_t guest_nice;
-
-    uint64_t total;  // computed as sum of all above fields
 };
 
 inline Cpu_Gauge_Values ComputeGaugeValues(const CpuStatFields& prev, const CpuStatFields& current)
 {
     Cpu_Gauge_Values vals{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    auto delta_total = current.total - prev.total;
     auto delta_user = current.user - prev.user;
     auto delta_system = current.system - prev.system;
     auto delta_stolen = current.steal - prev.steal;
     auto delta_nice = current.nice - prev.nice;
+    auto delta_idle = current.idle - prev.idle;
     auto delta_interrupt = (current.irq + current.softirq) - (prev.irq + prev.softirq);
+
+    // iowait is non-monotonic on SMP systems and can decrease between readings. Clamp to 0
+    // so the decrease doesn't shrink delta_total and inflate all percentages above 100%.
     auto delta_wait = current.iowait > prev.iowait ? current.iowait - prev.iowait : 0;
-    auto delta_guest = (current.guest + current.guest_nice) - (prev.guest + prev.guest_nice);
+
+    // delta_idle is included so each percentage reflects a fraction of total CPU time,
+    // not just busy time. guest/guest_nice are excluded because /proc/stat already accounts
+    // for them within user/nice — adding them separately would double-count that time.
+    auto delta_total = delta_user + delta_nice + delta_system + delta_idle
+                     + delta_wait + delta_interrupt + delta_stolen;
 
     if (delta_total > 0)
     {
@@ -87,7 +89,6 @@ inline Cpu_Gauge_Values ComputeGaugeValues(const CpuStatFields& prev, const CpuS
         vals.nice = 100.0 * delta_nice / delta_total;
         vals.wait = 100.0 * delta_wait / delta_total;
         vals.interrupt = 100.0 * delta_interrupt / delta_total;
-        vals.guest = 100 * delta_guest / delta_total;
     }
     return vals;
 }
