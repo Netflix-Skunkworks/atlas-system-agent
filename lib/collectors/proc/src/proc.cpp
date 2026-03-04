@@ -657,8 +657,10 @@ void Proc::UpdateCoreUtilization(const std::vector<std::vector<std::string>>& cp
         {
             const auto& prevStats = it->second;
             auto computedVals = ComputeGaugeValues(prevStats, currentStats);
+            // Sum all non-idle CPU states. guest/guest_nice are excluded because they are already
+            // accounted for within user/nice per /proc/stat semantics — adding them separately would double-count.
             auto usage = computedVals.user + computedVals.system + computedVals.stolen + computedVals.nice +
-                         computedVals.wait + computedVals.interrupt + computedVals.guest;
+                         computedVals.wait + computedVals.interrupt;
             
             counterCount.Increment();
             counterTotal.Increment(usage);

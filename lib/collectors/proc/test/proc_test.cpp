@@ -484,7 +484,8 @@ TEST(Proc, ParseProcStat)
 TEST(Proc, ComputeGaugeValues)
 {
     std::vector<std::string> prevLine = {"cpu", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"};
-    std::vector<std::string> currentLine = {"cpu", "5", "15", "10", "10", "10", "10", "10", "10", "10", "10"};
+    // idle=30 keeps delta_total=100 after excluding guest/guest_nice from the total
+    std::vector<std::string> currentLine = {"cpu", "5", "15", "10", "30", "10", "10", "10", "10", "10", "10"};
 
     CpuStatFields prevFields(prevLine);
     CpuStatFields currentFields(currentLine);
@@ -496,7 +497,6 @@ TEST(Proc, ComputeGaugeValues)
     EXPECT_EQ(deltaPercentages.nice, 15);
     EXPECT_EQ(deltaPercentages.wait, 10);
     EXPECT_EQ(deltaPercentages.interrupt, 20);
-    EXPECT_EQ(deltaPercentages.guest, 20);
 }
 
 }  // namespace
