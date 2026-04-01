@@ -119,7 +119,7 @@ bool Perfspect::StartScript() try
     this->scriptProcess = std::make_unique<boost::process::child>(
         fullBinaryPath.string(), PerfspectConstants::command, PerfspectConstants::eventfileFlag, eventfilePath,
         PerfspectConstants::metricfileFlag, metricfilePath, PerfspectConstants::intervalFlag,
-        PerfspectConstants::intervalValue, PerfspectConstants::liveFlag, boost::process::std_out > *this->asyncPipe,
+        PerfspectConstants::intervalValue, PerfspectConstants::liveFlag, PerfspectConstants::syslogFlag, boost::process::std_out > *this->asyncPipe,
         boost::process::std_err > boost::process::null);
 
     // Start async reading

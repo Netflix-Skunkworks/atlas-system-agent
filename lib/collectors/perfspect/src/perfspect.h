@@ -23,6 +23,7 @@ struct PerfspectConstants
     static constexpr auto intervalFlag{"--interval"};
     static constexpr auto intervalValue{"5"};
     static constexpr auto liveFlag{"--live"};
+    static constexpr auto syslogFlag{"--syslog"};
     static constexpr auto metricFrequency{"cpu.perfspect.frequency"};
     static constexpr auto metricCycles{"cpu.perfspect.cycles"};
     static constexpr auto metricInstructions{"cpu.perfspect.instructions"};
