@@ -41,13 +41,19 @@ fi
 
 if [[ ! -d $BUILD_DIR ]]; then
   echo -e "${BLUE}==== install required dependencies ====${NC}"
-  if [[ "$BUILD_TYPE" == "Debug" ]]; then
+  if [[ "$BUILD_TYPE" == "Debug" || "$BUILD_FROM_SOURCE" == "1" ]]; then
+    # Build every dependency (and its transitive deps) from source. Use this
+    # path when targeting an environment with an older glibc than the Conan
+    # Center prebuilts were compiled against; rebuilding everything locally
+    # guarantees the final binary only references symbols available in the
+    # current build environment.
     conan install . --output-folder="$BUILD_DIR" --build="*" --settings=build_type="$BUILD_TYPE"
   else
-    # force m4, boost, and elfutils to build from source; pre-built binaries
-    # from Conan Center may be linked against a newer glibc than the build
-    # environment provides (e.g. Rocky 9 ships glibc 2.34, while Conan Center
-    # prebuilts are compiled on Ubuntu Jammy with glibc 2.35)
+    # Fast default. Force m4, boost, and elfutils to build from source;
+    # their Conan Center prebuilts are known to link against a newer glibc
+    # than some target environments provide. Set BUILD_FROM_SOURCE=1 to
+    # rebuild every dependency (slower, but safe against future regressions
+    # in other prebuilts).
     conan install . --output-folder="$BUILD_DIR" --build=missing \
       --build=m4/* --build=boost/* --build=elfutils/*
   fi
@@ -80,3 +86,23 @@ if [[ "$1" != "skiptest" ]]; then
 fi
 
 popd
+
+# Optional portability gate. When MAX_GLIBC is set, fail the build if the
+# binary references a GLIBC symbol newer than the declared threshold. This
+# catches regressions where a rebuilt (or newly added) dependency pulls in
+# prebuilt artifacts compiled against a newer glibc than the target
+# environment provides. Example: MAX_GLIBC=2.34 ./build.sh
+if [[ -n "$MAX_GLIBC" ]]; then
+  BIN="$BUILD_DIR/bin/atlas_system_agent"
+  echo -e "${BLUE}==== check required GLIBC symbols against MAX_GLIBC=$MAX_GLIBC ====${NC}"
+  MAX_REQUIRED=$(objdump -T "$BIN" | grep -Eo 'GLIBC_[0-9]+\.[0-9]+' | sort -uV | tail -n1)
+  if [[ -z "$MAX_REQUIRED" ]]; then
+    echo "warning: no GLIBC symbols found in $BIN; skipping check"
+  elif [[ "$(printf '%s\n' "GLIBC_$MAX_GLIBC" "$MAX_REQUIRED" | sort -V | tail -n1)" != "GLIBC_$MAX_GLIBC" ]]; then
+    echo "ERROR: $BIN requires $MAX_REQUIRED, exceeds MAX_GLIBC=$MAX_GLIBC"
+    objdump -T "$BIN" | grep -Eo 'GLIBC_\S+' | sort -uVr | head
+    exit 1
+  else
+    echo "OK: highest required symbol is $MAX_REQUIRED (<= GLIBC_$MAX_GLIBC)"
+  fi
+fi

@@ -6,6 +6,59 @@ An agent that reports metrics for EC2 instances or [Titus] containers.
 
 [Titus]: https://github.com/Netflix/titus/
 
+## Portability
+
+The agent is distributed as a native binary, so the glibc version linked at
+build time sets a floor on the glibc versions it can run against. Building on
+an older Linux environment produces a binary that also runs on newer ones;
+glibc's forward-compatible symbol versioning handles the rest. Building on a
+newer environment produces a binary that will fail to start on older ones
+with `version 'GLIBC_x.y' not found` errors.
+
+If you are packaging for an environment with a specific glibc floor, two
+opt-in knobs are available:
+
+```shell
+# Rebuild every Conan dependency (and its transitives) from source, so the
+# final binary only references symbols available in the current build
+# environment. Use this when Conan Center prebuilts target a newer glibc
+# than your deployment environment provides.
+BUILD_FROM_SOURCE=1 ./build.sh
+
+# Fail the build if the final binary requires any GLIBC_x.y symbol newer
+# than the declared threshold. Guards against regressions from future
+# Conan dependency updates.
+MAX_GLIBC=2.34 ./build.sh
+
+# Both together for packaging pipelines targeting an older glibc:
+BUILD_FROM_SOURCE=1 MAX_GLIBC=2.34 ./build.sh
+```
+
+The fast default (neither flag set) uses Conan Center prebuilts where
+available and rebuilds only the few dependencies known to link against a
+newer glibc (`m4`, `boost`, `elfutils`).
+
+### Inspecting a binary manually
+
+To see the highest `GLIBC_x.y` symbol a binary needs, and compare against the
+glibc available on a host:
+
+```shell
+# highest required GLIBC symbol in the binary
+objdump -T cmake-build/bin/atlas_system_agent \
+  | grep -Eo 'GLIBC_[0-9]+\.[0-9]+' | sort -uV | tail -n1
+
+# full list of required GLIBC / GLIBCXX / CXXABI versions
+objdump -T cmake-build/bin/atlas_system_agent \
+  | grep -Eo '(GLIBC|GLIBCXX|CXXABI)_\S+' | sort -uVr
+
+# glibc version provided by the current host
+ldd --version | head -n1
+```
+
+The binary will run on any host whose `ldd --version` is greater than or
+equal to the highest required `GLIBC_x.y` it reports.
+
 ## Local & IDE Configuration
 
 This agent was designed for Linux systems, and as a result, it does not compile cleanly on MacOS. It
