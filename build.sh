@@ -44,9 +44,12 @@ if [[ ! -d $BUILD_DIR ]]; then
   if [[ "$BUILD_TYPE" == "Debug" ]]; then
     conan install . --output-folder="$BUILD_DIR" --build="*" --settings=build_type="$BUILD_TYPE"
   else
-    # force m4 to build from source; pre-built binaries from Conan Center may
-    # be linked against a newer glibc than the build environment provides
-    conan install . --output-folder="$BUILD_DIR" --build=missing --build=m4/*
+    # force m4, boost, and elfutils to build from source; pre-built binaries
+    # from Conan Center may be linked against a newer glibc than the build
+    # environment provides (e.g. Rocky 9 ships glibc 2.34, while Conan Center
+    # prebuilts are compiled on Ubuntu Jammy with glibc 2.35)
+    conan install . --output-folder="$BUILD_DIR" --build=missing \
+      --build=m4/* --build=boost/* --build=elfutils/*
   fi
 
   echo -e "${BLUE}==== install source dependencies ====${NC}"
