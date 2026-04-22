@@ -49,13 +49,16 @@ if [[ ! -d $BUILD_DIR ]]; then
     # current build environment.
     conan install . --output-folder="$BUILD_DIR" --build="*" --settings=build_type="$BUILD_TYPE"
   else
-    # Fast default. Force m4, boost, and elfutils to build from source;
-    # their Conan Center prebuilts are known to link against a newer glibc
-    # than some target environments provide. Set BUILD_FROM_SOURCE=1 to
-    # rebuild every dependency (slower, but safe against future regressions
-    # in other prebuilts).
-    conan install . --output-folder="$BUILD_DIR" --build=missing \
-      --build=m4/* --build=boost/* --build=elfutils/*
+    # Fast default. Force m4 to build from source; its Conan Center prebuilt
+    # is linked against a newer glibc than some build environments provide
+    # (e.g. older base images), so rebuilding it locally avoids runtime
+    # errors during the subsequent autotools-based package builds.
+    #
+    # Broader rebuilds (boost, elfutils, transitive deps like b2) are
+    # opt-in via BUILD_FROM_SOURCE=1. Forcing them here would drag in from-
+    # source builds of b2, whose Conan Center prebuilt can't run on older
+    # glibc either, regressing older-base-image consumers.
+    conan install . --output-folder="$BUILD_DIR" --build=missing --build=m4/*
   fi
 
   echo -e "${BLUE}==== install source dependencies ====${NC}"
