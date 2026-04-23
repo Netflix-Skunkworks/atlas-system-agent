@@ -1,4 +1,6 @@
 #include "pressure_stall.h"
+#include <filesystem>
+#include <string>
 
 namespace atlasagent
 {
@@ -12,6 +14,12 @@ void PressureStall::set_prefix(std::string new_prefix) noexcept { path_prefix_ =
 
 void PressureStall::update_stats() noexcept
 {
+    // /proc/pressure is not available on RHEL/Rocky
+    if (!std::filesystem::exists(path_prefix_))
+    {
+        return;
+    }
+
     auto lines = read_lines_fields(path_prefix_, "cpu");
     if (lines.size() == 2)
     {

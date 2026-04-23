@@ -91,7 +91,7 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool,
     disk->disk_stats();
     ethtool->update_stats();
     ntp->update_stats();
-    pressureStall->update_stats();
+    pressureStall->update_stats();    
     proc->arp_stats();
     proc->loadavg_stats();
     proc->memory_stats();
