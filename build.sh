@@ -34,6 +34,11 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   fi
 fi
 
+JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)}"
+export CONAN_CPU_COUNT="${CONAN_CPU_COUNT:-$JOBS}"
+export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$JOBS}"
+export MAKEFLAGS="${MAKEFLAGS:--j$JOBS}"
+
 if [[ ! -f "$HOME/.conan2/profiles/default" ]]; then
   echo -e "${BLUE}==== create default profile ====${NC}"
   conan profile detect
