@@ -41,13 +41,7 @@ fi
 
 if [[ ! -d $BUILD_DIR ]]; then
   echo -e "${BLUE}==== install required dependencies ====${NC}"
-  if [[ "$BUILD_TYPE" == "Debug" ]]; then
-    conan install . --output-folder="$BUILD_DIR" --build="*" --settings=build_type="$BUILD_TYPE"
-  else
-    # force m4 to build from source; pre-built binaries from Conan Center may
-    # be linked against a newer glibc than the build environment provides
-    conan install . --output-folder="$BUILD_DIR" --build=missing --build=m4/*
-  fi
+  conan install . --output-folder="$BUILD_DIR" --build="*" --settings=build_type="$BUILD_TYPE"
 
   echo -e "${BLUE}==== install source dependencies ====${NC}"
   conan source .
