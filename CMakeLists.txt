@@ -51,8 +51,20 @@ function(add_amdsmi_subdirectory)
     set(BUILD_WRAPPER OFF CACHE BOOL "" FORCE)
     set(BUILD_RUST_WRAPPER OFF CACHE BOOL "" FORCE)
     set(ENABLE_LDCONFIG OFF CACHE BOOL "" FORCE)
+    set(ENABLE_ESMI_LIB OFF CACHE BOOL "" FORCE)
     add_subdirectory(${CMAKE_SOURCE_DIR}/thirdparty/rocm-systems/projects/amdsmi
                      ${CMAKE_BINARY_DIR}/amdsmi-build)
+
+    # Our parent project applies -pedantic -Werror -Wall to all targets
+    # (see add_compile_options at the top of this file). AMD SMI's code
+    # uses extensions (anonymous structs, flexible array members,
+    # out-of-range enums, sign mismatches) that don't survive that
+    # toolchain. Suppress warnings for AMD SMI's own targets only.
+    foreach(_target amd_smi amd_smi_static rocm_smi64 amdsminic go_amd_smi_)
+        if(TARGET ${_target})
+            target_compile_options(${_target} PRIVATE -w)
+        endif()
+    endforeach()
 endfunction()
 add_amdsmi_subdirectory()
 
