@@ -66,7 +66,7 @@ AmdSmi::AmdSmi()
 
         for (uint32_t j = 0; j < device_count; ++j)
         {
-            amdsmi_processor_type_t type = {};
+            processor_type_t type = {};
             if (amdsmi_get_processor_type(dev_handles[j], &type) == AMDSMI_STATUS_SUCCESS &&
                 type == AMDSMI_PROCESSOR_TYPE_AMD_GPU)
             {
