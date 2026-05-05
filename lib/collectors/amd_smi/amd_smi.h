@@ -43,15 +43,15 @@ class AmdSmi
     AmdSmi(const AmdSmi&) = delete;
     AmdSmi& operator=(const AmdSmi&) = delete;
 
-    bool get_count(uint32_t* count) noexcept;
-    bool get_handle(uint32_t index, amdsmi_processor_handle* handle) noexcept;
-    bool get_memory(amdsmi_processor_handle handle, AmdSmiMemory* memory) noexcept;
-    bool get_activity(amdsmi_processor_handle handle, AmdSmiActivity* activity) noexcept;
-    bool get_clocks(amdsmi_processor_handle handle, AmdSmiClocks* clocks) noexcept;
-    bool get_temperature(amdsmi_processor_handle handle, int64_t* temperature) noexcept;
-    bool get_power(amdsmi_processor_handle handle, uint32_t* power_watts) noexcept;
-    bool get_pcie_throughput(amdsmi_processor_handle handle, AmdSmiThroughput* pcie) noexcept;
-    bool get_xgmi_throughput(amdsmi_processor_handle handle, AmdSmiThroughput* xgmi) noexcept;
+    bool GetCount(uint32_t& count) noexcept;
+    bool GetHandle(uint32_t index, amdsmi_processor_handle& handle) noexcept;
+    bool GetMemory(amdsmi_processor_handle handle, AmdSmiMemory& memory) noexcept;
+    bool GetActivity(amdsmi_processor_handle handle, AmdSmiActivity& activity) noexcept;
+    bool GetClocks(amdsmi_processor_handle handle, AmdSmiClocks& clocks) noexcept;
+    bool GetTemperature(amdsmi_processor_handle handle, int64_t& temperature) noexcept;
+    bool GetPower(amdsmi_processor_handle handle, uint64_t& power_watts) noexcept;
+    bool GetPcieThroughput(amdsmi_processor_handle handle, AmdSmiThroughput& pcie) noexcept;
+    bool GetXgmiThroughput(amdsmi_processor_handle handle, AmdSmiThroughput& xgmi) noexcept;
 
    private:
     struct XgmiSample

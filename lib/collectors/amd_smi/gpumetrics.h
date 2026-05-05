@@ -43,14 +43,11 @@ inline auto counter(Registry* registry, const char* name, unsigned int gpu,
 }
 }  // namespace detail
 
-template <typename Lib>
 class GpuMetricsAMD
 {
    public:
-    GpuMetricsAMD(Registry* registry, std::unique_ptr<Lib> smi) noexcept
-        : registry_{registry}, smi_{std::move(smi)}
-    {
-    }
+    GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi) noexcept;
+    ~GpuMetricsAMD() = default;
 
     GpuMetricsAMD(const GpuMetricsAMD&) = delete;
     GpuMetricsAMD& operator=(const GpuMetricsAMD&) = delete;
@@ -60,8 +57,16 @@ class GpuMetricsAMD
     void gpu_metrics() noexcept;
 
    private:
+    void GetMemoryMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
+    void GetActivityMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
+    void GetClockMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
+    void GetTemperatureMetric(amdsmi_processor_handle handle) noexcept;
+    void GetPowerMetric(unsigned int i, amdsmi_processor_handle handle) noexcept;
+    void GetPcieMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
+    void GetXgmiMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
+
     Registry* registry_;
-    std::unique_ptr<Lib> smi_;
+    std::unique_ptr<AmdSmi> smi_;
 };
 
 }  // namespace atlasagent
