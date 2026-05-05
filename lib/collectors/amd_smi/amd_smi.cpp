@@ -2,8 +2,6 @@
 
 #include <lib/logger/src/logger.h>
 
-#include <climits>
-
 namespace atlasagent
 {
 
@@ -86,33 +84,28 @@ AmdSmi::~AmdSmi() noexcept
     }
 }
 
-bool AmdSmi::get_count(uint32_t* count) noexcept
+bool AmdSmi::GetCount(uint32_t& count) noexcept
 {
-    if (!initialized_ || count == nullptr)
+    if (!initialized_)
     {
         return false;
     }
-    *count = static_cast<uint32_t>(handles_.size());
+    count = static_cast<uint32_t>(handles_.size());
     return true;
 }
 
-bool AmdSmi::get_handle(uint32_t index, amdsmi_processor_handle* handle) noexcept
+bool AmdSmi::GetHandle(uint32_t index, amdsmi_processor_handle& handle) noexcept
 {
-    if (!initialized_ || handle == nullptr || index >= handles_.size())
+    if (!initialized_ || index >= handles_.size())
     {
         return false;
     }
-    *handle = handles_[index];
+    handle = handles_[index];
     return true;
 }
 
-bool AmdSmi::get_memory(amdsmi_processor_handle handle, AmdSmiMemory* memory) noexcept
+bool AmdSmi::GetMemory(amdsmi_processor_handle handle, AmdSmiMemory& memory) noexcept
 {
-    if (memory == nullptr)
-    {
-        return false;
-    }
-
     uint64_t total = 0;
     auto ret = amdsmi_get_gpu_memory_total(handle, AMDSMI_MEM_TYPE_VRAM, &total);
     if (ret != AMDSMI_STATUS_SUCCESS)
@@ -127,19 +120,14 @@ bool AmdSmi::get_memory(amdsmi_processor_handle handle, AmdSmiMemory* memory) no
         return false;
     }
 
-    memory->total = total;
-    memory->used = used;
-    memory->free = (total > used) ? (total - used) : 0;
+    memory.total = total;
+    memory.used = used;
+    memory.free = (total > used) ? (total - used) : 0;
     return true;
 }
 
-bool AmdSmi::get_activity(amdsmi_processor_handle handle, AmdSmiActivity* activity) noexcept
+bool AmdSmi::GetActivity(amdsmi_processor_handle handle, AmdSmiActivity& activity) noexcept
 {
-    if (activity == nullptr)
-    {
-        return false;
-    }
-
     amdsmi_engine_usage_t engine_usage = {};
     auto ret = amdsmi_get_gpu_activity(handle, &engine_usage);
     if (ret != AMDSMI_STATUS_SUCCESS)
@@ -147,18 +135,13 @@ bool AmdSmi::get_activity(amdsmi_processor_handle handle, AmdSmiActivity* activi
         return false;
     }
 
-    activity->gfx = engine_usage.gfx_activity;
-    activity->umc = engine_usage.umc_activity;
+    activity.gfx = engine_usage.gfx_activity;
+    activity.umc = engine_usage.umc_activity;
     return true;
 }
 
-bool AmdSmi::get_clocks(amdsmi_processor_handle handle, AmdSmiClocks* clocks) noexcept
+bool AmdSmi::GetClocks(amdsmi_processor_handle handle, AmdSmiClocks& clocks) noexcept
 {
-    if (clocks == nullptr)
-    {
-        return false;
-    }
-
     amdsmi_clk_info_t gfx_info = {};
     auto gfx_ret = amdsmi_get_clock_info(handle, AMDSMI_CLK_TYPE_GFX, &gfx_info);
 
@@ -170,42 +153,32 @@ bool AmdSmi::get_clocks(amdsmi_processor_handle handle, AmdSmiClocks* clocks) no
         return false;
     }
 
-    clocks->gfx_mhz = (gfx_ret == AMDSMI_STATUS_SUCCESS) ? gfx_info.clk : 0;
-    clocks->mem_mhz = (mem_ret == AMDSMI_STATUS_SUCCESS) ? mem_info.clk : 0;
+    clocks.gfx_mhz = (gfx_ret == AMDSMI_STATUS_SUCCESS) ? gfx_info.clk : 0;
+    clocks.mem_mhz = (mem_ret == AMDSMI_STATUS_SUCCESS) ? mem_info.clk : 0;
     return true;
 }
 
-bool AmdSmi::get_temperature(amdsmi_processor_handle handle, int64_t* temperature) noexcept
-{
-    if (temperature == nullptr)
-    {
-        return false;
-    }
-
+bool AmdSmi::GetTemperature(amdsmi_processor_handle handle, int64_t& temperature) noexcept
+{   
     int64_t value = 0;
-    auto ret = amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_EDGE, AMDSMI_TEMP_CURRENT,
-                                      &value);
-    if (ret != AMDSMI_STATUS_SUCCESS)
+    auto ret = amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_EDGE, AMDSMI_TEMP_CURRENT, &value);
+    if (ret == AMDSMI_STATUS_SUCCESS)
     {
-        ret = amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_HOTSPOT, AMDSMI_TEMP_CURRENT,
-                                     &value);
-        if (ret != AMDSMI_STATUS_SUCCESS)
-        {
-            return false;
-        }
+        temperature = value;
+        return true;
     }
 
-    *temperature = value;
-    return true;
+    ret = amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_HOTSPOT, AMDSMI_TEMP_CURRENT,&value);
+    if (ret == AMDSMI_STATUS_SUCCESS)
+    {
+        temperature = value;
+        return true;
+    }
+    return false;
 }
 
-bool AmdSmi::get_power(amdsmi_processor_handle handle, uint32_t* power_watts) noexcept
+bool AmdSmi::GetPower(amdsmi_processor_handle handle, uint64_t& power_watts) noexcept
 {
-    if (power_watts == nullptr)
-    {
-        return false;
-    }
-
     amdsmi_power_info_t info = {};
     auto ret = amdsmi_get_power_info(handle, &info);
     if (ret != AMDSMI_STATUS_SUCCESS)
@@ -213,28 +186,12 @@ bool AmdSmi::get_power(amdsmi_processor_handle handle, uint32_t* power_watts) no
         return false;
     }
 
-    if (info.current_socket_power != UINT32_MAX)
-    {
-        *power_watts = info.current_socket_power;
-    }
-    else if (info.average_socket_power != UINT32_MAX)
-    {
-        *power_watts = info.average_socket_power;
-    }
-    else
-    {
-        *power_watts = static_cast<uint32_t>(info.socket_power);
-    }
+    power_watts = info.socket_power;
     return true;
 }
 
-bool AmdSmi::get_pcie_throughput(amdsmi_processor_handle handle, AmdSmiThroughput* pcie) noexcept
+bool AmdSmi::GetPcieThroughput(amdsmi_processor_handle handle, AmdSmiThroughput& pcie) noexcept
 {
-    if (pcie == nullptr)
-    {
-        return false;
-    }
-
     uint64_t sent = 0;
     uint64_t received = 0;
     uint64_t max_pkt_sz = 0;
@@ -244,18 +201,13 @@ bool AmdSmi::get_pcie_throughput(amdsmi_processor_handle handle, AmdSmiThroughpu
         return false;
     }
 
-    pcie->out_bytes_per_sec = sent;
-    pcie->in_bytes_per_sec = received;
+    pcie.out_bytes_per_sec = sent;
+    pcie.in_bytes_per_sec = received;
     return true;
 }
 
-bool AmdSmi::get_xgmi_throughput(amdsmi_processor_handle handle, AmdSmiThroughput* xgmi) noexcept
+bool AmdSmi::GetXgmiThroughput(amdsmi_processor_handle handle, AmdSmiThroughput& xgmi) noexcept
 {
-    if (xgmi == nullptr)
-    {
-        return false;
-    }
-
     amdsmi_gpu_metrics_t metrics = {};
     auto ret = amdsmi_get_gpu_metrics_info(handle, &metrics);
     if (ret != AMDSMI_STATUS_SUCCESS)
@@ -276,8 +228,8 @@ bool AmdSmi::get_xgmi_throughput(amdsmi_processor_handle handle, AmdSmiThroughpu
     if (it == last_xgmi_.end())
     {
         last_xgmi_[handle] = {now, curr_read_kb, curr_write_kb};
-        xgmi->out_bytes_per_sec = 0;
-        xgmi->in_bytes_per_sec = 0;
+        xgmi.out_bytes_per_sec = 0;
+        xgmi.in_bytes_per_sec = 0;
         return true;
     }
 
@@ -294,8 +246,8 @@ bool AmdSmi::get_xgmi_throughput(amdsmi_processor_handle handle, AmdSmiThroughpu
                                   ? (curr_write_kb - it->second.write_kb_total)
                                   : 0;
 
-    xgmi->in_bytes_per_sec = static_cast<uint64_t>((static_cast<double>(read_delta_kb) * 1024.0) / dt);
-    xgmi->out_bytes_per_sec = static_cast<uint64_t>((static_cast<double>(write_delta_kb) * 1024.0) / dt);
+    xgmi.in_bytes_per_sec = static_cast<uint64_t>((static_cast<double>(read_delta_kb) * 1024.0) / dt);
+    xgmi.out_bytes_per_sec = static_cast<uint64_t>((static_cast<double>(write_delta_kb) * 1024.0) / dt);
 
     it->second = {now, curr_read_kb, curr_write_kb};
     return true;
