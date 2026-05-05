@@ -34,39 +34,51 @@ endif()
 
 add_subdirectory(thirdparty/spectator-cpp)
 
-# Build AMD SMI from vendored source (fetched by Conan source phase).
-# Disables parts we don't need to keep build time down and to avoid
-# touching system locations (e.g., ldconfig).
-#
-# Note: the function only scopes regular variables; the set(... CACHE FORCE)
-# calls below still write to the global cache. If AMD SMI's option names ever
-# collide with our own (e.g., BUILD_TESTS), or we add another vendored
-# subproject that shares names, switch this to ExternalProject_Add for a
-# fully isolated CMake invocation with its own cache.
-function(add_amdsmi_subdirectory)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(BUILD_CLI OFF CACHE BOOL "" FORCE)
-    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(BUILD_WRAPPER OFF CACHE BOOL "" FORCE)
-    set(BUILD_RUST_WRAPPER OFF CACHE BOOL "" FORCE)
-    set(ENABLE_LDCONFIG OFF CACHE BOOL "" FORCE)
-    set(ENABLE_ESMI_LIB OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_SOURCE_DIR}/thirdparty/rocm-systems/projects/amdsmi
-                     ${CMAKE_BINARY_DIR}/amdsmi-build)
+# Build AMD SMI as an ExternalProject — runs in its own isolated CMake
+# invocation with its own cache, its own compile flags, and no inheritance
+# of our parent project's -pedantic -Werror -Wall (which AMD SMI's code
+# does not survive).
+include(ExternalProject)
 
-    # Our parent project applies -pedantic -Werror -Wall to all targets
-    # (see add_compile_options at the top of this file). AMD SMI's code
-    # uses extensions (anonymous structs, flexible array members,
-    # out-of-range enums, sign mismatches) that don't survive that
-    # toolchain. Suppress warnings for AMD SMI's own targets only.
-    foreach(_target amd_smi amd_smi_static rocm_smi64 amdsminic go_amd_smi_)
-        if(TARGET ${_target})
-            target_compile_options(${_target} PRIVATE -w)
-        endif()
-    endforeach()
+function(add_amdsmi_external_project)
+    set(_source_dir  ${CMAKE_SOURCE_DIR}/thirdparty/rocm-systems/projects/amdsmi)
+    set(_install_dir ${CMAKE_BINARY_DIR}/amdsmi-install)
+    set(_library     ${_install_dir}/lib/libamd_smi.a)
+
+    ExternalProject_Add(amdsmi_external
+        SOURCE_DIR ${_source_dir}
+        PREFIX     ${CMAKE_BINARY_DIR}/amdsmi
+        INSTALL_DIR ${_install_dir}
+        CMAKE_ARGS
+            -DCMAKE_BUILD_TYPE=$<CONFIG>
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_INSTALL_LIBDIR=lib
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+            -DBUILD_SHARED_LIBS=OFF
+            -DBUILD_CLI=OFF
+            -DBUILD_TESTS=OFF
+            -DBUILD_EXAMPLES=OFF
+            -DBUILD_WRAPPER=OFF
+            -DBUILD_RUST_WRAPPER=OFF
+            -DENABLE_LDCONFIG=OFF
+            -DENABLE_ESMI_LIB=OFF
+        BUILD_BYPRODUCTS ${_library}
+    )
+
+    # Headers exist in source tree at configure time; they're also installed
+    # at build time, but pointing at source avoids waiting for the build.
+    file(MAKE_DIRECTORY ${_source_dir}/include)
+
+    # IMPORTED target so anything else in this build tree can link to AMD
+    # SMI the same way it would link to any normal CMake target.
+    add_library(amd_smi STATIC IMPORTED GLOBAL)
+    set_target_properties(amd_smi PROPERTIES
+        IMPORTED_LOCATION ${_library}
+        INTERFACE_INCLUDE_DIRECTORIES ${_source_dir}/include
+    )
+    add_dependencies(amd_smi amdsmi_external)
 endfunction()
-add_amdsmi_subdirectory()
+add_amdsmi_external_project()
 
 add_subdirectory(lib)
 add_subdirectory(AtlasAgent)
