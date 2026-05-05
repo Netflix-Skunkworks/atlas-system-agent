@@ -228,9 +228,7 @@ bool AmdSmi::GetXgmiThroughput(amdsmi_processor_handle handle, AmdSmiThroughput&
     if (it == last_xgmi_.end())
     {
         last_xgmi_[handle] = {now, curr_read_kb, curr_write_kb};
-        xgmi.out_bytes_per_sec = 0;
-        xgmi.in_bytes_per_sec = 0;
-        return true;
+        return false;
     }
 
     auto dt = std::chrono::duration<double>(now - it->second.timestamp).count();

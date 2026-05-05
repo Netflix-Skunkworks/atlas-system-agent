@@ -3,12 +3,23 @@
 namespace atlasagent
 {
 
+std::optional<GpuMetricsAMD> GpuMetricsAMD::Create(Registry* registry) noexcept
+{
+    auto smi = std::make_unique<AmdSmi>();
+    uint32_t count = 0;
+    if (!smi->GetCount(count) || count == 0)
+    {
+        return std::nullopt;
+    }
+    return GpuMetricsAMD(registry, std::move(smi));
+}
+
 GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi) noexcept
     : registry_{registry}, smi_{std::move(smi)}
 {
 }
 
-void GpuMetricsAMD::gpu_metrics() noexcept
+void GpuMetricsAMD::GPUMetrics() noexcept
 {
     static auto gpuCountGauge = registry_->CreateGauge("gpu.count");
 
