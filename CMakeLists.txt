@@ -33,5 +33,28 @@ else()
 endif()
 
 add_subdirectory(thirdparty/spectator-cpp)
+
+# Build AMD SMI from vendored source (fetched by Conan source phase).
+# Disables parts we don't need to keep build time down and to avoid
+# touching system locations (e.g., ldconfig).
+#
+# Note: the function only scopes regular variables; the set(... CACHE FORCE)
+# calls below still write to the global cache. If AMD SMI's option names ever
+# collide with our own (e.g., BUILD_TESTS), or we add another vendored
+# subproject that shares names, switch this to ExternalProject_Add for a
+# fully isolated CMake invocation with its own cache.
+function(add_amdsmi_subdirectory)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(BUILD_CLI OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(BUILD_WRAPPER OFF CACHE BOOL "" FORCE)
+    set(BUILD_RUST_WRAPPER OFF CACHE BOOL "" FORCE)
+    set(ENABLE_LDCONFIG OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/thirdparty/rocm-systems/projects/amdsmi
+                     ${CMAKE_BINARY_DIR}/amdsmi-build)
+endfunction()
+add_amdsmi_subdirectory()
+
 add_subdirectory(lib)
 add_subdirectory(AtlasAgent)
