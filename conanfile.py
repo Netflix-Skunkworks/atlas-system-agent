@@ -48,18 +48,36 @@ class AtlasSystemAgentConan(ConanFile):
         thirdparty_dir = "thirdparty"
         repo = "Netflix/spectator-cpp"
         commit = "1e69c442528a8450ab48948fef964fc79a73ac49"
-        
+
         zip_path = os.path.join(thirdparty_dir, f"spectator-cpp-{commit}.zip")
         dir_path = os.path.join(thirdparty_dir, "spectator-cpp")
-        
+
         os.makedirs(thirdparty_dir, exist_ok=True)
         self.maybe_remove_file(zip_path)
         self.maybe_remove_dir(dir_path)
-        
+
         download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_path)
         check_sha256(self, zip_path, "d39cbc2f101c5ae04324d2255ca8f208985f2879a2289ab74e0207fca79d76ce")
         unzip(self, zip_path, destination=dir_path, strip_root=True)
         self.maybe_remove_file(zip_path)
 
+    def get_rocm_systems(self):
+        thirdparty_dir = "thirdparty"
+        repo = "ROCm/rocm-systems"
+        tag = "rocm-7.2.3"
+
+        zip_path = os.path.join(thirdparty_dir, f"rocm-systems-{tag}.zip")
+        dir_path = os.path.join(thirdparty_dir, "rocm-systems")
+
+        os.makedirs(thirdparty_dir, exist_ok=True)
+        self.maybe_remove_file(zip_path)
+        self.maybe_remove_dir(dir_path)
+
+        download(self, f"https://github.com/{repo}/archive/refs/tags/{tag}.zip", zip_path)
+        check_sha256(self, zip_path, "8874d65b072e0f915b4f334bec7d61fd09ecb3cbd066b58a06afe15365e46338")
+        unzip(self, zip_path, destination=dir_path, strip_root=True)
+        self.maybe_remove_file(zip_path)
+
     def source(self):
         self.get_spectator_cpp()
+        self.get_rocm_systems()
