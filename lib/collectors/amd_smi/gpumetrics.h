@@ -6,6 +6,7 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -46,17 +47,21 @@ inline auto counter(Registry* registry, const char* name, unsigned int gpu,
 class GpuMetricsAMD
 {
    public:
-    GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi) noexcept;
     ~GpuMetricsAMD() = default;
 
     GpuMetricsAMD(const GpuMetricsAMD&) = delete;
     GpuMetricsAMD& operator=(const GpuMetricsAMD&) = delete;
-    GpuMetricsAMD(GpuMetricsAMD&&) = delete;
+    GpuMetricsAMD(GpuMetricsAMD&&) noexcept = default;
     GpuMetricsAMD& operator=(GpuMetricsAMD&&) = delete;
 
-    void gpu_metrics() noexcept;
+    // Returns std::nullopt if AMD SMI is unavailable or no AMD GPUs are present.
+    static std::optional<GpuMetricsAMD> Create(Registry* registry) noexcept;
+
+    void GPUMetrics() noexcept;
 
    private:
+    GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi) noexcept;
+
     void GetMemoryMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
     void GetActivityMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
     void GetClockMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
