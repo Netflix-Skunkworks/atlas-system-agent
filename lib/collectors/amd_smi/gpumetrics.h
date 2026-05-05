@@ -20,7 +20,10 @@ struct AmdSmiConstants
     static constexpr auto BytesConversion{60};
 };
 
-namespace detail
+// Nested under amd_smi_detail to avoid colliding with atlasagent::detail::gauge
+// defined in lib/collectors/nvml/src/gpumetrics.h, which atlas-agent.cpp also
+// includes. Same signature in the same namespace would be an ODR violation.
+namespace amd_smi_detail
 {
 inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
@@ -42,7 +45,7 @@ inline auto counter(Registry* registry, const char* name, unsigned int gpu,
     }
     return registry->CreateCounter(name, tags);
 }
-}  // namespace detail
+}  // namespace amd_smi_detail
 
 class GpuMetricsAMD
 {
