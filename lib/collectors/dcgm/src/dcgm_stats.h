@@ -34,7 +34,10 @@ namespace detail
 {
 inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
-    std::unordered_map<std::string, std::string> tagMap = {{"gpu", fmt::format("{}", gpu)}};
+    std::unordered_map<std::string, std::string> tagMap = {
+        {"gpu", fmt::format("{}", gpu)},
+        {"provider", "nvidia"},
+    };
     if (id != nullptr)
     {
         tagMap["id"] = id;
@@ -44,7 +47,10 @@ inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const 
 
 inline auto counter(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
-    std::unordered_map<std::string, std::string> tagMap = {{"gpu", fmt::format("{}", gpu)}};
+    std::unordered_map<std::string, std::string> tagMap = {
+        {"gpu", fmt::format("{}", gpu)},
+        {"provider", "nvidia"},
+    };
     if (id != nullptr)
     {
         tagMap["id"] = id;

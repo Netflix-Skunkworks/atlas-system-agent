@@ -11,24 +11,33 @@ std::optional<GpuMetricsAMD> GpuMetricsAMD::Create(Registry* registry) noexcept
     {
         return std::nullopt;
     }
-    return GpuMetricsAMD(registry, std::move(smi));
+    return GpuMetricsAMD(registry, std::move(smi), count);
 }
 
-GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi) noexcept
-    : registry_{registry}, smi_{std::move(smi)}
+GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi,
+                             uint32_t count) noexcept
+    : registry_{registry}
+    , smi_{std::move(smi)}
+    , gpuCount_{registry->CreateGauge(
+          "gpu.count", std::unordered_map<std::string, std::string>{{"provider", "amd"}})}
+    , temperature_{registry->CreateDistributionSummary(
+          "gpu.temperature", std::unordered_map<std::string, std::string>{{"provider", "amd"}})}
 {
+    meters_.reserve(count);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meters_.emplace_back(registry, i);
+    }
 }
 
 void GpuMetricsAMD::GPUMetrics() noexcept
 {
-    static auto gpuCountGauge = registry_->CreateGauge("gpu.count");
-
     uint32_t count = 0;
     if (!smi_->GetCount(count))
     {
         return;
     }
-    gpuCountGauge.Set(count);
+    gpuCount_.Set(count);
 
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -55,9 +64,9 @@ void GpuMetricsAMD::GetMemoryMetrics(unsigned int i, amdsmi_processor_handle han
     {
         return;
     }
-    amd_smi_detail::gauge(registry_, "gpu.usedMemory", i).Set(memory.used);
-    amd_smi_detail::gauge(registry_, "gpu.freeMemory", i).Set(memory.free);
-    amd_smi_detail::gauge(registry_, "gpu.totalMemory", i).Set(memory.total);
+    meters_[i].usedMemory.Set(memory.used);
+    meters_[i].freeMemory.Set(memory.free);
+    meters_[i].totalMemory.Set(memory.total);
 }
 
 void GpuMetricsAMD::GetActivityMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
@@ -67,8 +76,8 @@ void GpuMetricsAMD::GetActivityMetrics(unsigned int i, amdsmi_processor_handle h
     {
         return;
     }
-    amd_smi_detail::gauge(registry_, "gpu.utilization", i).Set(activity.gfx);
-    amd_smi_detail::gauge(registry_, "gpu.memoryActivity", i).Set(activity.umc);
+    meters_[i].utilization.Set(activity.gfx);
+    meters_[i].memoryActivity.Set(activity.umc);
 }
 
 void GpuMetricsAMD::GetClockMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
@@ -78,20 +87,18 @@ void GpuMetricsAMD::GetClockMetrics(unsigned int i, amdsmi_processor_handle hand
     {
         return;
     }
-    amd_smi_detail::gauge(registry_, "gpu.clockFrequency", i, "gpu").Set(clocks.gfx_mhz);
-    amd_smi_detail::gauge(registry_, "gpu.clockFrequency", i, "memory").Set(clocks.mem_mhz);
+    meters_[i].gfxClock.Set(clocks.gfx_mhz);
+    meters_[i].memoryClock.Set(clocks.mem_mhz);
 }
 
 void GpuMetricsAMD::GetTemperatureMetric(amdsmi_processor_handle handle) noexcept
 {
-    static auto gpuTemperature = registry_->CreateDistributionSummary("gpu.temperature");
-
     int64_t temperature = 0;
     if (!smi_->GetTemperature(handle, temperature))
     {
         return;
     }
-    gpuTemperature.Record(static_cast<double>(temperature));
+    temperature_.Record(static_cast<double>(temperature));
 }
 
 void GpuMetricsAMD::GetPowerMetric(unsigned int i, amdsmi_processor_handle handle) noexcept
@@ -101,7 +108,7 @@ void GpuMetricsAMD::GetPowerMetric(unsigned int i, amdsmi_processor_handle handl
     {
         return;
     }
-    amd_smi_detail::gauge(registry_, "gpu.power", i).Set(power);
+    meters_[i].power.Set(power);
 }
 
 void GpuMetricsAMD::GetPcieMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
@@ -111,10 +118,8 @@ void GpuMetricsAMD::GetPcieMetrics(unsigned int i, amdsmi_processor_handle handl
     {
         return;
     }
-    amd_smi_detail::counter(registry_, "gpu.amd.pcie.bytes", i, "out")
-        .Increment(pcie.out_bytes_per_sec * AmdSmiConstants::BytesConversion);
-    amd_smi_detail::counter(registry_, "gpu.amd.pcie.bytes", i, "in")
-        .Increment(pcie.in_bytes_per_sec * AmdSmiConstants::BytesConversion);
+    meters_[i].pcieOut.Increment(pcie.out_bytes_per_sec * AmdSmiConstants::BytesConversion);
+    meters_[i].pcieIn.Increment(pcie.in_bytes_per_sec * AmdSmiConstants::BytesConversion);
 }
 
 void GpuMetricsAMD::GetXgmiMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
@@ -124,10 +129,8 @@ void GpuMetricsAMD::GetXgmiMetrics(unsigned int i, amdsmi_processor_handle handl
     {
         return;
     }
-    amd_smi_detail::counter(registry_, "gpu.amd.xgmi.bytes", i, "out")
-        .Increment(xgmi.out_bytes_per_sec * AmdSmiConstants::BytesConversion);
-    amd_smi_detail::counter(registry_, "gpu.amd.xgmi.bytes", i, "in")
-        .Increment(xgmi.in_bytes_per_sec * AmdSmiConstants::BytesConversion);
+    meters_[i].xgmiOut.Increment(xgmi.out_bytes_per_sec * AmdSmiConstants::BytesConversion);
+    meters_[i].xgmiIn.Increment(xgmi.in_bytes_per_sec * AmdSmiConstants::BytesConversion);
 }
 
 }  // namespace atlasagent
