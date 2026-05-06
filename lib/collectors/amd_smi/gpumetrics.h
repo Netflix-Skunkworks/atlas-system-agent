@@ -68,10 +68,10 @@ struct PerGpuMeters
     Gauge gfxClock;
     Gauge memoryClock;
     Gauge power;
-    spectator::Counter pcieIn;
-    spectator::Counter pcieOut;
-    spectator::Counter xgmiIn;
-    spectator::Counter xgmiOut;
+    Counter pcieIn;
+    Counter pcieOut;
+    Counter xgmiIn;
+    Counter xgmiOut;
 
     PerGpuMeters(Registry* registry, unsigned int gpu)
         : usedMemory{amd_smi_detail::gauge(registry, "gpu.usedMemory", gpu)}
@@ -119,7 +119,7 @@ class GpuMetricsAMD
     Registry* registry_;
     std::unique_ptr<AmdSmi> smi_;
     Gauge gpuCount_;
-    spectator::DistributionSummary temperature_;
+    DistributionSummary temperature_;
     std::vector<PerGpuMeters> meters_;
 };
 
