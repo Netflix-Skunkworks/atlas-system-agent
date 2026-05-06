@@ -10,7 +10,10 @@ namespace detail
 {
 inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
-    std::unordered_map<std::string, std::string> tags = {{"gpu", fmt::format("{}", gpu)}};
+    std::unordered_map<std::string, std::string> tags = {
+        {"gpu", fmt::format("{}", gpu)},
+        {"provider", "nvidia"},
+    };
     if (id != nullptr)
     {
         tags["id"] = id;
@@ -28,8 +31,10 @@ class GpuMetrics
 
     void gpu_metrics() noexcept
     {
-        static auto gpuCountGauge = registry_->CreateGauge("gpu.count");
-        static auto gpuTemperature = registry_->CreateDistributionSummary("gpu.temperature");
+        static auto gpuCountGauge = registry_->CreateGauge(
+            "gpu.count", std::unordered_map<std::string, std::string>{{"provider", "nvidia"}});
+        static auto gpuTemperature = registry_->CreateDistributionSummary(
+            "gpu.temperature", std::unordered_map<std::string, std::string>{{"provider", "nvidia"}});
 
         unsigned count;
         if (!nvml_->get_count(&count))
