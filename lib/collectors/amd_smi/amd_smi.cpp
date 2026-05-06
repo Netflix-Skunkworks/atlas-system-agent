@@ -7,6 +7,7 @@ namespace atlasagent
 
 namespace
 {
+
 const char* status_string(amdsmi_status_t status) noexcept
 {
     const char* err = nullptr;
@@ -16,6 +17,7 @@ const char* status_string(amdsmi_status_t status) noexcept
     }
     return "unknown";
 }
+
 }  // namespace
 
 AmdSmi::AmdSmi()
@@ -88,28 +90,39 @@ bool AmdSmi::GetCount(uint32_t& count) noexcept
 {
     if (!initialized_)
     {
+        Logger()->error("AmdSmi::GetCount: not initialized");
         return false;
     }
     count = static_cast<uint32_t>(handles_.size());
     return true;
 }
 
-bool AmdSmi::GetHandle(uint32_t index, amdsmi_processor_handle& handle) noexcept
+bool AmdSmi::GetHandle(uint32_t gpu_id, amdsmi_processor_handle& handle) noexcept
 {
-    if (!initialized_ || index >= handles_.size())
+    if (!initialized_)
     {
+        Logger()->error("[gpu={}] AmdSmi::GetHandle: not initialized", gpu_id);
         return false;
     }
-    handle = handles_[index];
+    if (gpu_id >= handles_.size())
+    {
+        Logger()->error("[gpu={}] AmdSmi::GetHandle: index out of range (count={})", gpu_id,
+                        handles_.size());
+        return false;
+    }
+    handle = handles_[gpu_id];
     return true;
 }
 
-bool AmdSmi::GetMemory(amdsmi_processor_handle handle, AmdSmiMemory& memory) noexcept
+bool AmdSmi::GetMemory(uint32_t gpu_id, amdsmi_processor_handle handle,
+                      AmdSmiMemory& memory) noexcept
 {
     uint64_t total = 0;
     auto ret = amdsmi_get_gpu_memory_total(handle, AMDSMI_MEM_TYPE_VRAM, &total);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
+        Logger()->error("[gpu={}] amdsmi_get_gpu_memory_total failed: {}", gpu_id,
+                        status_string(ret));
         return false;
     }
 
@@ -117,6 +130,8 @@ bool AmdSmi::GetMemory(amdsmi_processor_handle handle, AmdSmiMemory& memory) noe
     ret = amdsmi_get_gpu_memory_usage(handle, AMDSMI_MEM_TYPE_VRAM, &used);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
+        Logger()->error("[gpu={}] amdsmi_get_gpu_memory_usage failed: {}", gpu_id,
+                        status_string(ret));
         return false;
     }
 
@@ -126,12 +141,14 @@ bool AmdSmi::GetMemory(amdsmi_processor_handle handle, AmdSmiMemory& memory) noe
     return true;
 }
 
-bool AmdSmi::GetActivity(amdsmi_processor_handle handle, AmdSmiActivity& activity) noexcept
+bool AmdSmi::GetActivity(uint32_t gpu_id, amdsmi_processor_handle handle,
+                        AmdSmiActivity& activity) noexcept
 {
     amdsmi_engine_usage_t engine_usage = {};
     auto ret = amdsmi_get_gpu_activity(handle, &engine_usage);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
+        Logger()->error("[gpu={}] amdsmi_get_gpu_activity failed: {}", gpu_id, status_string(ret));
         return false;
     }
 
@@ -140,7 +157,8 @@ bool AmdSmi::GetActivity(amdsmi_processor_handle handle, AmdSmiActivity& activit
     return true;
 }
 
-bool AmdSmi::GetClocks(amdsmi_processor_handle handle, AmdSmiClocks& clocks) noexcept
+bool AmdSmi::GetClocks(uint32_t gpu_id, amdsmi_processor_handle handle,
+                      AmdSmiClocks& clocks) noexcept
 {
     amdsmi_clk_info_t gfx_info = {};
     auto gfx_ret = amdsmi_get_clock_info(handle, AMDSMI_CLK_TYPE_GFX, &gfx_info);
@@ -150,6 +168,8 @@ bool AmdSmi::GetClocks(amdsmi_processor_handle handle, AmdSmiClocks& clocks) noe
 
     if (gfx_ret != AMDSMI_STATUS_SUCCESS && mem_ret != AMDSMI_STATUS_SUCCESS)
     {
+        Logger()->error("[gpu={}] amdsmi_get_clock_info failed: gfx={} mem={}", gpu_id,
+                        status_string(gfx_ret), status_string(mem_ret));
         return false;
     }
 
@@ -158,31 +178,39 @@ bool AmdSmi::GetClocks(amdsmi_processor_handle handle, AmdSmiClocks& clocks) noe
     return true;
 }
 
-bool AmdSmi::GetTemperature(amdsmi_processor_handle handle, int64_t& temperature) noexcept
-{   
+bool AmdSmi::GetTemperature(uint32_t gpu_id, amdsmi_processor_handle handle,
+                           int64_t& temperature) noexcept
+{
     int64_t value = 0;
-    auto ret = amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_EDGE, AMDSMI_TEMP_CURRENT, &value);
-    if (ret == AMDSMI_STATUS_SUCCESS)
+    auto edge_ret =
+        amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_EDGE, AMDSMI_TEMP_CURRENT, &value);
+    if (edge_ret == AMDSMI_STATUS_SUCCESS)
     {
         temperature = value;
         return true;
     }
 
-    ret = amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_HOTSPOT, AMDSMI_TEMP_CURRENT,&value);
-    if (ret == AMDSMI_STATUS_SUCCESS)
+    auto hotspot_ret = amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_HOTSPOT,
+                                              AMDSMI_TEMP_CURRENT, &value);
+    if (hotspot_ret == AMDSMI_STATUS_SUCCESS)
     {
         temperature = value;
         return true;
     }
+
+    Logger()->error("[gpu={}] amdsmi_get_temp_metric failed: edge={} hotspot={}", gpu_id,
+                    status_string(edge_ret), status_string(hotspot_ret));
     return false;
 }
 
-bool AmdSmi::GetPower(amdsmi_processor_handle handle, uint64_t& power_watts) noexcept
+bool AmdSmi::GetPower(uint32_t gpu_id, amdsmi_processor_handle handle,
+                    uint64_t& power_watts) noexcept
 {
     amdsmi_power_info_t info = {};
     auto ret = amdsmi_get_power_info(handle, &info);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
+        Logger()->error("[gpu={}] amdsmi_get_power_info failed: {}", gpu_id, status_string(ret));
         return false;
     }
 
@@ -190,7 +218,8 @@ bool AmdSmi::GetPower(amdsmi_processor_handle handle, uint64_t& power_watts) noe
     return true;
 }
 
-bool AmdSmi::GetPcieThroughput(amdsmi_processor_handle handle, AmdSmiThroughput& pcie) noexcept
+bool AmdSmi::GetPcieThroughput(uint32_t gpu_id, amdsmi_processor_handle handle,
+                              AmdSmiThroughput& pcie) noexcept
 {
     uint64_t sent = 0;
     uint64_t received = 0;
@@ -198,6 +227,8 @@ bool AmdSmi::GetPcieThroughput(amdsmi_processor_handle handle, AmdSmiThroughput&
     auto ret = amdsmi_get_gpu_pci_throughput(handle, &sent, &received, &max_pkt_sz);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
+        Logger()->error("[gpu={}] amdsmi_get_gpu_pci_throughput failed: {}", gpu_id,
+                        status_string(ret));
         return false;
     }
 
@@ -206,12 +237,15 @@ bool AmdSmi::GetPcieThroughput(amdsmi_processor_handle handle, AmdSmiThroughput&
     return true;
 }
 
-bool AmdSmi::GetXgmiThroughput(amdsmi_processor_handle handle, AmdSmiThroughput& xgmi) noexcept
+bool AmdSmi::GetXgmiThroughput(uint32_t gpu_id, amdsmi_processor_handle handle,
+                              AmdSmiThroughput& xgmi) noexcept
 {
     amdsmi_gpu_metrics_t metrics = {};
     auto ret = amdsmi_get_gpu_metrics_info(handle, &metrics);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
+        Logger()->error("[gpu={}] amdsmi_get_gpu_metrics_info failed: {}", gpu_id,
+                        status_string(ret));
         return false;
     }
 
@@ -227,13 +261,18 @@ bool AmdSmi::GetXgmiThroughput(amdsmi_processor_handle handle, AmdSmiThroughput&
     auto it = last_xgmi_.find(handle);
     if (it == last_xgmi_.end())
     {
+        // First call for this GPU: record the baseline and report a no-op
+        // rate (0). Real rates start flowing on the next tick.
         last_xgmi_[handle] = {now, curr_read_kb, curr_write_kb};
-        return false;
+        xgmi.in_bytes_per_sec = 0;
+        xgmi.out_bytes_per_sec = 0;
+        return true;
     }
 
     auto dt = std::chrono::duration<double>(now - it->second.timestamp).count();
     if (dt <= 0.0)
     {
+        Logger()->error("[gpu={}] AmdSmi::GetXgmiThroughput: non-positive dt={}", gpu_id, dt);
         return false;
     }
 

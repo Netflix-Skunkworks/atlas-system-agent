@@ -111,7 +111,7 @@ class GpuMetricsAMD
     void GetMemoryMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
     void GetActivityMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
     void GetClockMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
-    void GetTemperatureMetric(amdsmi_processor_handle handle) noexcept;
+    void GetTemperatureMetric(unsigned int i, amdsmi_processor_handle handle) noexcept;
     void GetPowerMetric(unsigned int i, amdsmi_processor_handle handle) noexcept;
     void GetPcieMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
     void GetXgmiMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;

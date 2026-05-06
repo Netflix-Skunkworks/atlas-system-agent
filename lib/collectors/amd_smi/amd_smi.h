@@ -43,15 +43,18 @@ class AmdSmi
     AmdSmi(const AmdSmi&) = delete;
     AmdSmi& operator=(const AmdSmi&) = delete;
 
+    // All Get* methods log failures internally (with gpu_id context where
+    // applicable) and return true on success, false on failure. Callers
+    // should just check the bool and continue/return; do not log again.
     bool GetCount(uint32_t& count) noexcept;
-    bool GetHandle(uint32_t index, amdsmi_processor_handle& handle) noexcept;
-    bool GetMemory(amdsmi_processor_handle handle, AmdSmiMemory& memory) noexcept;
-    bool GetActivity(amdsmi_processor_handle handle, AmdSmiActivity& activity) noexcept;
-    bool GetClocks(amdsmi_processor_handle handle, AmdSmiClocks& clocks) noexcept;
-    bool GetTemperature(amdsmi_processor_handle handle, int64_t& temperature) noexcept;
-    bool GetPower(amdsmi_processor_handle handle, uint64_t& power_watts) noexcept;
-    bool GetPcieThroughput(amdsmi_processor_handle handle, AmdSmiThroughput& pcie) noexcept;
-    bool GetXgmiThroughput(amdsmi_processor_handle handle, AmdSmiThroughput& xgmi) noexcept;
+    bool GetHandle(uint32_t gpu_id, amdsmi_processor_handle& handle) noexcept;
+    bool GetMemory(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiMemory& memory) noexcept;
+    bool GetActivity(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiActivity& activity) noexcept;
+    bool GetClocks(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiClocks& clocks) noexcept;
+    bool GetTemperature(uint32_t gpu_id, amdsmi_processor_handle handle, int64_t& temperature) noexcept;
+    bool GetPower(uint32_t gpu_id, amdsmi_processor_handle handle, uint64_t& power_watts) noexcept;
+    bool GetPcieThroughput(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiThroughput& pcie) noexcept;
+    bool GetXgmiThroughput(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiThroughput& xgmi) noexcept;
 
    private:
     struct XgmiSample
