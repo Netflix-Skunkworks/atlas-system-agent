@@ -16,13 +16,11 @@ std::optional<GpuMetricsAMD> GpuMetricsAMD::Create(Registry* registry) noexcept
     return GpuMetricsAMD(registry, std::move(smi), count);
 }
 
-GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi,
-                             uint32_t count) noexcept
-    : registry_{registry}
-    , smi_{std::move(smi)}
-    , gpuCount_{registry->CreateGauge(
-          "gpu.count", std::unordered_map<std::string, std::string>{{"provider", "amd"}})}
-    , temperature_{registry->CreateDistributionSummary(
+GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi, uint32_t count) noexcept
+    : registry_{registry},
+      smi_{std::move(smi)},
+      gpuCount_{registry->CreateGauge("gpu.count", std::unordered_map<std::string, std::string>{{"provider", "amd"}})},
+      temperature_{registry->CreateDistributionSummary(
           "gpu.temperature", std::unordered_map<std::string, std::string>{{"provider", "amd"}})}
 {
     meters_.reserve(count);
@@ -71,8 +69,7 @@ void GpuMetricsAMD::GetMemoryMetrics(unsigned int i, amdsmi_processor_handle han
     meters_[i].usedMemory.Set(memory.used);
     meters_[i].freeMemory.Set(memory.free);
     meters_[i].totalMemory.Set(memory.total);
-    Logger()->debug("[gpu={}] memory used={} free={} total={} bytes", i, memory.used, memory.free,
-                    memory.total);
+    Logger()->debug("[gpu={}] memory used={} free={} total={} bytes", i, memory.used, memory.free, memory.total);
 }
 
 void GpuMetricsAMD::GetActivityMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
@@ -130,8 +127,7 @@ void GpuMetricsAMD::GetPcieMetrics(unsigned int i, amdsmi_processor_handle handl
     }
     meters_[i].pcieOut.Increment(pcie.out_bytes_per_sec * AmdSmiConstants::BytesConversion);
     meters_[i].pcieIn.Increment(pcie.in_bytes_per_sec * AmdSmiConstants::BytesConversion);
-    Logger()->debug("[gpu={}] pcie out={} in={} bytes/sec", i, pcie.out_bytes_per_sec,
-                    pcie.in_bytes_per_sec);
+    Logger()->debug("[gpu={}] pcie out={} in={} bytes/sec", i, pcie.out_bytes_per_sec, pcie.in_bytes_per_sec);
 }
 
 void GpuMetricsAMD::GetXgmiMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
@@ -143,8 +139,7 @@ void GpuMetricsAMD::GetXgmiMetrics(unsigned int i, amdsmi_processor_handle handl
     }
     meters_[i].xgmiOut.Increment(xgmi.out_bytes_per_sec * AmdSmiConstants::BytesConversion);
     meters_[i].xgmiIn.Increment(xgmi.in_bytes_per_sec * AmdSmiConstants::BytesConversion);
-    Logger()->debug("[gpu={}] xgmi out={} in={} bytes/sec", i, xgmi.out_bytes_per_sec,
-                    xgmi.in_bytes_per_sec);
+    Logger()->debug("[gpu={}] xgmi out={} in={} bytes/sec", i, xgmi.out_bytes_per_sec, xgmi.in_bytes_per_sec);
 }
 
 }  // namespace atlasagent
