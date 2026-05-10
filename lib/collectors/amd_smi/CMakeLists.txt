@@ -11,7 +11,6 @@ target_include_directories(amd_smi_collector
         ${CMAKE_SOURCE_DIR}/thirdparty/rocm-systems/projects/amdsmi/include
 )
 
-# 'amd_smi' is the shared-library target produced by thirdparty/amdsmi.
 target_link_libraries(amd_smi_collector
     PUBLIC
         amd_smi

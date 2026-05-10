@@ -5,23 +5,48 @@
 namespace atlasagent
 {
 
+namespace
+{
+
+// AMD SMI exposes throughput as bytes-per-second; DCGM (Nvidia) exposes a
+// cumulative counter. Multiply by the gather interval (60s) before
+// Increment'ing so AMD and Nvidia counters are directly comparable.
+constexpr int kBytesConversion = 60;
+
+uint64_t SumXgmiKb(const uint64_t (&arr)[AMDSMI_MAX_NUM_XGMI_LINKS]) noexcept
+{
+    uint64_t total = 0;
+    for (size_t i = 0; i < AMDSMI_MAX_NUM_XGMI_LINKS; ++i)
+    {
+        if (arr[i] != UINT64_MAX)
+        {
+            total += arr[i];
+        }
+    }
+    return total;
+}
+
+}  // namespace
+
 std::optional<GpuMetricsAMD> GpuMetricsAMD::Create(Registry* registry) noexcept
 {
     auto smi = std::make_unique<AmdSmi>();
-    uint32_t count = 0;
-    if (!smi->GetCount(count) || count == 0)
+    auto count = smi->Count();
+    if (count == 0)
     {
         return std::nullopt;
     }
     return GpuMetricsAMD(registry, std::move(smi), count);
 }
 
-GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi, uint32_t count) noexcept
-    : registry_{registry},
-      smi_{std::move(smi)},
-      gpuCount_{registry->CreateGauge("gpu.count", std::unordered_map<std::string, std::string>{{"provider", "amd"}})},
+GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi,
+                             uint32_t count) noexcept
+    : smi_{std::move(smi)},
+      gpuCount_{registry->CreateGauge(
+          "gpu.count", std::unordered_map<std::string, std::string>{{"provider", "amd"}})},
       temperature_{registry->CreateDistributionSummary(
-          "gpu.temperature", std::unordered_map<std::string, std::string>{{"provider", "amd"}})}
+          "gpu.temperature", std::unordered_map<std::string, std::string>{{"provider", "amd"}})},
+      last_xgmi_(count)
 {
     meters_.reserve(count);
     for (uint32_t i = 0; i < count; ++i)
@@ -32,114 +57,138 @@ GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi, ui
 
 void GpuMetricsAMD::GPUMetrics() noexcept
 {
-    uint32_t count = 0;
-    if (!smi_->GetCount(count))
-    {
-        return;
-    }
+    auto count = smi_->Count();
     gpuCount_.Set(count);
-
     for (uint32_t i = 0; i < count; ++i)
     {
-        amdsmi_processor_handle handle;
-        if (!smi_->GetHandle(i, handle))
-        {
-            continue;
-        }
-
-        Logger()->debug("[gpu={}] --- begin iteration ---", i);
-        GetMemoryMetrics(i, handle);
-        GetActivityMetrics(i, handle);
-        GetClockMetrics(i, handle);
-        GetTemperatureMetric(i, handle);
-        GetPowerMetric(i, handle);
-        GetPcieMetrics(i, handle);
-        GetXgmiMetrics(i, handle);
-        Logger()->debug("[gpu={}] --- end iteration ---", i);
+        Collect(i);
     }
 }
 
-void GpuMetricsAMD::GetMemoryMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
+void GpuMetricsAMD::Collect(uint32_t gpu_id) noexcept
 {
+    Logger()->debug("[gpu={}] --- begin iteration ---", gpu_id);
+
     AmdSmiMemory memory;
-    if (!smi_->GetMemory(i, handle, memory))
+    if (smi_->ReadMemory(gpu_id, memory))
     {
-        return;
+        RecordMemory(gpu_id, memory);
     }
-    meters_[i].usedMemory.Set(memory.used);
-    meters_[i].freeMemory.Set(memory.free);
-    meters_[i].totalMemory.Set(memory.total);
-    Logger()->debug("[gpu={}] memory used={} free={} total={} bytes", i, memory.used, memory.free, memory.total);
-}
 
-void GpuMetricsAMD::GetActivityMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
-{
-    AmdSmiActivity activity;
-    if (!smi_->GetActivity(i, handle, activity))
-    {
-        return;
-    }
-    meters_[i].utilization.Set(activity.gfx);
-    meters_[i].memoryActivity.Set(activity.umc);
-    Logger()->debug("[gpu={}] activity gfx={}% umc={}%", i, activity.gfx, activity.umc);
-}
-
-void GpuMetricsAMD::GetClockMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
-{
-    AmdSmiClocks clocks;
-    if (!smi_->GetClocks(i, handle, clocks))
-    {
-        return;
-    }
-    meters_[i].gfxClock.Set(clocks.gfx_mhz);
-    meters_[i].memoryClock.Set(clocks.mem_mhz);
-    Logger()->debug("[gpu={}] clock gfx={}MHz mem={}MHz", i, clocks.gfx_mhz, clocks.mem_mhz);
-}
-
-void GpuMetricsAMD::GetTemperatureMetric(unsigned int i, amdsmi_processor_handle handle) noexcept
-{
-    int64_t temperature = 0;
-    if (!smi_->GetTemperature(i, handle, temperature))
-    {
-        return;
-    }
-    temperature_.Record(static_cast<double>(temperature));
-    Logger()->debug("[gpu={}] temperature={}C", i, temperature);
-}
-
-void GpuMetricsAMD::GetPowerMetric(unsigned int i, amdsmi_processor_handle handle) noexcept
-{
-    uint64_t power = 0;
-    if (!smi_->GetPower(i, handle, power))
-    {
-        return;
-    }
-    meters_[i].power.Set(power);
-    Logger()->debug("[gpu={}] power={}W", i, power);
-}
-
-void GpuMetricsAMD::GetPcieMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
-{
     AmdSmiThroughput pcie;
-    if (!smi_->GetPcieThroughput(i, handle, pcie))
+    if (smi_->ReadPcieThroughput(gpu_id, pcie))
     {
-        return;
+        RecordPCIEThroughput(gpu_id, pcie);
     }
-    meters_[i].pcieOut.Increment(pcie.out_bytes_per_sec * AmdSmiConstants::BytesConversion);
-    meters_[i].pcieIn.Increment(pcie.in_bytes_per_sec * AmdSmiConstants::BytesConversion);
-    Logger()->debug("[gpu={}] pcie out={} in={} bytes/sec", i, pcie.out_bytes_per_sec, pcie.in_bytes_per_sec);
+
+    amdsmi_gpu_metrics_t metrics;
+    if (smi_->ReadMetrics(gpu_id, metrics))
+    {
+        RecordTemperature(gpu_id, metrics);
+        RecordActivity(gpu_id, metrics);
+        RecordClocks(gpu_id, metrics);
+        RecordPower(gpu_id, metrics);
+        RecordXgmi(gpu_id, metrics);
+    }
+
+    Logger()->debug("[gpu={}] --- end iteration ---", gpu_id);
 }
 
-void GpuMetricsAMD::GetXgmiMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept
+void GpuMetricsAMD::RecordMemory(uint32_t gpu_id, const AmdSmiMemory& memory) noexcept
 {
-    AmdSmiThroughput xgmi;
-    if (!smi_->GetXgmiThroughput(i, handle, xgmi))
+    meters_[gpu_id].usedMemory.Set(memory.used);
+    meters_[gpu_id].freeMemory.Set(memory.free);
+    meters_[gpu_id].totalMemory.Set(memory.total);
+    Logger()->debug("[gpu={}] memory used={} free={} total={} bytes", gpu_id, memory.used,
+                    memory.free, memory.total);
+}
+
+void GpuMetricsAMD::RecordPCIEThroughput(uint32_t gpu_id, const AmdSmiThroughput& pcie) noexcept
+{
+    meters_[gpu_id].pcieOut.Increment(pcie.out_bytes_per_sec * kBytesConversion);
+    meters_[gpu_id].pcieIn.Increment(pcie.in_bytes_per_sec * kBytesConversion);
+    Logger()->debug("[gpu={}] pcie out={} in={} bytes/sec", gpu_id, pcie.out_bytes_per_sec,
+                    pcie.in_bytes_per_sec);
+}
+
+void GpuMetricsAMD::RecordTemperature(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
+{
+    if (m.temperature_edge == UINT16_MAX)
     {
         return;
     }
-    meters_[i].xgmiOut.Increment(xgmi.out_bytes_per_sec * AmdSmiConstants::BytesConversion);
-    meters_[i].xgmiIn.Increment(xgmi.in_bytes_per_sec * AmdSmiConstants::BytesConversion);
-    Logger()->debug("[gpu={}] xgmi out={} in={} bytes/sec", i, xgmi.out_bytes_per_sec, xgmi.in_bytes_per_sec);
+    temperature_.Record(m.temperature_edge);
+    Logger()->debug("[gpu={}] temperature={}C", gpu_id, m.temperature_edge);
+}
+
+void GpuMetricsAMD::RecordActivity(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
+{
+    if (m.average_gfx_activity != UINT16_MAX)
+    {
+        meters_[gpu_id].utilization.Set(m.average_gfx_activity);
+    }
+    if (m.average_umc_activity != UINT16_MAX)
+    {
+        meters_[gpu_id].memoryActivity.Set(m.average_umc_activity);
+    }
+    Logger()->debug("[gpu={}] activity gfx={}% umc={}%", gpu_id, m.average_gfx_activity,
+                    m.average_umc_activity);
+}
+
+void GpuMetricsAMD::RecordClocks(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
+{
+    if (m.current_gfxclk != UINT16_MAX)
+    {
+        meters_[gpu_id].gfxClock.Set(m.current_gfxclk);
+    }
+    if (m.current_uclk != UINT16_MAX)
+    {
+        meters_[gpu_id].memoryClock.Set(m.current_uclk);
+    }
+    Logger()->debug("[gpu={}] clock gfx={}MHz mem={}MHz", gpu_id, m.current_gfxclk,
+                    m.current_uclk);
+}
+
+void GpuMetricsAMD::RecordPower(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
+{
+    if (m.current_socket_power == UINT16_MAX)
+    {
+        return;
+    }
+    meters_[gpu_id].power.Set(m.current_socket_power);
+    Logger()->debug("[gpu={}] power={}W", gpu_id, m.current_socket_power);
+}
+
+void GpuMetricsAMD::RecordXgmi(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
+{
+    auto curr_read = SumXgmiKb(m.xgmi_read_data_acc);
+    auto curr_write = SumXgmiKb(m.xgmi_write_data_acc);
+    auto now = std::chrono::steady_clock::now();
+
+    auto& slot = last_xgmi_[gpu_id];
+    if (!slot.has_value())
+    {
+        // First call for this GPU: record baseline, no rate yet.
+        slot = XgmiSample{now, curr_read, curr_write};
+        return;
+    }
+
+    auto dt = std::chrono::duration<double>(now - slot->timestamp).count();
+    if (dt <= 0.0)
+    {
+        return;
+    }
+
+    auto read_delta = (curr_read >= slot->read_kb) ? (curr_read - slot->read_kb) : 0;
+    auto write_delta = (curr_write >= slot->write_kb) ? (curr_write - slot->write_kb) : 0;
+    auto in_bps = static_cast<uint64_t>((static_cast<double>(read_delta) * 1024.0) / dt);
+    auto out_bps = static_cast<uint64_t>((static_cast<double>(write_delta) * 1024.0) / dt);
+
+    meters_[gpu_id].xgmiIn.Increment(in_bps * kBytesConversion);
+    meters_[gpu_id].xgmiOut.Increment(out_bps * kBytesConversion);
+    Logger()->debug("[gpu={}] xgmi in={} out={} bytes/sec", gpu_id, in_bps, out_bps);
+
+    *slot = XgmiSample{now, curr_read, curr_write};
 }
 
 }  // namespace atlasagent

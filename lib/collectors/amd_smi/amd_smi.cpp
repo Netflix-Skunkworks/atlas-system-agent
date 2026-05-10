@@ -8,7 +8,7 @@ namespace atlasagent
 namespace
 {
 
-const char* status_string(amdsmi_status_t status) noexcept
+const char* StatusString(amdsmi_status_t status) noexcept
 {
     const char* err = nullptr;
     if (amdsmi_status_code_to_string(status, &err) == AMDSMI_STATUS_SUCCESS && err != nullptr)
@@ -25,44 +25,36 @@ AmdSmi::AmdSmi()
     auto ret = amdsmi_init(AMDSMI_INIT_AMD_GPUS);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
-        Logger()->error("amdsmi_init failed: {}", status_string(ret));
+        Logger()->error("amdsmi_init failed: {}", StatusString(ret));
         return;
     }
     initialized_ = true;
 
     uint32_t socket_count = 0;
-    ret = amdsmi_get_socket_handles(&socket_count, nullptr);
-    if (ret != AMDSMI_STATUS_SUCCESS)
+    if (amdsmi_get_socket_handles(&socket_count, nullptr) != AMDSMI_STATUS_SUCCESS)
     {
-        Logger()->error("amdsmi_get_socket_handles failed: {}", status_string(ret));
         return;
     }
 
     std::vector<amdsmi_socket_handle> sockets(socket_count);
-    ret = amdsmi_get_socket_handles(&socket_count, sockets.data());
-    if (ret != AMDSMI_STATUS_SUCCESS)
+    if (amdsmi_get_socket_handles(&socket_count, sockets.data()) != AMDSMI_STATUS_SUCCESS)
     {
-        Logger()->error("amdsmi_get_socket_handles failed: {}", status_string(ret));
         return;
     }
 
     for (uint32_t i = 0; i < socket_count; ++i)
     {
         uint32_t device_count = 0;
-        ret = amdsmi_get_processor_handles(sockets[i], &device_count, nullptr);
-        if (ret != AMDSMI_STATUS_SUCCESS)
+        if (amdsmi_get_processor_handles(sockets[i], &device_count, nullptr) !=
+            AMDSMI_STATUS_SUCCESS)
         {
-            Logger()->warn("amdsmi_get_processor_handles failed for socket {}: {}", i,
-                           status_string(ret));
             continue;
         }
 
         std::vector<amdsmi_processor_handle> dev_handles(device_count);
-        ret = amdsmi_get_processor_handles(sockets[i], &device_count, dev_handles.data());
-        if (ret != AMDSMI_STATUS_SUCCESS)
+        if (amdsmi_get_processor_handles(sockets[i], &device_count, dev_handles.data()) !=
+            AMDSMI_STATUS_SUCCESS)
         {
-            Logger()->warn("amdsmi_get_processor_handles failed for socket {}: {}", i,
-                           status_string(ret));
             continue;
         }
 
@@ -86,43 +78,20 @@ AmdSmi::~AmdSmi() noexcept
     }
 }
 
-bool AmdSmi::GetCount(uint32_t& count) noexcept
+bool AmdSmi::ReadMemory(uint32_t gpu_id, AmdSmiMemory& out) noexcept
 {
-    if (!initialized_)
-    {
-        Logger()->error("AmdSmi::GetCount: not initialized");
-        return false;
-    }
-    count = static_cast<uint32_t>(handles_.size());
-    return true;
-}
-
-bool AmdSmi::GetHandle(uint32_t gpu_id, amdsmi_processor_handle& handle) noexcept
-{
-    if (!initialized_)
-    {
-        Logger()->error("[gpu={}] AmdSmi::GetHandle: not initialized", gpu_id);
-        return false;
-    }
     if (gpu_id >= handles_.size())
     {
-        Logger()->error("[gpu={}] AmdSmi::GetHandle: index out of range (count={})", gpu_id,
-                        handles_.size());
         return false;
     }
-    handle = handles_[gpu_id];
-    return true;
-}
+    auto handle = handles_[gpu_id];
 
-bool AmdSmi::GetMemory(uint32_t gpu_id, amdsmi_processor_handle handle,
-                      AmdSmiMemory& memory) noexcept
-{
     uint64_t total = 0;
     auto ret = amdsmi_get_gpu_memory_total(handle, AMDSMI_MEM_TYPE_VRAM, &total);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
         Logger()->error("[gpu={}] amdsmi_get_gpu_memory_total failed: {}", gpu_id,
-                        status_string(ret));
+                        StatusString(ret));
         return false;
     }
 
@@ -131,162 +100,51 @@ bool AmdSmi::GetMemory(uint32_t gpu_id, amdsmi_processor_handle handle,
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
         Logger()->error("[gpu={}] amdsmi_get_gpu_memory_usage failed: {}", gpu_id,
-                        status_string(ret));
+                        StatusString(ret));
         return false;
     }
 
-    memory.total = total;
-    memory.used = used;
-    memory.free = (total > used) ? (total - used) : 0;
+    out.total = total;
+    out.used = used;
+    out.free = (total > used) ? (total - used) : 0;
     return true;
 }
 
-bool AmdSmi::GetActivity(uint32_t gpu_id, amdsmi_processor_handle handle,
-                        AmdSmiActivity& activity) noexcept
+bool AmdSmi::ReadPcieThroughput(uint32_t gpu_id, AmdSmiThroughput& out) noexcept
 {
-    amdsmi_engine_usage_t engine_usage = {};
-    auto ret = amdsmi_get_gpu_activity(handle, &engine_usage);
-    if (ret != AMDSMI_STATUS_SUCCESS)
+    if (gpu_id >= handles_.size())
     {
-        Logger()->error("[gpu={}] amdsmi_get_gpu_activity failed: {}", gpu_id, status_string(ret));
         return false;
     }
-
-    activity.gfx = engine_usage.gfx_activity;
-    activity.umc = engine_usage.umc_activity;
-    return true;
-}
-
-bool AmdSmi::GetClocks(uint32_t gpu_id, amdsmi_processor_handle handle,
-                      AmdSmiClocks& clocks) noexcept
-{
-    amdsmi_clk_info_t gfx_info = {};
-    auto gfx_ret = amdsmi_get_clock_info(handle, AMDSMI_CLK_TYPE_GFX, &gfx_info);
-
-    amdsmi_clk_info_t mem_info = {};
-    auto mem_ret = amdsmi_get_clock_info(handle, AMDSMI_CLK_TYPE_MEM, &mem_info);
-
-    if (gfx_ret != AMDSMI_STATUS_SUCCESS && mem_ret != AMDSMI_STATUS_SUCCESS)
-    {
-        Logger()->error("[gpu={}] amdsmi_get_clock_info failed: gfx={} mem={}", gpu_id,
-                        status_string(gfx_ret), status_string(mem_ret));
-        return false;
-    }
-
-    clocks.gfx_mhz = (gfx_ret == AMDSMI_STATUS_SUCCESS) ? gfx_info.clk : 0;
-    clocks.mem_mhz = (mem_ret == AMDSMI_STATUS_SUCCESS) ? mem_info.clk : 0;
-    return true;
-}
-
-bool AmdSmi::GetTemperature(uint32_t gpu_id, amdsmi_processor_handle handle,
-                           int64_t& temperature) noexcept
-{
-    int64_t value = 0;
-    auto edge_ret =
-        amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_EDGE, AMDSMI_TEMP_CURRENT, &value);
-    if (edge_ret == AMDSMI_STATUS_SUCCESS)
-    {
-        temperature = value;
-        return true;
-    }
-
-    auto hotspot_ret = amdsmi_get_temp_metric(handle, AMDSMI_TEMPERATURE_TYPE_HOTSPOT,
-                                              AMDSMI_TEMP_CURRENT, &value);
-    if (hotspot_ret == AMDSMI_STATUS_SUCCESS)
-    {
-        temperature = value;
-        return true;
-    }
-
-    Logger()->error("[gpu={}] amdsmi_get_temp_metric failed: edge={} hotspot={}", gpu_id,
-                    status_string(edge_ret), status_string(hotspot_ret));
-    return false;
-}
-
-bool AmdSmi::GetPower(uint32_t gpu_id, amdsmi_processor_handle handle,
-                    uint64_t& power_watts) noexcept
-{
-    amdsmi_power_info_t info = {};
-    auto ret = amdsmi_get_power_info(handle, &info);
-    if (ret != AMDSMI_STATUS_SUCCESS)
-    {
-        Logger()->error("[gpu={}] amdsmi_get_power_info failed: {}", gpu_id, status_string(ret));
-        return false;
-    }
-
-    power_watts = info.socket_power;
-    return true;
-}
-
-bool AmdSmi::GetPcieThroughput(uint32_t gpu_id, amdsmi_processor_handle handle,
-                              AmdSmiThroughput& pcie) noexcept
-{
     uint64_t sent = 0;
     uint64_t received = 0;
     uint64_t max_pkt_sz = 0;
-    auto ret = amdsmi_get_gpu_pci_throughput(handle, &sent, &received, &max_pkt_sz);
+    auto ret = amdsmi_get_gpu_pci_throughput(handles_[gpu_id], &sent, &received, &max_pkt_sz);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
         Logger()->error("[gpu={}] amdsmi_get_gpu_pci_throughput failed: {}", gpu_id,
-                        status_string(ret));
+                        StatusString(ret));
         return false;
     }
-
-    pcie.out_bytes_per_sec = sent;
-    pcie.in_bytes_per_sec = received;
+    out.out_bytes_per_sec = sent;
+    out.in_bytes_per_sec = received;
     return true;
 }
 
-bool AmdSmi::GetXgmiThroughput(uint32_t gpu_id, amdsmi_processor_handle handle,
-                              AmdSmiThroughput& xgmi) noexcept
+bool AmdSmi::ReadMetrics(uint32_t gpu_id, amdsmi_gpu_metrics_t& out) noexcept
 {
-    amdsmi_gpu_metrics_t metrics = {};
-    auto ret = amdsmi_get_gpu_metrics_info(handle, &metrics);
+    if (gpu_id >= handles_.size())
+    {
+        return false;
+    }
+    out = {};
+    auto ret = amdsmi_get_gpu_metrics_info(handles_[gpu_id], &out);
     if (ret != AMDSMI_STATUS_SUCCESS)
     {
         Logger()->error("[gpu={}] amdsmi_get_gpu_metrics_info failed: {}", gpu_id,
-                        status_string(ret));
+                        StatusString(ret));
         return false;
     }
-
-    uint64_t curr_read_kb = 0;
-    uint64_t curr_write_kb = 0;
-    for (size_t i = 0; i < AMDSMI_MAX_NUM_XGMI_LINKS; ++i)
-    {
-        curr_read_kb += metrics.xgmi_read_data_acc[i];
-        curr_write_kb += metrics.xgmi_write_data_acc[i];
-    }
-
-    auto now = std::chrono::steady_clock::now();
-    auto it = last_xgmi_.find(handle);
-    if (it == last_xgmi_.end())
-    {
-        // First call for this GPU: record the baseline and report a no-op
-        // rate (0). Real rates start flowing on the next tick.
-        last_xgmi_[handle] = {now, curr_read_kb, curr_write_kb};
-        xgmi.in_bytes_per_sec = 0;
-        xgmi.out_bytes_per_sec = 0;
-        return true;
-    }
-
-    auto dt = std::chrono::duration<double>(now - it->second.timestamp).count();
-    if (dt <= 0.0)
-    {
-        Logger()->error("[gpu={}] AmdSmi::GetXgmiThroughput: non-positive dt={}", gpu_id, dt);
-        return false;
-    }
-
-    uint64_t read_delta_kb = (curr_read_kb >= it->second.read_kb_total)
-                                 ? (curr_read_kb - it->second.read_kb_total)
-                                 : 0;
-    uint64_t write_delta_kb = (curr_write_kb >= it->second.write_kb_total)
-                                  ? (curr_write_kb - it->second.write_kb_total)
-                                  : 0;
-
-    xgmi.in_bytes_per_sec = static_cast<uint64_t>((static_cast<double>(read_delta_kb) * 1024.0) / dt);
-    xgmi.out_bytes_per_sec = static_cast<uint64_t>((static_cast<double>(write_delta_kb) * 1024.0) / dt);
-
-    it->second = {now, curr_read_kb, curr_write_kb};
     return true;
 }
 

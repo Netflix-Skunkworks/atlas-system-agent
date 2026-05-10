@@ -5,6 +5,7 @@
 #include <fmt/format.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
@@ -14,19 +15,13 @@
 namespace atlasagent
 {
 
-struct AmdSmiConstants
-{
-    /* AMD SMI reports bytes as bytes per second; multiply by this constant
-       (the gather interval in seconds) to keep counters consistent with DCGM. */
-    static constexpr auto BytesConversion{60};
-};
-
 // Nested under amd_smi_detail to avoid colliding with atlasagent::detail::gauge
 // defined in lib/collectors/nvml/src/gpumetrics.h, which atlas-agent.cpp also
-// includes. Used only at GpuMetricsAMD construction time to build the cached
-// per-GPU meter handles below.
+// includes. Used only at construction time to build the cached per-GPU meter
+// handles below.
 namespace amd_smi_detail
 {
+
 inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
     std::unordered_map<std::string, std::string> tags = {
@@ -53,6 +48,7 @@ inline auto counter(Registry* registry, const char* name, unsigned int gpu,
     }
     return registry->CreateCounter(name, tags);
 }
+
 }  // namespace amd_smi_detail
 
 // Cached meter handles for a single GPU. Built once at construction; each
@@ -106,21 +102,32 @@ class GpuMetricsAMD
     void GPUMetrics() noexcept;
 
    private:
+    // Atlas-side state for converting xGMI accumulated counters into rates.
+    // Lives here (the consumer) rather than in AmdSmi because the cadence
+    // and bookkeeping are collector concerns, not SMI ones.
+    struct XgmiSample
+    {
+        std::chrono::steady_clock::time_point timestamp;
+        uint64_t read_kb;
+        uint64_t write_kb;
+    };
+
     GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi, uint32_t count) noexcept;
 
-    void GetMemoryMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
-    void GetActivityMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
-    void GetClockMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
-    void GetTemperatureMetric(unsigned int i, amdsmi_processor_handle handle) noexcept;
-    void GetPowerMetric(unsigned int i, amdsmi_processor_handle handle) noexcept;
-    void GetPcieMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
-    void GetXgmiMetrics(unsigned int i, amdsmi_processor_handle handle) noexcept;
+    void Collect(uint32_t gpu_id) noexcept;
+    void RecordMemory(uint32_t gpu_id, const AmdSmiMemory& memory) noexcept;
+    void RecordPCIEThroughput(uint32_t gpu_id, const AmdSmiThroughput& pcie) noexcept;
+    void RecordTemperature(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept;
+    void RecordActivity(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept;
+    void RecordClocks(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept;
+    void RecordPower(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept;
+    void RecordXgmi(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept;
 
-    Registry* registry_;
     std::unique_ptr<AmdSmi> smi_;
     Gauge gpuCount_;
     DistributionSummary temperature_;
     std::vector<PerGpuMeters> meters_;
+    std::vector<std::optional<XgmiSample>> last_xgmi_;
 };
 
 }  // namespace atlasagent
