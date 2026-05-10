@@ -2,9 +2,7 @@
 
 #include <amd_smi/amdsmi.h>
 
-#include <chrono>
 #include <cstdint>
-#include <unordered_map>
 #include <vector>
 
 namespace atlasagent
@@ -17,24 +15,15 @@ struct AmdSmiMemory
     uint64_t free;
 };
 
-struct AmdSmiActivity
-{
-    uint32_t gfx;
-    uint32_t umc;
-};
-
-struct AmdSmiClocks
-{
-    uint32_t gfx_mhz;
-    uint32_t mem_mhz;
-};
-
 struct AmdSmiThroughput
 {
     uint64_t out_bytes_per_sec;
     uint64_t in_bytes_per_sec;
 };
 
+// Thin wrapper over AMD SMI: initializes the library, discovers GPU handles,
+// and offers two read methods. All sentinel checks, unit conversions, and
+// delta-over-time bookkeeping live in the collector (gpumetrics.cpp), not here.
 class AmdSmi
 {
    public:
@@ -43,30 +32,30 @@ class AmdSmi
     AmdSmi(const AmdSmi&) = delete;
     AmdSmi& operator=(const AmdSmi&) = delete;
 
-    // All Get* methods log failures internally (with gpu_id context where
-    // applicable) and return true on success, false on failure. Callers
-    // should just check the bool and continue/return; do not log again.
-    bool GetCount(uint32_t& count) noexcept;
-    bool GetHandle(uint32_t gpu_id, amdsmi_processor_handle& handle) noexcept;
-    bool GetMemory(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiMemory& memory) noexcept;
-    bool GetActivity(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiActivity& activity) noexcept;
-    bool GetClocks(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiClocks& clocks) noexcept;
-    bool GetTemperature(uint32_t gpu_id, amdsmi_processor_handle handle, int64_t& temperature) noexcept;
-    bool GetPower(uint32_t gpu_id, amdsmi_processor_handle handle, uint64_t& power_watts) noexcept;
-    bool GetPcieThroughput(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiThroughput& pcie) noexcept;
-    bool GetXgmiThroughput(uint32_t gpu_id, amdsmi_processor_handle handle, AmdSmiThroughput& xgmi) noexcept;
+    // Number of AMD GPUs discovered. Zero if SMI failed to initialize, no
+    // GPUs are present, or the user lacks permission.
+    uint32_t Count() const noexcept { return static_cast<uint32_t>(handles_.size()); }
+
+    // VRAM totals/usage. Two SMI calls under the hood since AMD splits these
+    // across two functions and they're not in the firmware metrics struct.
+    bool ReadMemory(uint32_t gpu_id, AmdSmiMemory& out) noexcept;
+
+    // PCIe traffic over a 1-second active measurement performed by the
+    // amdgpu kernel driver. Returns NOT_SUPPORTED on ASICs whose driver
+    // doesn't implement the get_pcie_usage callback (notably Navi 12 / V520
+    // on AWS g4ad) and on virtualized hosts where the sysfs node isn't
+    // exposed.
+    bool ReadPcieThroughput(uint32_t gpu_id, AmdSmiThroughput& out) noexcept;
+
+    // Snapshot of the firmware metrics table: temperature, activity, clocks,
+    // power, xGMI accumulators, PCIe link state, etc. Caller must check
+    // sentinel values (UINT_MAX) before using individual fields - the firmware
+    // uses UINT_MAX to mean "not populated."
+    bool ReadMetrics(uint32_t gpu_id, amdsmi_gpu_metrics_t& out) noexcept;
 
    private:
-    struct XgmiSample
-    {
-        std::chrono::steady_clock::time_point timestamp;
-        uint64_t read_kb_total;
-        uint64_t write_kb_total;
-    };
-
     bool initialized_{false};
     std::vector<amdsmi_processor_handle> handles_;
-    std::unordered_map<amdsmi_processor_handle, XgmiSample> last_xgmi_;
 };
 
 }  // namespace atlasagent
