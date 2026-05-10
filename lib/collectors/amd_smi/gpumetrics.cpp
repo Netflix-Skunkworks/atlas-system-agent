@@ -115,6 +115,7 @@ void GpuMetricsAMD::RecordTemperature(uint32_t gpu_id, const amdsmi_gpu_metrics_
 {
     if (m.temperature_edge == UINT16_MAX)
     {
+        Logger()->error("[gpu={}] temperature_edge unpopulated by firmware", gpu_id);
         return;
     }
     temperature_.Record(m.temperature_edge);
@@ -123,25 +124,41 @@ void GpuMetricsAMD::RecordTemperature(uint32_t gpu_id, const amdsmi_gpu_metrics_
 
 void GpuMetricsAMD::RecordActivity(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
 {
-    if (m.average_gfx_activity != UINT16_MAX)
+    if (m.gfx_activity_acc == UINT32_MAX)
     {
-        meters_[gpu_id].utilization.Set(m.average_gfx_activity);
+        Logger()->error("[gpu={}] gfx_activity_acc unpopulated by firmware", gpu_id);
     }
-    if (m.average_umc_activity != UINT16_MAX)
+    else
     {
-        meters_[gpu_id].memoryActivity.Set(m.average_umc_activity);
+        meters_[gpu_id].utilization.Set(m.gfx_activity_acc);
     }
-    Logger()->debug("[gpu={}] activity gfx={}% umc={}%", gpu_id, m.average_gfx_activity,
-                    m.average_umc_activity);
+    if (m.mem_activity_acc == UINT32_MAX)
+    {
+        Logger()->error("[gpu={}] mem_activity_acc unpopulated by firmware", gpu_id);
+    }
+    else
+    {
+        meters_[gpu_id].memoryActivity.Set(m.mem_activity_acc);
+    }
+    Logger()->debug("[gpu={}] activity gfx={}% mem={}%", gpu_id, m.gfx_activity_acc,
+                    m.mem_activity_acc);
 }
 
 void GpuMetricsAMD::RecordClocks(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
 {
-    if (m.current_gfxclk != UINT16_MAX)
+    if (m.current_gfxclk == UINT16_MAX)
+    {
+        Logger()->error("[gpu={}] current_gfxclk unpopulated by firmware", gpu_id);
+    }
+    else
     {
         meters_[gpu_id].gfxClock.Set(m.current_gfxclk);
     }
-    if (m.current_uclk != UINT16_MAX)
+    if (m.current_uclk == UINT16_MAX)
+    {
+        Logger()->error("[gpu={}] current_uclk unpopulated by firmware", gpu_id);
+    }
+    else
     {
         meters_[gpu_id].memoryClock.Set(m.current_uclk);
     }
@@ -153,6 +170,7 @@ void GpuMetricsAMD::RecordPower(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) 
 {
     if (m.current_socket_power == UINT16_MAX)
     {
+        Logger()->error("[gpu={}] current_socket_power unpopulated by firmware", gpu_id);
         return;
     }
     meters_[gpu_id].power.Set(m.current_socket_power);
