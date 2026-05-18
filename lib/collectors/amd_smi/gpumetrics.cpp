@@ -13,15 +13,19 @@ namespace
 // Increment'ing so AMD and Nvidia counters are directly comparable.
 constexpr int kBytesConversion = 60;
 
-uint64_t SumXgmiKb(const uint64_t (&arr)[AMDSMI_MAX_NUM_XGMI_LINKS]) noexcept
+uint64_t SumXgmiKb(uint32_t gpu_id, const char* label,
+                   const uint64_t (&arr)[AMDSMI_MAX_NUM_XGMI_LINKS]) noexcept
 {
     uint64_t total = 0;
     for (size_t i = 0; i < AMDSMI_MAX_NUM_XGMI_LINKS; ++i)
     {
-        if (arr[i] != UINT64_MAX)
+        if (arr[i] == UINT64_MAX)
         {
-            total += arr[i];
+            Logger()->error("[gpu={}] xgmi_{}_data_acc[{}] unpopulated by firmware", gpu_id,
+                            label, i);
+            continue;
         }
+        total += arr[i];
     }
     return total;
 }
@@ -124,24 +128,24 @@ void GpuMetricsAMD::RecordTemperature(uint32_t gpu_id, const amdsmi_gpu_metrics_
 
 void GpuMetricsAMD::RecordActivity(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
 {
-    if (m.gfx_activity_acc == UINT32_MAX)
+    if (m.average_gfx_activity == UINT16_MAX)
     {
-        Logger()->error("[gpu={}] gfx_activity_acc unpopulated by firmware", gpu_id);
+        Logger()->error("[gpu={}] average_gfx_activity unpopulated by firmware", gpu_id);
     }
     else
     {
-        meters_[gpu_id].utilization.Set(m.gfx_activity_acc);
+        meters_[gpu_id].utilization.Set(m.average_gfx_activity);
     }
-    if (m.mem_activity_acc == UINT32_MAX)
+    if (m.average_umc_activity == UINT16_MAX)
     {
-        Logger()->error("[gpu={}] mem_activity_acc unpopulated by firmware", gpu_id);
+        Logger()->error("[gpu={}] average_umc_activity unpopulated by firmware", gpu_id);
     }
     else
     {
-        meters_[gpu_id].memoryActivity.Set(m.mem_activity_acc);
+        meters_[gpu_id].memoryActivity.Set(m.average_umc_activity);
     }
-    Logger()->debug("[gpu={}] activity gfx={}% mem={}%", gpu_id, m.gfx_activity_acc,
-                    m.mem_activity_acc);
+    Logger()->debug("[gpu={}] activity gfx={}% mem={}%", gpu_id, m.average_gfx_activity,
+                    m.average_umc_activity);
 }
 
 void GpuMetricsAMD::RecordClocks(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
@@ -168,19 +172,30 @@ void GpuMetricsAMD::RecordClocks(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m)
 
 void GpuMetricsAMD::RecordPower(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
 {
-    if (m.current_socket_power == UINT16_MAX)
+    // MI300+ populates current_socket_power; Navi/MI200 and earlier populate
+    // average_socket_power. Prefer current; fall back to average.
+    uint16_t watts = UINT16_MAX;
+    if (m.current_socket_power != UINT16_MAX)
     {
-        Logger()->error("[gpu={}] current_socket_power unpopulated by firmware", gpu_id);
+        watts = m.current_socket_power;
+    }
+    else if (m.average_socket_power != UINT16_MAX)
+    {
+        watts = m.average_socket_power;
+    }
+    else
+    {
+        Logger()->error("[gpu={}] socket power unpopulated by firmware", gpu_id);
         return;
     }
-    meters_[gpu_id].power.Set(m.current_socket_power);
-    Logger()->debug("[gpu={}] power={}W", gpu_id, m.current_socket_power);
+    meters_[gpu_id].power.Set(watts);
+    Logger()->debug("[gpu={}] power={}W", gpu_id, watts);
 }
 
 void GpuMetricsAMD::RecordXgmi(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
 {
-    auto curr_read = SumXgmiKb(m.xgmi_read_data_acc);
-    auto curr_write = SumXgmiKb(m.xgmi_write_data_acc);
+    auto curr_read = SumXgmiKb(gpu_id, "read", m.xgmi_read_data_acc);
+    auto curr_write = SumXgmiKb(gpu_id, "write", m.xgmi_write_data_acc);
     auto now = std::chrono::steady_clock::now();
 
     auto& slot = last_xgmi_[gpu_id];
