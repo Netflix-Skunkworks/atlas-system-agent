@@ -57,7 +57,7 @@ TEST(CGroup, PressureStall)
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
 
-    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample2"};
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/cgroup_example_io_max_2"};
 
     cGroup.PressureStall();
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -76,7 +76,7 @@ TEST(CGroup, CpuThrottleV2)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
-    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/cgroup_example_io_max_1"};
 
     std::unordered_map<std::string, int64_t> stats;
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
@@ -90,7 +90,7 @@ TEST(CGroup, CpuThrottleV2)
     memoryWriter->Clear();
 
     // Second call to compute delta
-    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/cgroup_example_io_max_2");
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
     cGroup.CpuThrottleV2(stats);
     messages = memoryWriter->GetMessages();
@@ -103,7 +103,7 @@ TEST(CGroup, CpuUtilizationV2)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
-    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/cgroup_example_io_max_1"};
     setenv("TITUS_NUM_CPU", "1", 1);
 
     std::unordered_map<std::string, int64_t> stats;
@@ -123,7 +123,7 @@ TEST(CGroup, CpuUtilizationV2)
     memoryWriter->Clear();
 
     // Second call after 60 seconds to compute utilization
-    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/cgroup_example_io_max_2");
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
     cGroup.CpuUtilizationV2(baseTime + absl::Seconds(60), cpuCount, stats, absl::Seconds(60));
 
@@ -140,7 +140,7 @@ TEST(CGroup, CpuTimeV2)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
-    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/cgroup_example_io_max_1"};
 
     std::unordered_map<std::string, int64_t> stats;
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
@@ -151,7 +151,7 @@ TEST(CGroup, CpuTimeV2)
     EXPECT_EQ(messages.size(), 0);
 
     // Second call after 60 seconds to compute utilization
-    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/cgroup_example_io_max_2");
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
     cGroup.CpuTimeV2(stats);
 
@@ -166,7 +166,7 @@ TEST(CGroup, ProcessingTime)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
-    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/cgroup_example_io_max_1"};
     setenv("TITUS_NUM_CPU", "1", 1);
 
     // Use a fixed base time for consistent testing
@@ -191,7 +191,7 @@ TEST(CGroup, CpuPeakUtilizationV2)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
-    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/cgroup_example_io_max_1"};
     setenv("TITUS_NUM_CPU", "1", 1);
 
     std::unordered_map<std::string, int64_t> stats;
@@ -204,7 +204,7 @@ TEST(CGroup, CpuPeakUtilizationV2)
     auto messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 0);
 
-    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/cgroup_example_io_max_2");
     atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
     cGroup.CpuPeakUtilizationV2(baseTime + absl::Seconds(60), stats, cpuCount);
 
@@ -218,7 +218,7 @@ TEST(CGroup, ParseMemoryV2)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
-    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/cgroup_example_io_max_1"};
 
     cGroup.MemoryStatsV2();
     cGroup.MemoryStatsStdV2();
@@ -270,15 +270,16 @@ std::vector<InvalidFileTestCase> GetCommonInvalidTestCases(const std::string& pr
             {prefix + ".malformed_pairs", false, "malformed key=value pairs"},
             {prefix + ".missing_fields", false, "missing required fields"},
             {prefix + ".mixed_validity", false, "mixed valid/invalid lines"},
-            {prefix + ".non_numeric", false, "non-numeric values"},
-            {prefix + ".too_many_fields", false, "lines with too many fields"}};
+            {prefix + ".non_numeric", false, "non-numeric values"}};
 }
 
 TEST(CGroup, InvalidIOStats)
 {
     auto testCases = GetCommonInvalidTestCases("io.stat");
-    // Add io.stat specific test case
+    // Add io.stat specific test cases
     testCases.push_back({"io.stat.negative_values", false, "negative values"});
+    // Extra fields (e.g. from io.cost) are now tolerated, so too_many_fields is valid for io.stat
+    testCases.push_back({"io.stat.too_many_fields", true, "extra extension fields are tolerated"});
 
     // Create a simple device map for testing
     std::unordered_map<std::string, std::string> deviceMap = {{"8:0", "sda"}, {"8:1", "sda1"}, {"259:0", "nvme0n1"}};
@@ -311,8 +312,9 @@ TEST(CGroup, InvalidIOStats)
 TEST(CGroup, InvalidIOMaxStats)
 {
     auto testCases = GetCommonInvalidTestCases("io.max");
-    // Add io.max specific test case
+    // Add io.max specific test cases
     testCases.push_back({"io.max.negative_values", false, "negative values"});
+    testCases.push_back({"io.max.too_many_fields", false, "lines with too many fields"});
 
     for (const auto& testCase : testCases)
     {
@@ -340,18 +342,42 @@ TEST(CGroup, InvalidIOMaxStats)
     }
 }
 
+TEST(CGroup, IOStatWithCostFields)
+{
+    std::unordered_map<std::string, std::string> deviceMap = {{"259:0", "nvme0n1"}};
+    auto lines = atlasagent::read_lines_fields("lib/collectors/cgroup/test/resources/cgroup_example_io_cost/", "io.stat");
+    auto result = atlasagent::ParseIOLines(lines, deviceMap);
+
+    ASSERT_FALSE(result.empty()) << "io.stat with cost fields should parse successfully";
+    ASSERT_NE(result.find("259:0"), result.end()) << "device 259:0 should be present";
+
+    const auto& entry = result.at("259:0");
+    ASSERT_TRUE(entry.rBytes.has_value());
+    EXPECT_EQ(*entry.rBytes, 40016384.0);
+    ASSERT_TRUE(entry.wBytes.has_value());
+    EXPECT_EQ(*entry.wBytes, 3842195456.0);
+    ASSERT_TRUE(entry.rOperations.has_value());
+    EXPECT_EQ(*entry.rOperations, 1074.0);
+    ASSERT_TRUE(entry.wOperations.has_value());
+    EXPECT_EQ(*entry.wOperations, 34821.0);
+    ASSERT_TRUE(entry.dBytes.has_value());
+    EXPECT_EQ(*entry.dBytes, 0.0);
+    ASSERT_TRUE(entry.dOperations.has_value());
+    EXPECT_EQ(*entry.dOperations, 0.0);
+}
+
 TEST(CGroup, IOStats)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
-    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/cgroup_example_io_max_1"};
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 
     cGroup.IOStats();
     auto messages = memoryWriter->GetMessages();
     EXPECT_TRUE(messages.empty());
-    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/cgroup_example_io_max_2");
     cGroup.IOStats();
     messages = memoryWriter->GetMessages();
 
