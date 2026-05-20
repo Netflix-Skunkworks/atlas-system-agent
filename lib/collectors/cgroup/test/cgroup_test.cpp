@@ -270,15 +270,16 @@ std::vector<InvalidFileTestCase> GetCommonInvalidTestCases(const std::string& pr
             {prefix + ".malformed_pairs", false, "malformed key=value pairs"},
             {prefix + ".missing_fields", false, "missing required fields"},
             {prefix + ".mixed_validity", false, "mixed valid/invalid lines"},
-            {prefix + ".non_numeric", false, "non-numeric values"},
-            {prefix + ".too_many_fields", false, "lines with too many fields"}};
+            {prefix + ".non_numeric", false, "non-numeric values"}};
 }
 
 TEST(CGroup, InvalidIOStats)
 {
     auto testCases = GetCommonInvalidTestCases("io.stat");
-    // Add io.stat specific test case
+    // Add io.stat specific test cases
     testCases.push_back({"io.stat.negative_values", false, "negative values"});
+    // Extra fields (e.g. from io.cost) are now tolerated, so too_many_fields is valid for io.stat
+    testCases.push_back({"io.stat.too_many_fields", true, "extra extension fields are tolerated"});
 
     // Create a simple device map for testing
     std::unordered_map<std::string, std::string> deviceMap = {{"8:0", "sda"}, {"8:1", "sda1"}, {"259:0", "nvme0n1"}};
@@ -311,8 +312,9 @@ TEST(CGroup, InvalidIOStats)
 TEST(CGroup, InvalidIOMaxStats)
 {
     auto testCases = GetCommonInvalidTestCases("io.max");
-    // Add io.max specific test case
+    // Add io.max specific test cases
     testCases.push_back({"io.max.negative_values", false, "negative values"});
+    testCases.push_back({"io.max.too_many_fields", false, "lines with too many fields"});
 
     for (const auto& testCase : testCases)
     {
@@ -338,6 +340,30 @@ TEST(CGroup, InvalidIOMaxStats)
             EXPECT_TRUE(result.empty()) << "ParseIOThrottleLines should return empty map for " << testCase.description;
         }
     }
+}
+
+TEST(CGroup, IOStatWithCostFields)
+{
+    std::unordered_map<std::string, std::string> deviceMap = {{"259:0", "nvme0n1"}};
+    auto lines = atlasagent::read_lines_fields("lib/collectors/cgroup/test/resources/sample_io_cost/", "io.stat");
+    auto result = atlasagent::ParseIOLines(lines, deviceMap);
+
+    ASSERT_FALSE(result.empty()) << "io.stat with cost fields should parse successfully";
+    ASSERT_NE(result.find("259:0"), result.end()) << "device 259:0 should be present";
+
+    const auto& entry = result.at("259:0");
+    ASSERT_TRUE(entry.rBytes.has_value());
+    EXPECT_EQ(*entry.rBytes, 40016384.0);
+    ASSERT_TRUE(entry.wBytes.has_value());
+    EXPECT_EQ(*entry.wBytes, 3842195456.0);
+    ASSERT_TRUE(entry.rOperations.has_value());
+    EXPECT_EQ(*entry.rOperations, 1074.0);
+    ASSERT_TRUE(entry.wOperations.has_value());
+    EXPECT_EQ(*entry.wOperations, 34821.0);
+    ASSERT_TRUE(entry.dBytes.has_value());
+    EXPECT_EQ(*entry.dBytes, 0.0);
+    ASSERT_TRUE(entry.dOperations.has_value());
+    EXPECT_EQ(*entry.dOperations, 0.0);
 }
 
 TEST(CGroup, IOStats)

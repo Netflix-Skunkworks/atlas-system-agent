@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <charconv>
 #include <map>
+#include <unordered_set>
 #include <unistd.h>
 
 namespace atlasagent
@@ -337,6 +338,15 @@ std::optional<IOStats> ParseIOLine(const std::vector<std::string>& fields, const
 
         std::string_view currentField(fields[i]);
         std::string_view key = currentField.substr(0, pos);
+
+        // Skip unknown extension keys (e.g. cost.vrate, cost.usage added by io.cost)
+        // before parsing the value — floating-point from_chars is incomplete on some
+        // C++17 toolchains (libstdc++ < GCC 11), so values like "100.00" must never
+        // reach from_chars for keys we do not intend to use.
+        static const std::unordered_set<std::string_view> knownKeys{"rbytes", "wbytes", "rios", "wios", "dbytes", "dios"};
+        if (!knownKeys.count(key))
+            continue;
+
         std::string_view value_str = currentField.substr(pos + 1);
 
         double value;
@@ -364,7 +374,8 @@ std::optional<IOStats> ParseIOLine(const std::vector<std::string>& fields, const
         else if (key == "dios" && stats.dOperations.has_value() == false)
             stats.dOperations = value;
         else
-            throw std::runtime_error("Unexpected or duplicate key in io.stat: " + std::string(key));
+            // Unknown keys were already filtered above, so reaching here means a duplicate.
+            throw std::runtime_error("Duplicate key in io.stat: " + std::string(key));
     }
 
     // Validate that all required IO statistics are set
@@ -394,8 +405,9 @@ std::unordered_map<std::string, IOStats> ParseIOLines(const std::vector<std::vec
         // Skip completely empty lines (device with no stats)
         if (fields.size() == 1) continue;
 
-        // Each line should have exactly 7 fields: device rbytes= wbytes= rios= wios= dbytes= dios=
-        if (fields.size() != 7)
+        // Each line needs at least 7 fields: device rbytes= wbytes= rios= wios= dbytes= dios=
+        // Extra fields (e.g. cost.vrate=, cost.usage= added by io.cost) are tolerated
+        if (fields.size() < 7)
         {
             throw std::runtime_error("Invalid number of fields in io.stat line: " + std::to_string(fields.size()));
         }
