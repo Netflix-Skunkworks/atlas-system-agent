@@ -8,18 +8,18 @@ from conan.tools.files import download, unzip, check_sha256
 class AtlasSystemAgentConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     requires = (
-        "abseil/20240116.2",
-        "asio/1.32.0",
+        "abseil/20260107.1",
+        "asio/1.36.0",
         "backward-cpp/1.6",
         "boost/1.83.0",
-        "fmt/11.0.2",
+        "fmt/12.1.0",
         "gtest/1.15.0",
         "libcurl/8.10.1",
-        "openssl/3.3.2",
-        "rapidjson/cci.20230929",
+        "openssl/3.6.2",
+        "rapidjson/1.1.0",
         "sdbus-cpp/2.0.0",
-        "spdlog/1.15.0",
-        "zlib/1.3.1",
+        "spdlog/1.17.0",
+        "zlib/1.3.2",
     )
     tool_requires = ()
     generators = "CMakeDeps", "CMakeToolchain"
@@ -28,7 +28,7 @@ class AtlasSystemAgentConan(ConanFile):
         # TODO: remove this when SystemD updates package for zstd
         self.requires("zstd/1.5.7", override=True)
         # TODO: remove this when SystemD updates package for xz_utils
-        self.requires("xz_utils/5.8.1", override=True)
+        self.requires("xz_utils/5.8.3", override=True)
 
     def configure(self):
         self.options["libcurl"].with_c_ares = True
@@ -48,14 +48,14 @@ class AtlasSystemAgentConan(ConanFile):
         thirdparty_dir = "thirdparty"
         repo = "Netflix/spectator-cpp"
         commit = "1e69c442528a8450ab48948fef964fc79a73ac49"
-        
+
         zip_path = os.path.join(thirdparty_dir, f"spectator-cpp-{commit}.zip")
         dir_path = os.path.join(thirdparty_dir, "spectator-cpp")
-        
+
         os.makedirs(thirdparty_dir, exist_ok=True)
         self.maybe_remove_file(zip_path)
         self.maybe_remove_dir(dir_path)
-        
+
         download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_path)
         check_sha256(self, zip_path, "d39cbc2f101c5ae04324d2255ca8f208985f2879a2289ab74e0207fca79d76ce")
         unzip(self, zip_path, destination=dir_path, strip_root=True)
