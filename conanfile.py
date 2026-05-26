@@ -8,18 +8,18 @@ from conan.tools.files import download, unzip, check_sha256
 class AtlasSystemAgentConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     requires = (
-        "abseil/20240116.2",
-        "asio/1.32.0",
+        "abseil/20260107.1",
+        "asio/1.36.0",
         "backward-cpp/1.6",
-        "boost/1.83.0",
-        "fmt/11.0.2",
-        "gtest/1.15.0",
-        "libcurl/8.10.1",
-        "openssl/3.3.2",
-        "rapidjson/cci.20230929",
+        "boost/1.91.0",
+        "fmt/12.1.0",
+        "gtest/1.17.0",
+        "libcurl/8.20.0",
+        "openssl/3.6.2",
+        "rapidjson/1.1.0",
         "sdbus-cpp/2.0.0",
-        "spdlog/1.15.0",
-        "zlib/1.3.1",
+        "spdlog/1.17.0",
+        "zlib/1.3.2",
     )
     tool_requires = ()
     generators = "CMakeDeps", "CMakeToolchain"
@@ -28,7 +28,7 @@ class AtlasSystemAgentConan(ConanFile):
         # TODO: remove this when SystemD updates package for zstd
         self.requires("zstd/1.5.7", override=True)
         # TODO: remove this when SystemD updates package for xz_utils
-        self.requires("xz_utils/5.8.1", override=True)
+        self.requires("xz_utils/5.8.3", override=True)
 
     def configure(self):
         self.options["libcurl"].with_c_ares = True
