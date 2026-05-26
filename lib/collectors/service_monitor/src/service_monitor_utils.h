@@ -34,6 +34,7 @@ struct DBusConstants
     // Service interface constants
     static constexpr auto ServiceInterface = "org.freedesktop.systemd1.Service";
     static constexpr auto PropertyMainPID = "MainPID";
+    static constexpr auto PropertyControlGroup = "ControlGroup";
 };
 
 struct ServiceMonitorUtilConstants
@@ -52,6 +53,10 @@ struct ServiceMonitorUtilConstants
     static constexpr auto DefaultCoreCount{1};
     static constexpr auto Active{"active"};
     static constexpr auto Running{"running"};
+    static constexpr auto CgroupRoot{"/sys/fs/cgroup"};
+    static constexpr auto CgroupCpuStatFile{"cpu.stat"};
+    static constexpr auto CgroupCpuUsageUsecKey{"usage_usec"};
+    static constexpr unsigned long long MicrosPerSecond{1000000ULL};
 };
 
 struct ProcessTimes
@@ -66,6 +71,7 @@ struct ServiceProperties
     std::string activeState;
     std::string subState;
     unsigned int mainPid;
+    std::string controlGroup;
 };
 
 // DBus Functions
@@ -84,3 +90,10 @@ double calculate_cpu_usage(const unsigned long long& oldCpuTime, const unsigned 
                            const unsigned int& numCores);
 std::optional<unsigned int> get_cpu_cores();
 std::unordered_map<unsigned int, ProcessTimes> create_pid_map(const std::vector<ServiceProperties>& services);
+
+// Cgroup CPU helpers. The cgroup CPU sampler reads `usage_usec` from cpu.stat in the unit's cgroup,
+// which sums CPU time across every process and thread under that cgroup — not just the main PID.
+std::optional<unsigned long long> get_cgroup_cpu_usec(const std::string& cgroupRoot,
+                                                     const std::string& cgroupRelPath);
+double calculate_cgroup_cpu_usage(unsigned long long oldUsec, unsigned long long newUsec,
+                                  double intervalSeconds);

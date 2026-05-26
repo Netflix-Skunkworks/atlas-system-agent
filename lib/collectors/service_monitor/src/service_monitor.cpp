@@ -4,18 +4,23 @@
 // The constructor takes a registry, a vector of regex patterns, and a maximum number of services to monitor.
 // If the maximum number of services is not equal to the default value, it logs a message indicating the custom value.
 
-ServiceMonitor::ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services)
+ServiceMonitor::ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services,
+                               bool use_cgroup_cpu, std::string cgroup_root)
     : registry_{registry},
       config_{std::move(config)},
       maxMonitoredServices{max_services == ServiceMonitorConstants::DefaultMonitoredServices
                                ? ServiceMonitorConstants::DefaultMonitoredServices
-                               : max_services}
+                               : max_services},
+      useCgroupCpu_{use_cgroup_cpu},
+      cgroupRoot_{std::move(cgroup_root)}
 {
     if (this->maxMonitoredServices != ServiceMonitorConstants::DefaultMonitoredServices)
     {
         atlasagent::Logger()->info("Custom max monitored services value set: {} (default is {})", maxMonitoredServices,
                                    ServiceMonitorConstants::DefaultMonitoredServices);
     }
+    atlasagent::Logger()->info("systemd.service.cpuUsage source: {}",
+                               useCgroupCpu_ ? "cgroup cpu.stat (entire unit)" : "MainPID /proc/<pid>/stat (legacy)");
 }
 
 bool ServiceMonitor::init_monitored_services()
@@ -124,11 +129,26 @@ try
     // Some services may fail to return properties, but this isn’t a full failure.
     // We will still update metrics for the services we were able to get the properties for.
 
-    // Get the new process times for the services and the new CPU time
-    // If we fail to get the new CPU time, we will not be able to calculate the CPU usage for the
-    // current iteration and the next iteration
-    auto newProcessTimes = create_pid_map(servicesStates);
-    auto newCpuTime = get_total_cpu_time();
+    // CPU sampling path A (legacy): MainPID /proc/<pid>/stat. Pre-fetched here so per-service
+    // logic can branch cheaply. Skipped entirely when cgroup mode is on.
+    std::unordered_map<unsigned int, ProcessTimes> newProcessTimes{};
+    std::optional<unsigned long long> newCpuTime{};
+    if (!useCgroupCpu_)
+    {
+        newProcessTimes = create_pid_map(servicesStates);
+        newCpuTime = get_total_cpu_time();
+    }
+
+    // CPU sampling path B (cgroup): one wall-clock measurement covers every service in this pass.
+    auto nowMono = std::chrono::steady_clock::now();
+    double cgroupIntervalSeconds = 0.0;
+    bool haveCgroupInterval = false;
+    if (useCgroupCpu_ && lastCgroupSampleTime_.time_since_epoch().count() != 0)
+    {
+        cgroupIntervalSeconds = std::chrono::duration<double>(nowMono - lastCgroupSampleTime_).count();
+        haveCgroupInterval = cgroupIntervalSeconds > 0.0;
+    }
+    std::unordered_map<std::string, unsigned long long> nextCgroupCpuUsec{};
 
     // Iterate throught the services and update the metrics for each service
     for (const auto& service : servicesStates)
@@ -151,28 +171,44 @@ try
         auto serviceRSS = get_rss(service.mainPid);
         auto serviceFds = get_number_fds(service.mainPid);
 
-        // Only calculate the cpu usage for a service if we have the new cpu time, the processes previous time,
-        // and the new processes time. There is no need to check that the old cpu time (this->currentCpuTime) is not 0.
-        // This is because if on the previous iteration we failed to get the cpu time, the previous process time map is
-        // empty. Very unlikely but it is possible that two services die within the same 60 second interval, and then be
-        // reassigned each others pids. We could fix this by also tracking the service name in the process time map.
         std::optional<double> cpuUsage{std::nullopt};
-        if (newCpuTime.has_value() && currentProcessTimes.find(service.mainPid) != currentProcessTimes.end() &&
-            newProcessTimes.find(service.mainPid) != newProcessTimes.end())
+        bool hadPriorCpuSample = false;
+        if (useCgroupCpu_)
         {
-            auto newProcessTime = newProcessTimes[service.mainPid];
-            auto oldProcessTime = currentProcessTimes[service.mainPid];
-            cpuUsage.emplace(calculate_cpu_usage(currentCpuTime, newCpuTime.value(), oldProcessTime, newProcessTime,
-                                                 this->numCpuCores));
+            // Cgroup path: read usage_usec for the unit's cgroup. Covers the entire systemd unit
+            // (MainPID + children + threads), unlike the legacy /proc/<MainPID>/stat sampler.
+            auto cgroupUsec = get_cgroup_cpu_usec(cgroupRoot_, service.controlGroup);
+            if (cgroupUsec.has_value())
+            {
+                nextCgroupCpuUsec[service.name] = cgroupUsec.value();
+                auto prior = currentCgroupCpuUsec_.find(service.name);
+                hadPriorCpuSample = prior != currentCgroupCpuUsec_.end();
+                if (hadPriorCpuSample && haveCgroupInterval)
+                {
+                    cpuUsage.emplace(
+                        calculate_cgroup_cpu_usage(prior->second, cgroupUsec.value(), cgroupIntervalSeconds));
+                }
+            }
+        }
+        else
+        {
+            // Legacy path: derive CPU from /proc/<MainPID>/stat. Requires both the prior and current
+            // PID samples, and a non-null /proc/stat aggregate read. Identical semantics to before.
+            hadPriorCpuSample = currentProcessTimes.find(service.mainPid) != currentProcessTimes.end();
+            if (newCpuTime.has_value() && hadPriorCpuSample &&
+                newProcessTimes.find(service.mainPid) != newProcessTimes.end())
+            {
+                auto newProcessTime = newProcessTimes[service.mainPid];
+                auto oldProcessTime = currentProcessTimes[service.mainPid];
+                cpuUsage.emplace(calculate_cpu_usage(currentCpuTime, newCpuTime.value(), oldProcessTime, newProcessTime,
+                                                    this->numCpuCores));
+            }
         }
 
-        // If we failed to get the RSS, FDs, or CPU usage for a service, log the error and set success to false
-        // We check currentProcessTimes to see if we have the old process time for a service b/c we dont want to
-        // unnecessarily log erros when calculating cpu usage. Cpu usage requires two 60 second iterations in order to
-        // calculate. Without this check we would unecessarily log errors during the first iteration on startup, or when
-        // a new process is started for the first time.
+        // Suppress the "missing CPU sample" warning on the first iteration after a service starts —
+        // CPU usage is a delta and needs two samples to compute, so the first pass is expected to be empty.
         if (serviceRSS.has_value() == false || serviceFds.has_value() == false ||
-            (currentProcessTimes.find(service.mainPid) != currentProcessTimes.end() && cpuUsage.has_value() == false))
+            (hadPriorCpuSample && cpuUsage.has_value() == false))
         {
             success = false;
             atlasagent::Logger()->error("Failed to get metric(s) for {}", service.name);
@@ -194,19 +230,26 @@ try
         }
     }
 
-    // Update currentProcessTimes and currentCpuTime. If we failed to get process times for some
-    // services, that's fine—we'll compute CPU usage for the ones we do have next time.
-    // However, if cpuTime retrieval fails, we can’t compute usage for any service, so we reset
-    // currentProcessTimes and set currentCpuTime to 0.
-    if (newCpuTime.has_value() == false)
+    // Roll the CPU-sample state forward for the next iteration. Each path owns its own bookkeeping;
+    // mode flips at runtime would discard the unused path's history, which is fine.
+    if (useCgroupCpu_)
     {
-        this->currentCpuTime = 0;
-        this->currentProcessTimes.clear();
-        return false;
+        currentCgroupCpuUsec_ = std::move(nextCgroupCpuUsec);
+        lastCgroupSampleTime_ = nowMono;
     }
-
-    this->currentProcessTimes = std::move(newProcessTimes);
-    this->currentCpuTime = newCpuTime.value();
+    else
+    {
+        // If we failed to read /proc/stat we can't compute usage for any service this pass, so
+        // wipe the prior PID map to prevent stale deltas.
+        if (newCpuTime.has_value() == false)
+        {
+            this->currentCpuTime = 0;
+            this->currentProcessTimes.clear();
+            return false;
+        }
+        this->currentProcessTimes = std::move(newProcessTimes);
+        this->currentCpuTime = newCpuTime.value();
+    }
     return success;
 }
 catch (const std::exception& e)

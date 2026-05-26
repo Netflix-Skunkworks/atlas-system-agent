@@ -48,3 +48,45 @@ TEST(ServiceMonitorTest, ParseProcPidStat)
     EXPECT_EQ(6, processTimes.value().sTime);
     EXPECT_EQ(2933, rss);
 }
+
+TEST(ServiceMonitorTest, GetCgroupCpuUsec)
+{
+    auto usec = get_cgroup_cpu_usec("testdata/resources2/service_monitor", "/cgroup_cpu_stat");
+    ASSERT_TRUE(usec.has_value());
+    EXPECT_EQ(1234567890ULL, usec.value());
+}
+
+TEST(ServiceMonitorTest, GetCgroupCpuUsecHandlesEmptyPath)
+{
+    EXPECT_FALSE(get_cgroup_cpu_usec("testdata/resources2/service_monitor", "").has_value());
+}
+
+TEST(ServiceMonitorTest, GetCgroupCpuUsecHandlesMissingFile)
+{
+    EXPECT_FALSE(
+        get_cgroup_cpu_usec("testdata/resources2/service_monitor", "/does_not_exist").has_value());
+}
+
+TEST(ServiceMonitorTest, CalculateCgroupCpuUsageOneCoreBusy)
+{
+    // 1 full core for 60s = 60_000_000 usec consumed
+    EXPECT_DOUBLE_EQ(100.0, calculate_cgroup_cpu_usage(0ULL, 60'000'000ULL, 60.0));
+}
+
+TEST(ServiceMonitorTest, CalculateCgroupCpuUsageMultipleCoresBusy)
+{
+    // 4 cores busy for 60s = 240_000_000 usec consumed
+    EXPECT_DOUBLE_EQ(400.0, calculate_cgroup_cpu_usage(0ULL, 240'000'000ULL, 60.0));
+}
+
+TEST(ServiceMonitorTest, CalculateCgroupCpuUsageZeroInterval)
+{
+    EXPECT_DOUBLE_EQ(0.0, calculate_cgroup_cpu_usage(0ULL, 1'000'000ULL, 0.0));
+}
+
+TEST(ServiceMonitorTest, CalculateCgroupCpuUsageHandlesCounterReset)
+{
+    // Defensive: if usage_usec ever drops between samples (e.g. cgroup recreated), report 0
+    // rather than wrapping into a huge value.
+    EXPECT_DOUBLE_EQ(0.0, calculate_cgroup_cpu_usage(500ULL, 100ULL, 60.0));
+}

@@ -201,7 +201,7 @@ long initial_polling_delay()
 #if defined(TITUS_SYSTEM_SERVICE)
 void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
                            const std::unordered_map<std::string, std::string>& net_tags,
-                           const int& max_monitored_services)
+                           const int& max_monitored_services, bool service_monitor_use_cgroup_cpu)
 {
     using std::chrono::duration_cast;
     using std::chrono::milliseconds;
@@ -223,7 +223,8 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
         parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
     if (serviceConfig.has_value())
     {
-        serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
+        serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services,
+                               service_monitor_use_cgroup_cpu);
     }
     else
     {
@@ -293,7 +294,7 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
 #else
 void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
                             const std::unordered_map<std::string, std::string>& net_tags,
-                            const int& max_monitored_services)
+                            const int& max_monitored_services, bool service_monitor_use_cgroup_cpu)
 {
     using std::chrono::duration_cast;
     using std::chrono::milliseconds;
@@ -326,7 +327,8 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
     if (serviceConfig.has_value())
     {
-        serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
+        serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services,
+                               service_monitor_use_cgroup_cpu);
     }
     else
     {
@@ -456,6 +458,7 @@ struct agent_options
     std::string cfg_file;
     bool verbose;
     unsigned int max_monitored_services{ServiceMonitorConstants::DefaultMonitoredServices};
+    bool service_monitor_use_cgroup_cpu{true};
 };
 
 static constexpr const char* const kDefaultCfgFile = "/etc/default/atlas-agent.json";
@@ -463,9 +466,11 @@ static constexpr const char* const kDefaultCfgFile = "/etc/default/atlas-agent.j
 static void usage(const char* progname)
 {
     fprintf(stderr,
-            "Usage: %s [-c cfg_file] [-s monitored-service-threshold][-v] [-t extra-network-tags]\n"
+            "Usage: %s [-c cfg_file] [-s monitored-service-threshold] [-l] [-v] [-t extra-network-tags]\n"
             "\t-c\tUse cfg_file as the configuration file. Default %s\n"
             "\t-s\tSet the maximum number of monitored services. Default is 10\n"
+            "\t-l\tUse legacy MainPID-only CPU sampling for systemd.service.cpuUsage.\n"
+            "\t\tDefault is cgroup cpu.stat covering the entire systemd unit.\n"
             "\t-v\tBe very verbose\n"
             "\t-t tags\tAdd extra tags to the network metrics.\n"
             "\t\tExpects a string of the form key=val,key2=val2\n",
@@ -478,7 +483,7 @@ static int parse_options(int& argc, char* const argv[], agent_options* result)
     result->verbose = std::getenv("VERBOSE_AGENT") != nullptr;  // default for backwards compat
 
     int ch;
-    while ((ch = getopt(argc, argv, "c:vt:s:")) != -1)
+    while ((ch = getopt(argc, argv, "c:vt:s:l")) != -1)
     {
         switch (ch)
         {
@@ -498,6 +503,9 @@ static int parse_options(int& argc, char* const argv[], agent_options* result)
                     fprintf(stderr, "Invalid value for -s: %s\n", optarg);
                     usage(argv[0]);
                 }
+                break;
+            case 'l':
+                result->service_monitor_use_cgroup_cpu = false;
                 break;
             case '?':
             default:
@@ -562,10 +570,12 @@ int main(int argc, char* const argv[])
     Registry registry(config);
 #if defined(TITUS_SYSTEM_SERVICE)
     Logger()->info("Start gathering Titus system metrics");
-    collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
+    collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services,
+                          options.service_monitor_use_cgroup_cpu);
 #else
     Logger()->info("Start gathering EC2 system metrics");
-    collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
+    collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services,
+                           options.service_monitor_use_cgroup_cpu);
 #endif
     logger->info("Shutting down spectator registry");
     atlasagent::HttpClient::GlobalShutdown();

@@ -79,11 +79,20 @@ try
         .withArguments(DBusConstants::UnitInterface, DBusConstants::PropertySubState)
         .storeResultsTo(subStateVariant);
 
+    // Get ControlGroup property — the cgroup path (relative to the cgroup root) that contains
+    // every process and thread for this unit. Used by the cgroup-based CPU sampler.
+    sdbus::Variant controlGroupVariant;
+    proxy->callMethod(DBusConstants::MethodGet)
+        .onInterface(DBusConstants::PropertiesInterface)
+        .withArguments(DBusConstants::ServiceInterface, DBusConstants::PropertyControlGroup)
+        .storeResultsTo(controlGroupVariant);
+
     uint32_t mainPid = mainPidVariant.get<uint32_t>();
     std::string activeState = activeStateVariant.get<std::string>();
     std::string subState = subStateVariant.get<std::string>();
+    std::string controlGroup = controlGroupVariant.get<std::string>();
 
-    return ServiceProperties{serviceName, activeState, subState, mainPid};
+    return ServiceProperties{serviceName, activeState, subState, mainPid, controlGroup};
 }
 catch (const sdbus::Error& e)
 {
@@ -399,4 +408,64 @@ catch (const std::exception& e)
 {
     atlasagent::Logger()->error("Exception: {} in create_pid_map", e.what());
     return {};
+}
+
+// Read usage_usec from <cgroupRoot>/<cgroupRelPath>/cpu.stat. cgroupRelPath is the path systemd
+// returns from the ControlGroup property — e.g. "/system.slice/foo.service" — and includes a
+// leading slash, so we join it onto cgroupRoot via filesystem::path which collapses any duplicates.
+std::optional<unsigned long long> get_cgroup_cpu_usec(const std::string& cgroupRoot,
+                                                     const std::string& cgroupRelPath)
+try
+{
+    if (cgroupRelPath.empty())
+    {
+        return std::nullopt;
+    }
+
+    std::filesystem::path dir = std::filesystem::path(cgroupRoot);
+    // filesystem::path::operator/= treats a leading-slash rhs as absolute and replaces lhs, so strip it.
+    std::string rel = cgroupRelPath;
+    while (!rel.empty() && rel.front() == '/')
+    {
+        rel.erase(0, 1);
+    }
+    dir /= rel;
+
+    std::unordered_map<std::string, int64_t> stats;
+    atlasagent::parse_kv_from_file(dir.string(), ServiceMonitorUtilConstants::CgroupCpuStatFile, &stats);
+
+    auto it = stats.find(ServiceMonitorUtilConstants::CgroupCpuUsageUsecKey);
+    if (it == stats.end())
+    {
+        atlasagent::Logger()->error("Missing {} in {}/{}", ServiceMonitorUtilConstants::CgroupCpuUsageUsecKey,
+                                    dir.string(), ServiceMonitorUtilConstants::CgroupCpuStatFile);
+        return std::nullopt;
+    }
+    if (it->second < 0)
+    {
+        atlasagent::Logger()->error("Negative {} in {}/{}: {}", ServiceMonitorUtilConstants::CgroupCpuUsageUsecKey,
+                                    dir.string(), ServiceMonitorUtilConstants::CgroupCpuStatFile, it->second);
+        return std::nullopt;
+    }
+    return static_cast<unsigned long long>(it->second);
+}
+catch (const std::exception& e)
+{
+    atlasagent::Logger()->error("Exception: {} in get_cgroup_cpu_usec", e.what());
+    return std::nullopt;
+}
+
+// CPU usage as percent of one core (e.g. 200.0 = two fully-busy cores), matching the historical
+// units of `systemd.service.cpuUsage`. Caller computes intervalSeconds from wall-clock between
+// samples so this stays accurate when the agent loop slips.
+double calculate_cgroup_cpu_usage(unsigned long long oldUsec, unsigned long long newUsec,
+                                  double intervalSeconds)
+{
+    if (intervalSeconds <= 0.0 || newUsec < oldUsec)
+    {
+        return 0.0;
+    }
+    auto deltaUsec = newUsec - oldUsec;
+    return 100.0 * static_cast<double>(deltaUsec) /
+           static_cast<double>(ServiceMonitorUtilConstants::MicrosPerSecond) / intervalSeconds;
 }

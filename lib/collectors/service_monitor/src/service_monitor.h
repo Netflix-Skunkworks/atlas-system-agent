@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
 #include "service_monitor_utils.h"
@@ -36,7 +37,12 @@ inline auto gaugeServiceState(Registry* registry, const std::string_view name, c
 class ServiceMonitor
 {
    public:
-    ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services);
+    // useCgroupCpu = true samples CPU from the unit's cgroup cpu.stat (entire systemd unit:
+    // main PID, children, threads). useCgroupCpu = false preserves the legacy MainPID-only path
+    // as an escape hatch for the rollout.
+    ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services,
+                   bool use_cgroup_cpu = true,
+                   std::string cgroup_root = ServiceMonitorUtilConstants::CgroupRoot);
     ~ServiceMonitor(){};
 
     // Abide by the C++ rule of 5
@@ -59,4 +65,9 @@ class ServiceMonitor
     long pageSize{};
     bool initSuccess{false};
     std::vector<std::string> monitoredServices_{};
+
+    bool useCgroupCpu_{true};
+    std::string cgroupRoot_{};
+    std::unordered_map<std::string, unsigned long long> currentCgroupCpuUsec_{};
+    std::chrono::steady_clock::time_point lastCgroupSampleTime_{};
 };
