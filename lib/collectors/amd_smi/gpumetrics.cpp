@@ -13,7 +13,7 @@ namespace
 // Increment'ing so AMD and Nvidia counters are directly comparable.
 constexpr int kBytesConversion = 60;
 
-uint64_t SumXgmiKb(uint32_t gpu_id, const char* label,
+uint64_t SumXgmiKb(uint32_t gpu_id, const char* label, bool& supported,
                    const uint64_t (&arr)[AMDSMI_MAX_NUM_XGMI_LINKS]) noexcept
 {
     uint64_t total = 0;
@@ -21,8 +21,12 @@ uint64_t SumXgmiKb(uint32_t gpu_id, const char* label,
     {
         if (arr[i] == UINT64_MAX)
         {
-            Logger()->error("[gpu={}] xgmi_{}_data_acc[{}] unpopulated by firmware", gpu_id,
-                            label, i);
+            if (supported)
+            {
+                Logger()->error("[gpu={}] xgmi_{}_data_acc not supported by firmware", gpu_id,
+                                label);
+                supported = false;
+            }
             continue;
         }
         total += arr[i];
@@ -50,7 +54,8 @@ GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi,
           "gpu.count", std::unordered_map<std::string, std::string>{{"provider", "amd"}})},
       temperature_{registry->CreateDistributionSummary(
           "gpu.temperature", std::unordered_map<std::string, std::string>{{"provider", "amd"}})},
-      last_xgmi_(count)
+      last_xgmi_(count),
+      field_support_(count)
 {
     meters_.reserve(count);
     for (uint32_t i = 0; i < count; ++i)
@@ -119,7 +124,11 @@ void GpuMetricsAMD::RecordTemperature(uint32_t gpu_id, const amdsmi_gpu_metrics_
 {
     if (m.temperature_edge == UINT16_MAX)
     {
-        Logger()->error("[gpu={}] temperature_edge unpopulated by firmware", gpu_id);
+        if (field_support_[gpu_id].temperature)
+        {
+            Logger()->error("[gpu={}] temperature_edge not supported by firmware", gpu_id);
+            field_support_[gpu_id].temperature = false;
+        }
         return;
     }
     temperature_.Record(m.temperature_edge);
@@ -130,7 +139,11 @@ void GpuMetricsAMD::RecordActivity(uint32_t gpu_id, const amdsmi_gpu_metrics_t& 
 {
     if (m.average_gfx_activity == UINT16_MAX)
     {
-        Logger()->error("[gpu={}] average_gfx_activity unpopulated by firmware", gpu_id);
+        if (field_support_[gpu_id].gfxActivity)
+        {
+            Logger()->error("[gpu={}] average_gfx_activity not supported by firmware", gpu_id);
+            field_support_[gpu_id].gfxActivity = false;
+        }
     }
     else
     {
@@ -138,7 +151,11 @@ void GpuMetricsAMD::RecordActivity(uint32_t gpu_id, const amdsmi_gpu_metrics_t& 
     }
     if (m.average_umc_activity == UINT16_MAX)
     {
-        Logger()->error("[gpu={}] average_umc_activity unpopulated by firmware", gpu_id);
+        if (field_support_[gpu_id].umcActivity)
+        {
+            Logger()->error("[gpu={}] average_umc_activity not supported by firmware", gpu_id);
+            field_support_[gpu_id].umcActivity = false;
+        }
     }
     else
     {
@@ -152,7 +169,11 @@ void GpuMetricsAMD::RecordClocks(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m)
 {
     if (m.current_gfxclk == UINT16_MAX)
     {
-        Logger()->error("[gpu={}] current_gfxclk unpopulated by firmware", gpu_id);
+        if (field_support_[gpu_id].gfxClock)
+        {
+            Logger()->error("[gpu={}] current_gfxclk not supported by firmware", gpu_id);
+            field_support_[gpu_id].gfxClock = false;
+        }
     }
     else
     {
@@ -160,7 +181,11 @@ void GpuMetricsAMD::RecordClocks(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m)
     }
     if (m.current_uclk == UINT16_MAX)
     {
-        Logger()->error("[gpu={}] current_uclk unpopulated by firmware", gpu_id);
+        if (field_support_[gpu_id].memClock)
+        {
+            Logger()->error("[gpu={}] current_uclk not supported by firmware", gpu_id);
+            field_support_[gpu_id].memClock = false;
+        }
     }
     else
     {
@@ -185,7 +210,11 @@ void GpuMetricsAMD::RecordPower(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) 
     }
     else
     {
-        Logger()->error("[gpu={}] socket power unpopulated by firmware", gpu_id);
+        if (field_support_[gpu_id].power)
+        {
+            Logger()->error("[gpu={}] socket power not supported by firmware", gpu_id);
+            field_support_[gpu_id].power = false;
+        }
         return;
     }
     meters_[gpu_id].power.Set(watts);
@@ -194,8 +223,8 @@ void GpuMetricsAMD::RecordPower(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) 
 
 void GpuMetricsAMD::RecordXgmi(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept
 {
-    auto curr_read = SumXgmiKb(gpu_id, "read", m.xgmi_read_data_acc);
-    auto curr_write = SumXgmiKb(gpu_id, "write", m.xgmi_write_data_acc);
+    auto curr_read = SumXgmiKb(gpu_id, "read", field_support_[gpu_id].xgmi, m.xgmi_read_data_acc);
+    auto curr_write = SumXgmiKb(gpu_id, "write", field_support_[gpu_id].xgmi, m.xgmi_write_data_acc);
     auto now = std::chrono::steady_clock::now();
 
     auto& slot = last_xgmi_[gpu_id];

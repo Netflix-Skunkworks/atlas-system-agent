@@ -102,14 +102,25 @@ class GpuMetricsAMD
     void GPUMetrics() noexcept;
 
    private:
-    // Atlas-side state for converting xGMI accumulated counters into rates.
-    // Lives here (the consumer) rather than in AmdSmi because the cadence
-    // and bookkeeping are collector concerns, not SMI ones.
     struct XgmiSample
     {
         std::chrono::steady_clock::time_point timestamp;
         uint64_t read_kb;
         uint64_t write_kb;
+    };
+
+    // Tracks which firmware fields have been confirmed as unsupported for a
+    // given GPU. The error is logged once on first occurrence; subsequent ticks
+    // silently skip the field so the log isn't flooded every 60 seconds.
+    struct FieldSupport
+    {
+        bool temperature{true};
+        bool gfxActivity{true};
+        bool umcActivity{true};
+        bool gfxClock{true};
+        bool memClock{true};
+        bool power{true};
+        bool xgmi{true};
     };
 
     GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi, uint32_t count) noexcept;
@@ -128,6 +139,7 @@ class GpuMetricsAMD
     DistributionSummary temperature_;
     std::vector<PerGpuMeters> meters_;
     std::vector<std::optional<XgmiSample>> last_xgmi_;
+    std::vector<FieldSupport> field_support_;
 };
 
 }  // namespace atlasagent
