@@ -74,6 +74,8 @@ void GpuMetricsAMD::GPUMetrics() noexcept
     }
 }
 
+// TODO: If a metric is unsupported by firmware, we should stop trying to read it on subsequent
+// iterations to avoid unnecessary overhead.
 void GpuMetricsAMD::Collect(uint32_t gpu_id) noexcept
 {
     Logger()->debug("[gpu={}] --- begin iteration ---", gpu_id);
