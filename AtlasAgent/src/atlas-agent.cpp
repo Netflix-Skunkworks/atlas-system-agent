@@ -2,6 +2,7 @@
 #include <sys/vfs.h>
 #endif
 #include <thirdparty/spectator-cpp/spectator/registry.h>
+#include <lib/collectors/amd_smi/gpumetrics.h>
 #include <lib/collectors/aws/src/aws.h>
 #include <lib/collectors/cgroup/src/cgroup.h>
 #include <lib/collectors/cpu_freq/src/cpu_freq.h>
@@ -368,6 +369,16 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         Logger()->info("DCGMI binary not present. Agent will not collect DCGM metrics.");
     }
 
+    auto gpuAMD = atlasagent::GpuMetricsAMD::Create(registry);
+    if (gpuAMD.has_value())
+    {
+        Logger()->info("AMD GPU(s) detected. Agent will collect AMD SMI metrics.");
+    }
+    else
+    {
+        Logger()->info("No AMD GPUs detected. Agent will not collect AMD SMI metrics.");
+    }
+
     // initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
     Logger()->info("Initial polling delay is {}s", delay);
@@ -419,6 +430,11 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
             if (gpu)
             {
                 gpu->gpu_metrics();
+            }
+
+            if (gpuAMD.has_value())
+            {
+                gpuAMD->GPUMetrics();
             }
 
             if (gpuDCGM.has_value() && atlasagent::is_service_running(DCGMConstants::ServiceName))
