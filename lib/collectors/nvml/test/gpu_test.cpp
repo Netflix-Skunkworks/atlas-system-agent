@@ -106,21 +106,21 @@ TEST(Gpu, Metrics)
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     auto messages = memoryWriter->GetMessages();
     EXPECT_EQ(15, messages.size());
-    EXPECT_EQ(messages.at(0), "g:gpu.count:2.000000\n");
-    EXPECT_EQ(messages.at(1), "g:gpu.usedMemory,gpu=0:2900.000000\n");
-    EXPECT_EQ(messages.at(2), "g:gpu.freeMemory,gpu=0:100.000000\n");
-    EXPECT_EQ(messages.at(3), "g:gpu.totalMemory,gpu=0:3000.000000\n");
-    EXPECT_EQ(messages.at(4), "g:gpu.utilization,gpu=0:0.000000\n");
-    EXPECT_EQ(messages.at(5), "g:gpu.memoryActivity,gpu=0:0.000000\n");
-    EXPECT_EQ(messages.at(6), "g:gpu.perfState,gpu=0:1.000000\n");
-    EXPECT_EQ(messages.at(7), "d:gpu.temperature:42.000000\n");
-    EXPECT_EQ(messages.at(8), "g:gpu.usedMemory,gpu=1:2000.000000\n");
-    EXPECT_EQ(messages.at(9), "g:gpu.freeMemory,gpu=1:1000.000000\n");
-    EXPECT_EQ(messages.at(10), "g:gpu.totalMemory,gpu=1:3000.000000\n");
-    EXPECT_EQ(messages.at(11), "g:gpu.utilization,gpu=1:100.000000\n");
-    EXPECT_EQ(messages.at(12), "g:gpu.memoryActivity,gpu=1:25.000000\n");
-    EXPECT_EQ(messages.at(13), "g:gpu.perfState,gpu=1:10.000000\n");
-    EXPECT_EQ(messages.at(14), "d:gpu.temperature:72.000000\n");
+    EXPECT_EQ(messages.at(0), "g:gpu.count,provider=nvidia:2.000000\n");
+    EXPECT_EQ(messages.at(1), "g:gpu.usedMemory,provider=nvidia,gpu=0:2900.000000\n");
+    EXPECT_EQ(messages.at(2), "g:gpu.freeMemory,provider=nvidia,gpu=0:100.000000\n");
+    EXPECT_EQ(messages.at(3), "g:gpu.totalMemory,provider=nvidia,gpu=0:3000.000000\n");
+    EXPECT_EQ(messages.at(4), "g:gpu.utilization,provider=nvidia,gpu=0:0.000000\n");
+    EXPECT_EQ(messages.at(5), "g:gpu.memoryActivity,provider=nvidia,gpu=0:0.000000\n");
+    EXPECT_EQ(messages.at(6), "g:gpu.perfState,provider=nvidia,gpu=0:1.000000\n");
+    EXPECT_EQ(messages.at(7), "d:gpu.temperature,provider=nvidia:42.000000\n");
+    EXPECT_EQ(messages.at(8), "g:gpu.usedMemory,provider=nvidia,gpu=1:2000.000000\n");
+    EXPECT_EQ(messages.at(9), "g:gpu.freeMemory,provider=nvidia,gpu=1:1000.000000\n");
+    EXPECT_EQ(messages.at(10), "g:gpu.totalMemory,provider=nvidia,gpu=1:3000.000000\n");
+    EXPECT_EQ(messages.at(11), "g:gpu.utilization,provider=nvidia,gpu=1:100.000000\n");
+    EXPECT_EQ(messages.at(12), "g:gpu.memoryActivity,provider=nvidia,gpu=1:25.000000\n");
+    EXPECT_EQ(messages.at(13), "g:gpu.perfState,provider=nvidia,gpu=1:10.000000\n");
+    EXPECT_EQ(messages.at(14), "d:gpu.temperature,provider=nvidia:72.000000\n");
 }
 
 }  // namespace

@@ -33,6 +33,6 @@ struct fmt::formatter<absl::Time> : formatter<std::string_view>
 {
     static auto format(const absl::Time& t, format_context& ctx) -> format_context::iterator
     {
-        return fmt::format_to(ctx.out(), absl::FormatTime(t));
+        return fmt::format_to(ctx.out(), "{}", absl::FormatTime(t));
     }
 };

@@ -1,3 +1,4 @@
+add_subdirectory(amd_smi)
 add_subdirectory(aws)
 add_subdirectory(cgroup)
 add_subdirectory(cpu_freq)
