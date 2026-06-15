@@ -2,7 +2,7 @@ import os
 import shutil
 
 from conan import ConanFile
-from conan.tools.files import download, unzip, check_sha256
+from conan.tools.files import download, unzip, check_sha256, load, save
 
 
 class AtlasSystemAgentConan(ConanFile):
@@ -76,7 +76,35 @@ class AtlasSystemAgentConan(ConanFile):
         download(self, f"https://github.com/{repo}/archive/refs/tags/{tag}.zip", zip_path)
         check_sha256(self, zip_path, "8874d65b072e0f915b4f334bec7d61fd09ecb3cbd066b58a06afe15365e46338")
         unzip(self, zip_path, destination=dir_path, strip_root=True)
+        self.disable_goamdsmi_shim(dir_path)
         self.maybe_remove_file(zip_path)
+
+    def disable_goamdsmi_shim(self, rocm_dir: str):
+        # AMD SMI unconditionally builds its Go shim (goamdsmi_shim -> libgoamdsmi_shim64.so) via a
+        # bare add_subdirectory() with no gating option. The shim hardcodes the x86-only flags
+        # -m64/-msse/-msse2 with no architecture guard, so on aarch64 it fails to link
+        # ("unrecognized command-line option '-m64'") and breaks the whole build. We only ever link
+        # libamd_smi.a (whose own x86 flags ARE arch-guarded, so it builds on every arch), so
+        # comment out the line that adds the shim.
+        cmakelists = os.path.join(rocm_dir, "projects", "amdsmi", "CMakeLists.txt")
+        marker = "add_subdirectory(goamdsmi_shim)"
+        note = "disabled by atlas-system-agent: unused Go shim, x86-only flags break aarch64"
+
+        contents = load(self, cmakelists)
+        if note in contents:
+            return  # already patched
+
+        lines = contents.splitlines(keepends=True)
+        for i, line in enumerate(lines):
+            if line.strip() == marker:
+                newline = "\n" if line.endswith("\n") else ""
+                lines[i] = "# {}  # {}{}".format(marker, note, newline)
+                save(self, cmakelists, "".join(lines))
+                self.output.info("Disabled goamdsmi_shim build (aarch64 compatibility)")
+                return
+
+        self.output.warning(
+            "Could not find '{}' in {}; amdsmi layout may have changed".format(marker, cmakelists))
 
     def source(self):
         self.get_spectator_cpp()
