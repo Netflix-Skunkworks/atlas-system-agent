@@ -12,6 +12,10 @@ This agent was designed for Linux systems, and as a result, it does not compile 
 is best to build on a Linux machine:
 
 ```shell
+# required to build amd metrics
+sudo apt install libdrm-dev
+sudo apt install pkg-config
+
 # setup python venv and activate, to gain access to conan cli
 ./setup-venv.sh
 source venv/bin/activate
