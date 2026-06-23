@@ -30,6 +30,7 @@ struct DBusConstants
     static constexpr auto UnitInterface = "org.freedesktop.systemd1.Unit";
     static constexpr auto PropertyActiveState = "ActiveState";
     static constexpr auto PropertySubState = "SubState";
+    static constexpr auto PropertyControlGroup = "ControlGroup";
 
     // Service interface constants
     static constexpr auto ServiceInterface = "org.freedesktop.systemd1.Service";
@@ -38,20 +39,25 @@ struct DBusConstants
 
 struct ServiceMonitorUtilConstants
 {
-    static constexpr auto UTimeIndex{13};
-    static constexpr auto STimeIndex{14};
-    static constexpr auto RssIndex{23};
-    static constexpr auto ProcStatPath{"/proc/stat"};
-    static constexpr auto CpuInfoPath{"/sys/devices/system/cpu/possible"};
-    static constexpr auto AggregateCpuIndex{0};
-    static constexpr unsigned int AggregateCpuDataIndex{1};
     static constexpr auto ProcPath{"/proc"};
     static constexpr auto StatPath{"stat"};
     static constexpr auto FdPath{"fd"};
     static constexpr auto ConfigFileExtPattern = ".*\\.systemd-unit$";
-    static constexpr auto DefaultCoreCount{1};
     static constexpr auto Active{"active"};
     static constexpr auto Running{"running"};
+    // 0-based indices into the /proc/[pid]/stat tokens AFTER the comm field (i.e. starting at
+    // field 3, state). comm (field 2) can contain spaces and ')', so it must be parsed separately;
+    // man-page field F maps to index F-3: utime(14)->11, stime(15)->12, rss(24)->21.
+    static constexpr auto UTimeIndex{11};
+    static constexpr auto STimeIndex{12};
+    static constexpr auto RssIndex{21};
+
+    // cgroup-v2 paths and keys
+    static constexpr auto CgroupBasePath{"/sys/fs/cgroup"};
+    static constexpr auto CpuStatFile{"cpu.stat"};
+    static constexpr auto MemoryCurrentFile{"memory.current"};
+    static constexpr auto CgroupProcsFile{"cgroup.procs"};
+    static constexpr auto CpuUsageKey{"usage_usec"};
 };
 
 struct ProcessTimes
@@ -66,6 +72,7 @@ struct ServiceProperties
     std::string activeState;
     std::string subState;
     unsigned int mainPid;
+    std::string controlGroup;
 };
 
 // DBus Functions
@@ -75,12 +82,15 @@ std::optional<ServiceProperties> get_service_properties(const std::string& servi
 // Config Parsing Functions
 std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(const char* directoryPath);
 
-// Metrics Functions
+// Process (per-PID) metric functions
 std::optional<unsigned long> get_rss(const unsigned int& pid);
-std::optional<unsigned long long> get_total_cpu_time();
 std::optional<unsigned int> get_number_fds(const unsigned int& pid);
-double calculate_cpu_usage(const unsigned long long& oldCpuTime, const unsigned long long& newCpuTime,
-                           const ProcessTimes& oldProcessTime, const ProcessTimes& newProcessTime,
-                           const unsigned int& numCores);
-std::optional<unsigned int> get_cpu_cores();
-std::unordered_map<unsigned int, ProcessTimes> create_pid_map(const std::vector<ServiceProperties>& services);
+std::optional<ProcessTimes> get_process_times(const unsigned int& pid);
+
+// cgroup-v2 metric functions
+// Returns nullopt when the usage_usec key is absent or unparseable (distinct from a real 0).
+std::optional<unsigned long long> parse_cgroup_cpu_stat(const std::vector<std::string>& lines);
+std::optional<unsigned long long> get_cgroup_cpu_usage(const std::string& cgroupPath);
+std::optional<unsigned long long> get_cgroup_memory(const std::string& cgroupPath);
+std::optional<std::vector<unsigned int>> get_cgroup_pids(const std::string& cgroupPath);
+std::optional<unsigned long> get_total_fds(const std::string& cgroupPath);

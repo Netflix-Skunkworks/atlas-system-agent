@@ -471,7 +471,8 @@ struct agent_options
     std::unordered_map<std::string, std::string> network_tags;
     std::string cfg_file;
     bool verbose;
-    unsigned int max_monitored_services{ServiceMonitorConstants::DefaultMonitoredServices};
+    // 0 means "not set" -> the ServiceMonitor constructor falls back to DefaultMonitoredServices.
+    unsigned int max_monitored_services{0};
 };
 
 static constexpr const char* const kDefaultCfgFile = "/etc/default/atlas-agent.json";
@@ -490,6 +491,7 @@ static void usage(const char* progname)
 }
 
 static int parse_options(int& argc, char* const argv[], agent_options* result)
+try
 {
     result->verbose = std::getenv("VERBOSE_AGENT") != nullptr;  // default for backwards compat
 
@@ -508,13 +510,19 @@ static int parse_options(int& argc, char* const argv[], agent_options* result)
                 result->network_tags = atlasagent::parse_tags(optarg);
                 break;
             case 's':
-                result->max_monitored_services = std::stoi(optarg);
-                if (result->max_monitored_services <= 0)
+            {
+                // Parse as signed first so a negative value fails the <= 0 check instead of wrapping
+                // to a huge unsigned. A non-numeric/overflowing optarg throws std::stoi, which the
+                // function-level handler below catches. usage() exits on failure.
+                int value = std::stoi(optarg);
+                if (value <= 0)
                 {
                     fprintf(stderr, "Invalid value for -s: %s\n", optarg);
                     usage(argv[0]);
                 }
+                result->max_monitored_services = static_cast<unsigned int>(value);
                 break;
+            }
             case '?':
             default:
                 usage(argv[0]);
@@ -525,6 +533,12 @@ static int parse_options(int& argc, char* const argv[], agent_options* result)
         result->cfg_file = kDefaultCfgFile;
     }
     return optind;
+}
+catch (const std::exception& e)
+{
+    fprintf(stderr, "Invalid command-line options: %s\n", e.what());
+    usage(argv[0]);
+    return optind;  // unreachable: usage() calls exit()
 }
 
 int main(int argc, char* const argv[])

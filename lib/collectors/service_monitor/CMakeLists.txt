@@ -3,6 +3,7 @@ add_library(service_monitor
     src/service_monitor.h
     src/service_monitor_utils.cpp
     src/service_monitor_utils.h
+    src/cpu_rate_tracker.h
 )
 
 target_include_directories(service_monitor

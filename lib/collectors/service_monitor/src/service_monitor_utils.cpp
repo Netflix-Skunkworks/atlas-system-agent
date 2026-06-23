@@ -4,22 +4,13 @@
 #include "service_monitor_utils.h"
 #include <lib/util/src/util.h>
 
-// The function returns a vector of Unit structs, which contain information about each unit.
 std::optional<std::vector<Unit>> list_all_units()
 try
 {
-    // Create system bus connection
     auto connection = sdbus::createSystemBusConnection();
-
-    // Create the proxy
     auto proxy = sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::Service},
                                     sdbus::ObjectPath{DBusConstants::Path});
 
-    // Create method call message
-    auto methodCall = proxy->createMethodCall(sdbus::InterfaceName{DBusConstants::Interface},
-                                              sdbus::MethodName{DBusConstants::MethodListUnits});
-
-    // Store all the results from the method MethodListUnits into a vector of Unit structs
     std::vector<Unit> units{};
     proxy->callMethod(sdbus::MethodName{DBusConstants::MethodListUnits})
         .onInterface(sdbus::InterfaceName{DBusConstants::Interface})
@@ -37,53 +28,53 @@ catch (const std::exception& e)
     return std::nullopt;
 }
 
-// The function returns a ServiceProperties struct containing the properties of the service.
 std::optional<ServiceProperties> get_service_properties(const std::string& serviceName)
 try
 {
-    // Connect to the system bus
     auto connection = sdbus::createSystemBusConnection();
 
-    // First get the unit object path using Manager.GetUnit method
-    sdbus::ObjectPath unitObjectPath;
     auto managerProxy = sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::Service},
                                            sdbus::ObjectPath{DBusConstants::Path});
 
-    // Get the proper object path for the unit
+    sdbus::ObjectPath unitObjectPath;
     managerProxy->callMethod(DBusConstants::MethodGetUnit)
         .onInterface(DBusConstants::Interface)
         .withArguments(serviceName)
         .storeResultsTo(unitObjectPath);
 
-    // Create a proxy to the service object with the correct path
     auto proxy = sdbus::createProxy(*connection, sdbus::ServiceName{DBusConstants::Service}, unitObjectPath);
 
-    // Get MainPID property
     sdbus::Variant mainPidVariant;
     proxy->callMethod(DBusConstants::MethodGet)
         .onInterface(DBusConstants::PropertiesInterface)
         .withArguments(DBusConstants::ServiceInterface, DBusConstants::PropertyMainPID)
         .storeResultsTo(mainPidVariant);
 
-    // Get ActiveState property
     sdbus::Variant activeStateVariant;
     proxy->callMethod(DBusConstants::MethodGet)
         .onInterface(DBusConstants::PropertiesInterface)
         .withArguments(DBusConstants::UnitInterface, DBusConstants::PropertyActiveState)
         .storeResultsTo(activeStateVariant);
 
-    // Get SubState property
     sdbus::Variant subStateVariant;
     proxy->callMethod(DBusConstants::MethodGet)
         .onInterface(DBusConstants::PropertiesInterface)
         .withArguments(DBusConstants::UnitInterface, DBusConstants::PropertySubState)
         .storeResultsTo(subStateVariant);
 
-    uint32_t mainPid = mainPidVariant.get<uint32_t>();
-    std::string activeState = activeStateVariant.get<std::string>();
-    std::string subState = subStateVariant.get<std::string>();
+    sdbus::Variant controlGroupVariant;
+    proxy->callMethod(DBusConstants::MethodGet)
+        .onInterface(DBusConstants::PropertiesInterface)
+        .withArguments(DBusConstants::ServiceInterface, DBusConstants::PropertyControlGroup)
+        .storeResultsTo(controlGroupVariant);
 
-    return ServiceProperties{serviceName, activeState, subState, mainPid};
+    return ServiceProperties{
+        serviceName,
+        activeStateVariant.get<std::string>(),
+        subStateVariant.get<std::string>(),
+        mainPidVariant.get<uint32_t>(),
+        controlGroupVariant.get<std::string>(),
+    };
 }
 catch (const sdbus::Error& e)
 {
@@ -99,7 +90,6 @@ catch (const std::exception& e)
 std::optional<std::vector<std::regex>> parse_regex_config_file(const char* configFilePath)
 try
 {
-    // Read the all the regex patterns in the config file
     std::optional<std::vector<std::string>> stringPatterns = atlasagent::read_file(configFilePath);
     if (stringPatterns.has_value() == false)
     {
@@ -107,15 +97,12 @@ try
         return std::nullopt;
     }
 
-    // Skip empty files
     if (stringPatterns.value().empty())
     {
         atlasagent::Logger()->debug("Empty config file {}", configFilePath);
         return std::nullopt;
     }
 
-    // Read all the lines in the file and if the line is a valid regex pattern, add it to regexPatterns
-    // If any of the regex patterns are invalid, log the error and return nullopt
     std::vector<std::regex> regexPatterns{};
     for (const auto& regex_pattern : stringPatterns.value())
     {
@@ -154,8 +141,6 @@ try
     std::regex configFileExtPattern(ServiceMonitorUtilConstants::ConfigFileExtPattern);
     std::vector<std::regex> allRegexPatterns{};
 
-    // Iterate through all files in the config directory, but do not process them if they do not match the service
-    // monitoring config regex pattern ".systemd-unit"
     for (const auto& file : std::filesystem::recursive_directory_iterator(directoryPath))
     {
         if (std::regex_match(file.path().filename().string(), configFileExtPattern) == false)
@@ -163,8 +148,6 @@ try
             continue;
         }
 
-        // If parsing the file succeeds, add the regex patterns to allRegexPatterns, otherwise log & continue to the
-        // next file
         auto regexExpressions = parse_regex_config_file(file.path().c_str());
         if (regexExpressions.has_value() == false)
         {
@@ -175,7 +158,6 @@ try
                                 regexExpressions.value().end());
     }
 
-    // If no regex patterns were found in the directory, log the error and return nullopt
     if (allRegexPatterns.empty())
     {
         atlasagent::Logger()->info("No service monitor regex patterns found in directory {}", directoryPath);
@@ -190,30 +172,49 @@ catch (const std::exception& e)
     return std::nullopt;
 }
 
-std::optional<std::vector<std::string>> get_proc_fields(const unsigned int& pid)
+// ── Process (per-PID) helpers ────────────────────────────────────────────────
+
+static std::optional<std::vector<std::string>> get_proc_fields(const unsigned int& pid)
 {
     std::filesystem::path procPath = std::filesystem::path(ServiceMonitorUtilConstants::ProcPath) /
                                      std::to_string(pid) / ServiceMonitorUtilConstants::StatPath;
-    auto pidStats = atlasagent::read_file(procPath.string().c_str());
-    return pidStats;
+    return atlasagent::read_file(procPath.string().c_str());
+}
+
+// Tokenize the fields of /proc/[pid]/stat that follow the comm field. comm (field 2) is the
+// process name wrapped in parentheses and may itself contain spaces and ')', so splitting the
+// whole line on spaces would shift every later field. Per proc(5), parse from the LAST ')': the
+// returned tokens start at field 3 (state) at index 0, so man-page field F is at index F-3.
+static std::optional<std::vector<std::string>> tokenize_post_comm(const std::string& statLine)
+{
+    auto rparen = statLine.rfind(')');
+    if (rparen == std::string::npos)
+    {
+        atlasagent::Logger()->error("Malformed proc stat line, no ')' found: {}", statLine);
+        return std::nullopt;
+    }
+    std::vector<std::string> tokens = absl::StrSplit(statLine.substr(rparen + 1), ' ', absl::SkipWhitespace());
+    return tokens;
 }
 
 std::optional<ProcessTimes> parse_process_times(const std::vector<std::string>& pidStats)
 try
 {
-    auto statLine = pidStats.at(0);
-    std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
-
-    // Check if we have enough tokens before accessing them
-    if (statTokens.size() <= ServiceMonitorUtilConstants::STimeIndex)
+    auto statTokens = tokenize_post_comm(pidStats.at(0));
+    if (statTokens.has_value() == false)
     {
-        atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
-                                    ServiceMonitorUtilConstants::STimeIndex + 1, statTokens.size());
         return std::nullopt;
     }
 
-    unsigned long uTime = std::stoul(statTokens[ServiceMonitorUtilConstants::UTimeIndex]);
-    unsigned long sTime = std::stoul(statTokens[ServiceMonitorUtilConstants::STimeIndex]);
+    if (statTokens->size() <= ServiceMonitorUtilConstants::STimeIndex)
+    {
+        atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
+                                    ServiceMonitorUtilConstants::STimeIndex + 1, statTokens->size());
+        return std::nullopt;
+    }
+
+    unsigned long uTime = std::stoul((*statTokens)[ServiceMonitorUtilConstants::UTimeIndex]);
+    unsigned long sTime = std::stoul((*statTokens)[ServiceMonitorUtilConstants::STimeIndex]);
     return ProcessTimes{uTime, sTime};
 }
 catch (const std::exception& e)
@@ -235,17 +236,19 @@ std::optional<ProcessTimes> get_process_times(const unsigned int& pid)
 std::optional<unsigned long> parse_rss(const std::vector<std::string>& pidStats)
 try
 {
-    auto statLine = pidStats.at(0);
-    std::vector<std::string> statTokens = absl::StrSplit(statLine, ' ', absl::SkipWhitespace());
-    // Check if we have enough tokens before accessing them
-    if (statTokens.size() <= ServiceMonitorUtilConstants::RssIndex)
+    auto statTokens = tokenize_post_comm(pidStats.at(0));
+    if (statTokens.has_value() == false)
+    {
+        return std::nullopt;
+    }
+    if (statTokens->size() <= ServiceMonitorUtilConstants::RssIndex)
     {
         atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
-                                    ServiceMonitorUtilConstants::RssIndex + 1, statTokens.size());
+                                    ServiceMonitorUtilConstants::RssIndex + 1, statTokens->size());
         return std::nullopt;
     }
 
-    return std::stoul(statTokens[ServiceMonitorUtilConstants::RssIndex]);
+    return std::stoul((*statTokens)[ServiceMonitorUtilConstants::RssIndex]);
 }
 catch (const std::exception& e)
 {
@@ -263,32 +266,6 @@ std::optional<unsigned long> get_rss(const unsigned int& pid)
     return parse_rss(pidStats.value());
 }
 
-unsigned long long parse_cpu_time(const std::vector<std::string>& cpuStats)
-{
-    const auto& aggregateStats = cpuStats[ServiceMonitorUtilConstants::AggregateCpuIndex];
-    std::vector<std::string> statTokens = absl::StrSplit(aggregateStats, ' ', absl::SkipWhitespace());
-
-    unsigned long long totalCpuTime{0};
-    for (unsigned int i = ServiceMonitorUtilConstants::AggregateCpuDataIndex; i < statTokens.size(); i++)
-    {
-        totalCpuTime += std::stoul(statTokens.at(i));
-    }
-
-    return totalCpuTime;
-}
-
-std::optional<unsigned long long> get_total_cpu_time()
-{
-    auto cpuStats = atlasagent::read_file(ServiceMonitorUtilConstants::ProcStatPath);
-    if (cpuStats.has_value() == false || cpuStats.value().empty())
-    {
-        atlasagent::Logger()->error("Error reading {}", ServiceMonitorUtilConstants::ProcStatPath);
-        return std::nullopt;
-    }
-
-    return parse_cpu_time(cpuStats.value());
-}
-
 std::optional<unsigned int> get_number_fds(const unsigned int& pid)
 try
 {
@@ -298,7 +275,6 @@ try
     int fd_count = 0;
     for (const auto& entry : std::filesystem::directory_iterator(path))
     {
-        // Only count symbolic links, which represent open file descriptors
         if (entry.is_symlink())
         {
             ++fd_count;
@@ -308,95 +284,118 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("get_number_fds execption: {} ", e.what());
+    atlasagent::Logger()->error("get_number_fds exception: {} ", e.what());
     return std::nullopt;
 }
 
-double calculate_cpu_usage(const unsigned long long& oldCpuTime, const unsigned long long& newCpuTime,
-                           const ProcessTimes& oldProcessTime, const ProcessTimes& newProcessTime,
-                           const unsigned int& numCores)
-{
-    unsigned long long processTimeDelta =
-        (newProcessTime.uTime - oldProcessTime.uTime) + (newProcessTime.sTime - oldProcessTime.sTime);
-    unsigned long long cpuTimeDelta = newCpuTime - oldCpuTime;
-    double cpuUsage = (100.0 * processTimeDelta / cpuTimeDelta) * numCores;
+// ── cgroup-v2 helpers ────────────────────────────────────────────────────────
 
-    return cpuUsage;
-}
-
-unsigned int parse_cores(const std::string& cpuInfo)
+std::optional<unsigned long long> parse_cgroup_cpu_stat(const std::vector<std::string>& lines)
 try
 {
-    if (cpuInfo == "0")
+    for (const auto& line : lines)
     {
-        return ServiceMonitorUtilConstants::DefaultCoreCount;
+        // cpu.stat lines are "<key> <value>". Match the key exactly (a prefix test would also
+        // match e.g. "usage_useconds") and require a value token before parsing it.
+        std::vector<std::string> tokens = absl::StrSplit(line, ' ', absl::SkipWhitespace());
+        if (tokens.size() >= 2 && tokens[0] == ServiceMonitorUtilConstants::CpuUsageKey)
+        {
+            return std::stoull(tokens[1]);
+        }
     }
-
-    // Format is typically "0-N" where N+1 is the number of cores
-    size_t dashPos = cpuInfo.find('-');
-    if (dashPos == std::string::npos)
-    {
-        atlasagent::Logger()->error("Unexpected format in CPU info: {}", cpuInfo);
-        return ServiceMonitorUtilConstants::DefaultCoreCount;
-    }
-
-    unsigned int lastCore = std::stoul(cpuInfo.substr(dashPos + 1));
-    return lastCore + 1;
+    return std::nullopt;
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception in parse_cores");
-    return ServiceMonitorUtilConstants::DefaultCoreCount;
+    atlasagent::Logger()->error("Exception: {} in parse_cgroup_cpu_stat", e.what());
+    return std::nullopt;
 }
 
-std::optional<unsigned int> get_cpu_cores()
+static std::filesystem::path cgroup_path(const std::string& cgroupPath, const char* file)
 {
-    auto possible = atlasagent::read_file(ServiceMonitorUtilConstants::CpuInfoPath);
-    if (possible.has_value() == false || possible.value().empty())
-    {
-        atlasagent::Logger()->error("Error reading {}", ServiceMonitorUtilConstants::CpuInfoPath);
-        return std::nullopt;
-    }
-
-    // File should only be one line
-    if (possible.value().size() != 1)
-    {
-        return std::nullopt;
-    }
-
-    return parse_cores(possible.value()[0]);
+    // cgroupPath from D-Bus starts with '/', e.g. "/system.slice/nginx.service"
+    auto relative = cgroupPath.starts_with('/') ? cgroupPath.substr(1) : cgroupPath;
+    return std::filesystem::path(ServiceMonitorUtilConstants::CgroupBasePath) / relative / file;
 }
 
-/* Iterate through the services and get the main PID and process times for each service
-Store the results in a map where the key is the PID and the value is the ProcessTimes struct
-If any of the process times cannot be retrieved, log the error and continue to the next service
-Return the map of PIDs and process times */
-std::unordered_map<unsigned int, ProcessTimes> create_pid_map(const std::vector<ServiceProperties>& services)
+std::optional<unsigned long long> get_cgroup_cpu_usage(const std::string& cgroupPath)
+{
+    auto path = cgroup_path(cgroupPath, ServiceMonitorUtilConstants::CpuStatFile);
+    auto lines = atlasagent::read_file(path.string().c_str());
+    if (lines.has_value() == false || lines.value().empty())
+    {
+        atlasagent::Logger()->error("Error reading {}", path.string());
+        return std::nullopt;
+    }
+    return parse_cgroup_cpu_stat(lines.value());
+}
+
+std::optional<unsigned long long> get_cgroup_memory(const std::string& cgroupPath)
 try
 {
-    std::unordered_map<unsigned int, ProcessTimes> pidMap{};
-    for (const auto& service : services)
+    auto path = cgroup_path(cgroupPath, ServiceMonitorUtilConstants::MemoryCurrentFile);
+    auto lines = atlasagent::read_file(path.string().c_str());
+    if (lines.has_value() == false || lines.value().empty())
     {
-        if (service.activeState != ServiceMonitorUtilConstants::Active ||
-            service.subState != ServiceMonitorUtilConstants::Running)
-        {
-            atlasagent::Logger()->debug("Service {} is not active and running, not gathering process time",
-                                        service.name);
-            continue;
-        }
-        auto pid = service.mainPid;
-        auto processTimes = get_process_times(pid);
-        if (processTimes.has_value() == false)
-        {
-            atlasagent::Logger()->error("Error getting {} process times", service.name);
-            continue;
-        }
-        pidMap[pid] = processTimes.value();
+        atlasagent::Logger()->error("Error reading {}", path.string());
+        return std::nullopt;
     }
-    return pidMap;
+    return std::stoull(lines.value().at(0));
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in create_pid_map", e.what());
-    return {};
+    atlasagent::Logger()->error("Exception: {} in get_cgroup_memory", e.what());
+    return std::nullopt;
+}
+
+std::optional<std::vector<unsigned int>> get_cgroup_pids(const std::string& cgroupPath)
+try
+{
+    auto path = cgroup_path(cgroupPath, ServiceMonitorUtilConstants::CgroupProcsFile);
+    auto lines = atlasagent::read_file(path.string().c_str());
+    if (lines.has_value() == false)
+    {
+        atlasagent::Logger()->error("Error reading {}", path.string());
+        return std::nullopt;
+    }
+
+    std::vector<unsigned int> pids{};
+    for (const auto& line : lines.value())
+    {
+        if (line.empty())
+        {
+            continue;
+        }
+        pids.emplace_back(std::stoul(line));
+    }
+    return pids;
+}
+catch (const std::exception& e)
+{
+    atlasagent::Logger()->error("Exception: {} in get_cgroup_pids", e.what());
+    return std::nullopt;
+}
+
+std::optional<unsigned long> get_total_fds(const std::string& cgroupPath)
+{
+    auto pids = get_cgroup_pids(cgroupPath);
+    if (pids.has_value() == false)
+    {
+        return std::nullopt;
+    }
+
+    unsigned long total = 0;
+    for (const auto& pid : pids.value())
+    {
+        auto fds = get_number_fds(pid);
+        if (fds.has_value())
+        {
+            total += fds.value();
+        }
+        else
+        {
+            atlasagent::Logger()->debug("Could not get fd count for pid {}, skipping", pid);
+        }
+    }
+    return total;
 }
