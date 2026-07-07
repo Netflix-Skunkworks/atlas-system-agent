@@ -106,7 +106,7 @@ try
     std::vector<std::regex> regexPatterns{};
     for (const auto& regex_pattern : stringPatterns.value())
     {
-        if (regex_pattern.empty())
+        if (regex_pattern.empty() || regex_pattern.find('=') != std::string::npos)
         {
             continue;
         }
@@ -170,6 +170,45 @@ catch (const std::exception& e)
 {
     atlasagent::Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
     return std::nullopt;
+}
+
+// ── Extra tags ──────────────────────────────────────────────────────────────
+
+ExtraTags read_service_extra_tags(const std::string& serviceName)
+{
+    // Derive the config filename from the service name: strip ".service", look for the matching
+    // .systemd-unit file in conf.d/. Lines containing '=' are treated as key=value tags; lines
+    // without '=' are regex patterns (handled by parse_regex_config_file) and skipped here.
+    auto name = serviceName;
+    const std::string suffix = ".service";
+    if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0)
+    {
+        name.erase(name.size() - suffix.size());
+    }
+
+    auto configPath = std::filesystem::path(ServiceMonitorConstants::ConfigPath) / (name + ".systemd-unit");
+
+    ExtraTags tags;
+    auto lines = atlasagent::read_file(configPath.string().c_str());
+    if (!lines)
+    {
+        return tags;
+    }
+
+    for (const auto& line : lines.value())
+    {
+        if (line.empty())
+        {
+            continue;
+        }
+        auto pos = line.find('=');
+        if (pos == std::string::npos || pos == 0)
+        {
+            continue;
+        }
+        tags.emplace(line.substr(0, pos), line.substr(pos + 1));
+    }
+    return tags;
 }
 
 // ── Process (per-PID) helpers ────────────────────────────────────────────────

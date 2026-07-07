@@ -37,6 +37,8 @@ struct DBusConstants
     static constexpr auto PropertyMainPID = "MainPID";
 };
 
+using ExtraTags = std::unordered_map<std::string, std::string>;
+
 struct ServiceMonitorUtilConstants
 {
     static constexpr auto ProcPath{"/proc"};
@@ -81,6 +83,9 @@ std::optional<ServiceProperties> get_service_properties(const std::string& servi
 
 // Config Parsing Functions
 std::optional<std::vector<std::regex>> parse_service_monitor_config_directory(const char* directoryPath);
+
+// Extra tag support: reads key=value lines from the service's .systemd-unit config file.
+ExtraTags read_service_extra_tags(const std::string& serviceName);
 
 // Process (per-PID) metric functions
 std::optional<unsigned long> get_rss(const unsigned int& pid);
