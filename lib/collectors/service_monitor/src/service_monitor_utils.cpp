@@ -68,12 +68,19 @@ try
         .withArguments(DBusConstants::ServiceInterface, DBusConstants::PropertyControlGroup)
         .storeResultsTo(controlGroupVariant);
 
+    sdbus::Variant statusTextVariant;
+    proxy->callMethod(DBusConstants::MethodGet)
+        .onInterface(DBusConstants::PropertiesInterface)
+        .withArguments(DBusConstants::ServiceInterface, DBusConstants::PropertyStatusText)
+        .storeResultsTo(statusTextVariant);
+
     return ServiceProperties{
         serviceName,
         activeStateVariant.get<std::string>(),
         subStateVariant.get<std::string>(),
         mainPidVariant.get<uint32_t>(),
         controlGroupVariant.get<std::string>(),
+        statusTextVariant.get<std::string>(),
     };
 }
 catch (const sdbus::Error& e)
