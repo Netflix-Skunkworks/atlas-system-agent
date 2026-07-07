@@ -105,12 +105,13 @@ catch (const std::exception& e)
 
 template <typename T>
 bool ServiceMonitor::publish_metric(const std::string& service, std::optional<T> val, double scale,
-                                    std::string_view name, std::string_view scope, std::string_view errMsg) const
+                                    std::string_view name, std::string_view scope, std::string_view status,
+                                    std::string_view errMsg) const
 {
     if (val)
     {
-        auto g = scope.empty() ? detail::gauge(registry_, name, service)
-                               : detail::gaugeScoped(registry_, name, service, scope);
+        auto g = scope.empty() ? detail::gauge(registry_, name, service, status)
+                               : detail::gaugeScoped(registry_, name, service, scope, status);
         g.Set(static_cast<double>(*val) * scale);
         return true;
     }
@@ -127,9 +128,9 @@ bool ServiceMonitor::collect_process_metrics(const std::string& service, const S
 {
     bool success = true;
     success &= publish_metric(service, get_rss(props.mainPid), static_cast<double>(pageSize_),
-                              ServiceMonitorConstants::RssName, "", "Failed to get RSS");
+                              ServiceMonitorConstants::RssName, "", props.statusText, "Failed to get RSS");
     success &= publish_metric(service, get_number_fds(props.mainPid), 1.0, ServiceMonitorConstants::FdsName, "process",
-                              "Failed to get FD count");
+                              props.statusText, "Failed to get FD count");
 
     // Read the main PID's accumulated CPU time. On a failed read there is no sample this cycle: skip
     // the tracker update so its baseline is preserved and the next good read spans the gap correctly.
@@ -145,7 +146,7 @@ bool ServiceMonitor::collect_process_metrics(const std::string& service, const S
     // The tracker keys on the PID, so a restart (new PID) resets the baseline rather than producing a
     // cross-generation delta. A missing percentage on the first cycle is normal, not a failure.
     publish_metric(service, cpu.update(props.mainPid, curr_us, now), 1.0, ServiceMonitorConstants::CpuUsageName,
-                   "process");
+                   "process", props.statusText);
     return success;
 }
 
@@ -155,9 +156,9 @@ bool ServiceMonitor::collect_cgroup_metrics(const std::string& service, const Se
 {
     bool success = true;
     success &= publish_metric(service, get_cgroup_memory(props.controlGroup), 1.0, ServiceMonitorConstants::MemoryName,
-                              "", "Failed to get cgroup memory");
+                              "", props.statusText, "Failed to get cgroup memory");
     success &= publish_metric(service, get_total_fds(props.controlGroup), 1.0, ServiceMonitorConstants::FdsName,
-                              "service", "Failed to get cgroup total FDs");
+                              "service", props.statusText, "Failed to get cgroup total FDs");
 
     // As above: a failed read means no sample this cycle, so skip the tracker update.
     auto usage = get_cgroup_cpu_usage(props.controlGroup);
@@ -169,7 +170,7 @@ bool ServiceMonitor::collect_cgroup_metrics(const std::string& service, const Se
 
     // The tracker keys on the control-group path, so a recreated cgroup resets the baseline.
     publish_metric(service, cpu.update(props.controlGroup, *usage, now), 1.0, ServiceMonitorConstants::CpuUsageName,
-                   "service");
+                   "service", props.statusText);
     return success;
 }
 
@@ -190,7 +191,9 @@ try
         }
 
         const auto stateStr = fmt::format("{}.{}", props->activeState, props->subState);
-        detail::gaugeServiceState(registry_, ServiceMonitorConstants::ServiceStatusName, service, stateStr).Set(1);
+        detail::gaugeServiceState(registry_, ServiceMonitorConstants::ServiceStatusName, service, stateStr,
+                                  props->statusText)
+            .Set(1);
 
         if (props->activeState != ServiceMonitorUtilConstants::Active ||
             props->subState != ServiceMonitorUtilConstants::Running)
