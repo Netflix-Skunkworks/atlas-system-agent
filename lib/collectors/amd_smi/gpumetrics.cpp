@@ -77,9 +77,19 @@ std::optional<GpuMetricsAMD> GpuMetricsAMD::Create(Registry* registry) noexcept
     auto count = smi->Count();
     if (count == 0)
     {
+        Logger()->info("No AMD GPUs detected. Agent will not collect AMD SMI metrics.");
         return std::nullopt;
     }
+    Logger()->info("AMD GPU(s) detected. Agent will collect AMD SMI metrics.");
     return GpuMetricsAMD(registry, std::move(smi), count);
+}
+
+void GpuMetricsAMD::Collect(std::optional<GpuMetricsAMD>& self) noexcept
+{
+    if (self.has_value())
+    {
+        self->GPUMetrics();
+    }
 }
 
 GpuMetricsAMD::GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi, uint32_t count) noexcept

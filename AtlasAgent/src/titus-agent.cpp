@@ -57,17 +57,7 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
 
     // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
     // check if these optionals have a set value. lets improve how we handle this
-    std::optional<ServiceMonitor> serviceMetrics{};
-    std::optional<std::vector<std::regex> > serviceConfig{
-        parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
-    if (serviceConfig.has_value())
-    {
-        serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
-    }
-    else
-    {
-        Logger()->info("Service Monitoring is disabled.");
-    }
+    auto serviceMetrics = ServiceMonitor::Create(registry, max_monitored_services);
 
     // initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
@@ -116,10 +106,7 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
             {
                 gpu->gpu_metrics();
             }
-            if (serviceMetrics.has_value() && serviceMetrics.value().gather_metrics() == false)
-            {
-                Logger()->error("Failed to gather Service metrics");
-            }
+            ServiceMonitor::Collect(serviceMetrics);
             auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
             Logger()->info("Published Titus metrics (delay={})", elapsed);
             next_sixty_second_run += seconds(60);

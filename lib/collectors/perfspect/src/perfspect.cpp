@@ -93,6 +93,25 @@ std::optional<std::pair<char, char>> Perfspect::IsValidInstance()
     return std::make_pair(generation, processor);
 }
 
+std::optional<Perfspect> Perfspect::Create(Registry* registry)
+{
+    auto instanceInfo = IsValidInstance();
+    if (!instanceInfo.has_value())
+    {
+        atlasagent::Logger()->info("PerfSpect Monitoring is disabled.");
+        return std::nullopt;
+    }
+    return std::optional<Perfspect>{std::in_place, registry, instanceInfo.value()};
+}
+
+void Perfspect::Collect(std::optional<Perfspect>& self)
+{
+    if (self.has_value())
+    {
+        self->GatherMetrics();
+    }
+}
+
 bool Perfspect::StartScript() try
 {
     // Clean up any existing process first

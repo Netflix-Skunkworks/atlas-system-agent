@@ -20,6 +20,25 @@ ServiceMonitor::ServiceMonitor(Registry* registry, std::vector<std::regex> confi
     }
 }
 
+std::optional<ServiceMonitor> ServiceMonitor::Create(Registry* registry, unsigned int max_services)
+{
+    auto config = parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath);
+    if (!config.has_value())
+    {
+        atlasagent::Logger()->info("Service Monitoring is disabled.");
+        return std::nullopt;
+    }
+    return std::optional<ServiceMonitor>{std::in_place, registry, std::move(config.value()), max_services};
+}
+
+void ServiceMonitor::Collect(std::optional<ServiceMonitor>& self)
+{
+    if (self.has_value() && self->gather_metrics() == false)
+    {
+        atlasagent::Logger()->error("Failed to gather Service metrics");
+    }
+}
+
 bool ServiceMonitor::init_monitored_services()
 try
 {

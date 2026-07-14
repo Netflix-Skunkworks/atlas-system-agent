@@ -73,72 +73,14 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
 
     auto gpu = init_gpu(registry, std::move(nvidia_lib));
 
-    std::optional<GpuMetricsDCGM> gpuDCGM{std::nullopt};
-    if (atlasagent::is_file_present(DCGMConstants::dcgmiPath))
-    {
-        gpuDCGM.emplace(registry);
-    }
-
     // TODO: DCGM, EBS, and ServiceMonitor have Dynamic metric collection. During each iteration we have to
     // check if these optionals have a set value. lets improve how we handle this
-
-    // Create a ServiceMonitor object to monitor Systemd services if any configs are valid
-    std::optional<ServiceMonitor> serviceMetrics{};
-    std::optional<std::vector<std::regex> > serviceConfig{
-        parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath)};
-    if (serviceConfig.has_value())
-    {
-        serviceMetrics.emplace(registry, serviceConfig.value(), max_monitored_services);
-    }
-    else
-    {
-        Logger()->info("Service Monitoring is disabled.");
-    }
-
-    std::optional<Perfspect> perfspectMetrics{};
-    auto instanceInfo = Perfspect::IsValidInstance();
-    if (instanceInfo.has_value())
-    {
-        perfspectMetrics.emplace(registry, instanceInfo.value());
-    }
-    else
-    {
-        Logger()->info("PerfSpect Monitoring is disabled.");
-    }
-
-    // Create an EBS collector object to monitor EBS devices if any configs are valid
-    std::optional<EBSCollector> ebsMetrics{};
-    std::optional<std::unordered_set<std::string> > ebsConfig{parse_ebs_config_directory(EBSConstants::ConfigPath)};
-    if (ebsConfig.has_value())
-    {
-        ebsMetrics.emplace(registry, ebsConfig.value());
-    }
-    else
-    {
-        Logger()->info("EBS Monitoring is disabled.");
-    }
-
-    if (gpuDCGM.has_value())
-    {
-        std::string serviceStatus = atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
-        Logger()->info(
-            "DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service state: {}.",
-            serviceStatus);
-    }
-    else
-    {
-        Logger()->info("DCGMI binary not present. Agent will not collect DCGM metrics.");
-    }
-
+    // Each collector's availability check + logging lives in its own Create() factory.
+    auto gpuDCGM = GpuMetricsDCGM::Create(registry);
+    auto serviceMetrics = ServiceMonitor::Create(registry, max_monitored_services);
+    auto perfspectMetrics = Perfspect::Create(registry);
+    auto ebsMetrics = EBSCollector::Create(registry);
     auto gpuAMD = atlasagent::GpuMetricsAMD::Create(registry);
-    if (gpuAMD.has_value())
-    {
-        Logger()->info("AMD GPU(s) detected. Agent will collect AMD SMI metrics.");
-    }
-    else
-    {
-        Logger()->info("No AMD GPUs detected. Agent will not collect AMD SMI metrics.");
-    }
 
     // initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
@@ -175,10 +117,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
         if (fiveSecondMetricsEnabled == true)
         {
             Logger()->debug("Gathering 5 second metrics");
-            if (perfspectMetrics.has_value())
-            {
-                perfspectMetrics->GatherMetrics();
-            }
+            Perfspect::Collect(perfspectMetrics);
             next_five_second_run += seconds(5);
         }
 
@@ -193,28 +132,10 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
                 gpu->gpu_metrics();
             }
 
-            if (gpuAMD.has_value())
-            {
-                gpuAMD->GPUMetrics();
-            }
-
-            if (gpuDCGM.has_value() && atlasagent::is_service_running(DCGMConstants::ServiceName))
-            {
-                if (gpuDCGM.value().gather_metrics() == false)
-                {
-                    Logger()->error("Failed to gather DCGM metrics");
-                }
-            }
-
-            if (ebsMetrics.has_value() && ebsMetrics.value().gather_metrics() == false)
-            {
-                Logger()->error("Failed to gather EBS metrics");
-            }
-
-            if (serviceMetrics.has_value() && serviceMetrics.value().gather_metrics() == false)
-            {
-                Logger()->error("Failed to gather Service metrics");
-            }
+            atlasagent::GpuMetricsAMD::Collect(gpuAMD);
+            GpuMetricsDCGM::Collect(gpuDCGM);
+            EBSCollector::Collect(ebsMetrics);
+            ServiceMonitor::Collect(serviceMetrics);
 
             auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
             Logger()->debug("Published system metrics (delay={})", elapsed);

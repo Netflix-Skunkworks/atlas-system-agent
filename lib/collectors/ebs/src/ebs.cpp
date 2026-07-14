@@ -126,6 +126,25 @@ EBSCollector::EBSCollector(Registry* registry, const std::unordered_set<std::str
 {
 }
 
+std::optional<EBSCollector> EBSCollector::Create(Registry* registry)
+{
+    auto config = parse_ebs_config_directory(EBSConstants::ConfigPath);
+    if (!config.has_value())
+    {
+        atlasagent::Logger()->info("EBS Monitoring is disabled.");
+        return std::nullopt;
+    }
+    return std::optional<EBSCollector>{std::in_place, registry, config.value()};
+}
+
+void EBSCollector::Collect(std::optional<EBSCollector>& self)
+{
+    if (self.has_value() && self->gather_metrics() == false)
+    {
+        atlasagent::Logger()->error("Failed to gather EBS metrics");
+    }
+}
+
 bool EBSCollector::query_stats_from_device(const std::string& device, nvme_get_amzn_stats_logpage& stats)
 try
 {

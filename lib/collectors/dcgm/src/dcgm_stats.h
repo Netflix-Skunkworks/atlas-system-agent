@@ -72,6 +72,14 @@ class GpuMetricsDCGM
     GpuMetricsDCGM& operator=(GpuMetricsDCGM&& other) = delete;
     bool gather_metrics();
 
+    // Availability-aware factory: builds a collector only when the dcgmi binary is present (logging the
+    // decision and the current service state), otherwise returns nullopt.
+    static std::optional<GpuMetricsDCGM> Create(Registry* registry);
+
+    // Gathers metrics from `self` only when present and the DCGM service is running; a no-op otherwise,
+    // logging on gather failure. The mirror of Create(): it owns the has_value() guard.
+    static void Collect(std::optional<GpuMetricsDCGM>& self);
+
    private:
     bool update_metrics(std::map<int, std::vector<double>>& dataMap);
     Registry* registry_;

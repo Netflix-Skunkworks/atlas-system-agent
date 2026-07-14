@@ -85,6 +85,14 @@ class ServiceMonitor
 
     bool gather_metrics();
 
+    // Availability-aware factory: builds a monitor only when a valid config directory is found (logging
+    // when monitoring is disabled), otherwise returns nullopt.
+    static std::optional<ServiceMonitor> Create(Registry* registry, unsigned int max_services);
+
+    // Gathers metrics from `self` only when present; a no-op when disabled, logging on gather failure.
+    // The mirror of Create(): it owns the has_value() guard so callers don't repeat it.
+    static void Collect(std::optional<ServiceMonitor>& self);
+
    private:
     bool init_monitored_services();
     bool update_metrics();
