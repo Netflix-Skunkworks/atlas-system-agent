@@ -13,21 +13,31 @@ class Proc
         : registry_(registry), net_tags_{std::move(net_tags)}, path_prefix_(std::move(path_prefix))
     {
     }
+    // 60-second "slow" proc metrics for each agent flavor. These are the production entry points;
+    // the individual per-metric collectors below are internal.
+    void CollectSystem() noexcept;
+    void CollectTitus() noexcept;
+
+    // Peak CPU metrics run every second (1s/5s/60s cadence), separate from the slow set above.
+    void CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept;
+    void set_prefix(const std::string& new_prefix) noexcept;  // for testing
+
+   protected:
+    // Not part of the public API — production calls these only via CollectSystem/CollectTitus. They are
+    // protected (rather than private) so the unit tests can exercise each in isolation through a TestProc
+    // subclass, matching the convention used by Disk (see disk.h).
     void network_stats() noexcept;
     void arp_stats() noexcept;
     void snmp_stats() noexcept;
     void netstat_stats() noexcept;
     void loadavg_stats() noexcept;
-    void CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept;
     void memory_stats() noexcept;
     void process_stats() noexcept;
     void socket_stats() noexcept;
     void uptime_stats() noexcept;
     void vmstats() noexcept;
     [[nodiscard]] bool is_container() const noexcept;
-
     std::vector<std::vector<std::string>> ParseProcStatFile();
-    void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
    private:
     void PeakCpuStats(const std::vector<std::string>& aggregateLine);

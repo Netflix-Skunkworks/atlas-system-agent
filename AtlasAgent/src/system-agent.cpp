@@ -50,16 +50,7 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool,
     ethtool->update_stats();
     ntp->update_stats();
     pressureStall->update_stats();
-    proc->arp_stats();
-    proc->loadavg_stats();
-    proc->memory_stats();
-    proc->netstat_stats();
-    proc->network_stats();
-    proc->process_stats();
-    proc->snmp_stats();
-    proc->socket_stats();
-    proc->uptime_stats();
-    proc->vmstats();
+    proc->CollectSystem();
 }
 
 void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,

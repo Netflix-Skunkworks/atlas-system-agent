@@ -35,11 +35,7 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
     cGroup->MemoryStatsStdV2();
     cGroup->NetworkStats();
     disk->titus_disk_stats();
-    proc->netstat_stats();
-    proc->network_stats();
-    proc->process_stats();
-    proc->snmp_stats();
-    proc->uptime_stats();
+    proc->CollectTitus();
 }
 
 void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
