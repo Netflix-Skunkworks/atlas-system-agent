@@ -12,7 +12,7 @@ class Ethtool
    public:
     explicit Ethtool(Registry* registry, std::unordered_map<std::string, std::string> net_tags = {}) noexcept;
 
-    void update_stats() noexcept;
+    void collect() noexcept;
 
    private:
     Registry* registry_;

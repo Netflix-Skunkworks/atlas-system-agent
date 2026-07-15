@@ -30,7 +30,7 @@ static void gather_peak_titus_metrics(CGroup* cGroup, const bool fiveSecondMetri
 
 static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws)
 {
-    aws->update_stats();
+    aws->collect();
     cGroup->MemoryStatsV2();
     cGroup->MemoryStatsStdV2();
     cGroup->NetworkStats();

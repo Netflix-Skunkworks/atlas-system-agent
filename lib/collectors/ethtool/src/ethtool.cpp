@@ -8,7 +8,7 @@ Ethtool::Ethtool(Registry* registry, std::unordered_map<std::string, std::string
 {
 }
 
-void Ethtool::update_stats() noexcept
+void Ethtool::collect() noexcept
 {
     if (can_execute("ethtool"))
     {

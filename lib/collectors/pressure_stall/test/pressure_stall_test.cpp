@@ -15,7 +15,7 @@ class PressureStallTest : public atlasagent::PressureStall
     {
     }
 
-    void stats() { PressureStall::update_stats(); }
+    void stats() { PressureStall::collect(); }
 };
 
 TEST(PressureStallTest, UpdateStats)

@@ -65,7 +65,7 @@ class Aws
     {
     }
 
-    void update_stats() noexcept
+    void collect() noexcept
     {
         auto logger = Logger();
 

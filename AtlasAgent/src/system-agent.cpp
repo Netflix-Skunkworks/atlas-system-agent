@@ -45,11 +45,11 @@ static void gather_scaling_metrics(CpuFreq* cpufreq) { cpufreq->Stats(); }
 static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool, Ntp* ntp, PressureStall* pressureStall,
                                        Aws* aws)
 {
-    aws->update_stats();
+    aws->collect();
     disk->disk_stats();
-    ethtool->update_stats();
-    ntp->update_stats();
-    pressureStall->update_stats();
+    ethtool->collect();
+    ntp->collect();
+    pressureStall->collect();
     proc->CollectSystem();
 }
 
