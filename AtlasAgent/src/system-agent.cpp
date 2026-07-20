@@ -53,8 +53,7 @@ static void gather_slow_system_metrics(Proc* proc, Disk* disk, Ethtool* ethtool,
     proc->CollectSystem();
 }
 
-void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                            const std::unordered_map<std::string, std::string>& net_tags,
+void collect_system_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                             const int& max_monitored_services)
 {
     using std::chrono::duration_cast;
@@ -71,7 +70,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
     PressureStall pressureStall{registry};
     Proc proc{registry, net_tags};
 
-    auto gpu = init_gpu(registry, std::move(nvidia_lib));
+    auto gpu = GpuMetrics::Create(registry);
 
     // TODO: DCGM, EBS, and ServiceMonitor have Dynamic metric collection. During each iteration we have to
     // check if these optionals have a set value. lets improve how we handle this
@@ -127,10 +126,7 @@ void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml
             Logger()->debug("Gathering 60 second metrics");
             gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
             perf_metrics.collect();
-            if (gpu)
-            {
-                gpu->gpu_metrics();
-            }
+            GpuMetrics::Collect(gpu);
 
             atlasagent::GpuMetricsAMD::Collect(gpuAMD);
             GpuMetricsDCGM::Collect(gpuDCGM);

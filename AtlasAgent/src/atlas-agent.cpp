@@ -20,23 +20,6 @@
 #include <random>
 #include <utility>
 
-std::unique_ptr<GpuMetrics> init_gpu(Registry* registry, std::unique_ptr<Nvml> lib)
-{
-    if (lib)
-    {
-        try
-        {
-            lib->initialize();
-            return std::make_unique<GpuMetrics>(registry, std::move(lib));
-        }
-        catch (atlasagent::NvmlException& e)
-        {
-            fprintf(stderr, "Will not collect GPU metrics: %s\n", e.what());
-        }
-    }
-    return {};
-}
-
 terminator runner;
 
 static void handle_signal(int signal)
@@ -210,27 +193,16 @@ int main(int argc, char* const argv[])
         Logger::GetLogger()->set_level(spdlog::level::debug);
     }
 
-    std::unique_ptr<Nvml> nvidia_lib;
-    try
-    {
-        nvidia_lib = std::make_unique<Nvml>();
-        logger->info("Will attempt to collect GPU metrics");
-    }
-    catch (atlasagent::NvmlException& e)
-    {
-        logger->info("Will not collect GPU metrics: {}", e.what());
-    }
-
     atlasagent::HttpClient::GlobalInit();
 
     Config config(WriterConfig(WriterTypes::Unix), common_tags);
     Registry registry(config);
 #if defined(TITUS_SYSTEM_SERVICE)
     Logger()->info("Start gathering Titus system metrics");
-    collect_titus_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
+    collect_titus_metrics(&registry, options.network_tags, options.max_monitored_services);
 #else
     Logger()->info("Start gathering EC2 system metrics");
-    collect_system_metrics(&registry, std::move(nvidia_lib), options.network_tags, options.max_monitored_services);
+    collect_system_metrics(&registry, options.network_tags, options.max_monitored_services);
 #endif
     logger->info("Shutting down spectator registry");
     atlasagent::HttpClient::GlobalShutdown();

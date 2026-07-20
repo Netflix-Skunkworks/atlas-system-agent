@@ -38,8 +38,7 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
     proc->CollectTitus();
 }
 
-void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                           const std::unordered_map<std::string, std::string>& net_tags,
+void collect_titus_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                            const int& max_monitored_services)
 {
     using std::chrono::duration_cast;
@@ -53,7 +52,7 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
     PerfMetrics perf_metrics{registry, ""};
     Proc proc{registry, std::move(net_tags)};
 
-    auto gpu = init_gpu(registry, std::move(nvidia_lib));
+    auto gpu = GpuMetrics::Create(registry);
 
     // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
     // check if these optionals have a set value. lets improve how we handle this
@@ -102,10 +101,7 @@ void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml>
         {
             gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
             perf_metrics.collect();
-            if (gpu)
-            {
-                gpu->gpu_metrics();
-            }
+            GpuMetrics::Collect(gpu);
             ServiceMonitor::Collect(serviceMetrics);
             auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
             Logger()->info("Published Titus metrics (delay={})", elapsed);

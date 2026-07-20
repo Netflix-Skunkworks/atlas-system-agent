@@ -53,21 +53,14 @@ struct terminator
 
 extern terminator runner;
 
-// Attempt to initialize the NVML library and construct a GpuMetrics collector.
-// Returns an empty pointer (and logs) if the library is unavailable, so callers
-// can simply skip GPU collection when the result is falsy.
-std::unique_ptr<GpuMetrics> init_gpu(Registry* registry, std::unique_ptr<Nvml> lib);
-
 // Randomized initial delay (in seconds) to avoid publishing right on a minute
 // boundary. Shared by both collector loops.
 long initial_polling_delay();
 
 #if defined(TITUS_SYSTEM_SERVICE)
-void collect_titus_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                           const std::unordered_map<std::string, std::string>& net_tags,
+void collect_titus_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                            const int& max_monitored_services);
 #else
-void collect_system_metrics(Registry* registry, std::unique_ptr<atlasagent::Nvml> nvidia_lib,
-                            const std::unordered_map<std::string, std::string>& net_tags,
+void collect_system_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                             const int& max_monitored_services);
 #endif
