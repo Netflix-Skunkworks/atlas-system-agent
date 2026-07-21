@@ -12,7 +12,7 @@ PressureStall::PressureStall(Registry* registry, const std::string path_prefix) 
 
 void PressureStall::set_prefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
-void PressureStall::update_stats() noexcept
+void PressureStall::collect() noexcept
 {
     // /proc/pressure is not available on RHEL/Rocky
     if (!std::filesystem::exists(path_prefix_))

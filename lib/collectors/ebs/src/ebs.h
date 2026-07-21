@@ -120,6 +120,14 @@ class EBSCollector
     EBSCollector(Registry* registry, const std::unordered_set<std::string>& config);
 
     bool gather_metrics();
+
+    // Availability-aware factory: builds a collector only when a valid config directory is found (logging
+    // when monitoring is disabled), otherwise returns nullopt.
+    static std::optional<EBSCollector> Create(Registry* registry);
+
+    // Gathers metrics from `self` only when present; a no-op when disabled, logging on gather failure.
+    // The mirror of Create(): it owns the has_value() guard so callers don't repeat it.
+    static void Collect(std::optional<EBSCollector>& self);
 };
 
 struct EBSConstants

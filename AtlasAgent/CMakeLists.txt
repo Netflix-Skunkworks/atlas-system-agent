@@ -1,5 +1,14 @@
 #-- atlas_system_agent executable
-add_executable(atlas_system_agent "src/atlas-agent.cpp")
+# The entry point is shared; the per-flavor collection logic lives in a separate
+# source selected by TITUS_SYSTEM_SERVICE (see the top-level CMakeLists.txt), so
+# only one collector implementation is ever compiled into the binary.
+if(TITUS_SYSTEM_SERVICE)
+    set(ATLAS_AGENT_SOURCES src/atlas-agent.cpp src/titus-agent.cpp)
+else()
+    set(ATLAS_AGENT_SOURCES src/atlas-agent.cpp src/system-agent.cpp)
+endif()
+
+add_executable(atlas_system_agent ${ATLAS_AGENT_SOURCES})
 
 target_include_directories(atlas_system_agent
     PUBLIC ${CMAKE_SOURCE_DIR}

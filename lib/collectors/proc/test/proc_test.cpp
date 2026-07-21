@@ -15,12 +15,33 @@ namespace
 
 using atlasagent::Logger;
 
+// Proc keeps its per-metric collectors protected (production reaches them only via CollectSystem/
+// CollectTitus). This subclass re-exposes them so the tests can exercise each in isolation, matching
+// the TestDisk pattern in disk_test.cpp.
+class TestProc : public atlasagent::Proc
+{
+   public:
+    using Proc::Proc;  // inherit constructors
+    using Proc::arp_stats;
+    using Proc::is_container;
+    using Proc::loadavg_stats;
+    using Proc::memory_stats;
+    using Proc::netstat_stats;
+    using Proc::network_stats;
+    using Proc::ParseProcStatFile;
+    using Proc::process_stats;
+    using Proc::snmp_stats;
+    using Proc::socket_stats;
+    using Proc::uptime_stats;
+    using Proc::vmstats;
+};
+
 TEST(Proc, ParseNetwork)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     std::unordered_map<std::string, std::string> extra_tags{{"nf.test", "extra"}};
-    atlasagent::Proc proc{&r, extra_tags, "testdata/resources/proc"};
+    TestProc proc{&r, extra_tags, "testdata/resources/proc"};
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     proc.network_stats();
@@ -99,7 +120,7 @@ TEST(Proc, ParseSnmp)
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     std::unordered_map<std::string, std::string> extra_tags{{"nf.test", "extra"}};
-    atlasagent::Proc proc{&r, extra_tags, "testdata/resources/proc"};
+    TestProc proc{&r, extra_tags, "testdata/resources/proc"};
 
     proc.snmp_stats();
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -222,7 +243,7 @@ TEST(Proc, ParseLoadAvg)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
     proc.loadavg_stats();
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -248,7 +269,7 @@ TEST(Proc, IsContainer)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
 
     EXPECT_TRUE(proc.is_container());
     proc.set_prefix("testdata/resources/proc-host");
@@ -259,7 +280,7 @@ TEST(Proc, CpuStats)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 
@@ -306,7 +327,7 @@ TEST(Proc, UptimeStats)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
     proc.uptime_stats();
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -320,7 +341,7 @@ TEST(Proc, VmStats)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
     proc.vmstats();
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     auto messages = memoryWriter->GetMessages();
@@ -357,7 +378,7 @@ TEST(Proc, MemoryStats)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
     proc.memory_stats();
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -379,7 +400,7 @@ TEST(Proc, ParseNetstat)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
     proc.netstat_stats();
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -405,7 +426,7 @@ TEST(Proc, ParseSocketStats)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
     proc.socket_stats();
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -422,7 +443,7 @@ TEST(Proc, ArpStats)
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
 
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
     proc.arp_stats();
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -437,7 +458,7 @@ TEST(Proc, ProcessStats)
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
 
-    atlasagent::Proc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc"};
     proc.process_stats();
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
@@ -452,7 +473,7 @@ TEST(Proc, ParseProcStat)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    atlasagent::Proc proc{&r, {{}}, "testdata/resources/proc"};
+    TestProc proc{&r, {{}}, "testdata/resources/proc"};
 
     auto cpu_lines = proc.ParseProcStatFile();
     std::vector<std::string> expectedLine1 = {"cpu", "718817", "7438", "186499", "51562797", "19187",

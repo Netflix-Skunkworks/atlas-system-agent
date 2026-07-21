@@ -126,6 +126,10 @@ class GpuMetricsAMD
 
     void GPUMetrics() noexcept;
 
+    // Gathers metrics from `self` only when present; a no-op when no AMD GPUs are available. The mirror
+    // of Create(): it owns the has_value() guard so callers don't repeat it.
+    static void Collect(std::optional<GpuMetricsAMD>& self) noexcept;
+
    private:
     struct XgmiSample
     {

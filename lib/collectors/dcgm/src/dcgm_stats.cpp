@@ -8,6 +8,30 @@
 using atlasagent::GetLogger;
 using atlasagent::Logger;
 
+std::optional<GpuMetricsDCGM> GpuMetricsDCGM::Create(Registry* registry)
+{
+    if (!atlasagent::is_file_present(DCGMConstants::dcgmiPath))
+    {
+        Logger()->info("DCGMI binary not present. Agent will not collect DCGM metrics.");
+        return std::nullopt;
+    }
+    std::string serviceStatus = atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
+    Logger()->info("DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service state: {}.",
+                   serviceStatus);
+    return std::optional<GpuMetricsDCGM>{std::in_place, registry};
+}
+
+void GpuMetricsDCGM::Collect(std::optional<GpuMetricsDCGM>& self)
+{
+    if (self.has_value() && atlasagent::is_service_running(DCGMConstants::ServiceName))
+    {
+        if (self->gather_metrics() == false)
+        {
+            Logger()->error("Failed to gather DCGM metrics");
+        }
+    }
+}
+
 bool parse_lines(const std::vector<std::string>& lines, std::map<int, std::vector<double>>& dataMap)
 try
 {

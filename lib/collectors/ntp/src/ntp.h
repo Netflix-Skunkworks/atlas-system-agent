@@ -33,7 +33,7 @@ class Ntp
    public:
     explicit Ntp(Registry* registry) noexcept;
 
-    void update_stats() noexcept;
+    void collect() noexcept;
 
    private:
     Registry* registry_;

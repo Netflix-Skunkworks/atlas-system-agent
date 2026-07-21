@@ -14,7 +14,7 @@ class PressureStall
 
     void set_prefix(std::string new_prefix) noexcept;
 
-    void update_stats() noexcept;
+    void collect() noexcept;
 
    private:
     Registry* registry_;

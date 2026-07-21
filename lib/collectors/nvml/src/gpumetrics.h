@@ -1,7 +1,13 @@
 #pragma once
 
 #include "nvml.h"
+#include <lib/logger/src/logger.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
+
+#include <cstdio>
+#include <memory>
+#include <optional>
+#include <utility>
 
 namespace atlasagent
 {
@@ -28,6 +34,45 @@ class GpuMetrics
 {
    public:
     GpuMetrics(Registry* registry, std::unique_ptr<Lib> nvml) noexcept : registry_(registry), nvml_(std::move(nvml)) {}
+
+    // Availability-aware factory: loads the NVML library and initializes it, logging along the way.
+    // Returns std::nullopt when the library is unavailable or fails to initialize, so callers can
+    // skip GPU collection. The mirror of GpuMetricsAMD::Create().
+    static std::optional<GpuMetrics> Create(Registry* registry)
+    {
+        std::unique_ptr<Lib> lib;
+        try
+        {
+            lib = std::make_unique<Lib>();
+            Logger()->info("Will attempt to collect GPU metrics");
+        }
+        catch (NvmlException& e)
+        {
+            Logger()->info("Will not collect GPU metrics: {}", e.what());
+            return std::nullopt;
+        }
+
+        try
+        {
+            lib->initialize();
+            return GpuMetrics(registry, std::move(lib));
+        }
+        catch (NvmlException& e)
+        {
+            fprintf(stderr, "Will not collect GPU metrics: %s\n", e.what());
+        }
+        return std::nullopt;
+    }
+
+    // Gathers metrics from `self` only when present; a no-op when GPU collection is disabled. The
+    // mirror of Create(): it owns the has_value() guard so callers don't repeat it.
+    static void Collect(std::optional<GpuMetrics>& self) noexcept
+    {
+        if (self.has_value())
+        {
+            self->gpu_metrics();
+        }
+    }
 
     void gpu_metrics() noexcept
     {

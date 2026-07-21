@@ -735,6 +735,29 @@ catch (const std::exception& ex)
     return {};
 }
 
+void Proc::CollectSystem() noexcept
+{
+    arp_stats();
+    loadavg_stats();
+    memory_stats();
+    netstat_stats();
+    network_stats();
+    process_stats();
+    snmp_stats();
+    socket_stats();
+    uptime_stats();
+    vmstats();
+}
+
+void Proc::CollectTitus() noexcept
+{
+    netstat_stats();
+    network_stats();
+    process_stats();
+    snmp_stats();
+    uptime_stats();
+}
+
 void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept
 {
     auto cpuLines = ParseProcStatFile();

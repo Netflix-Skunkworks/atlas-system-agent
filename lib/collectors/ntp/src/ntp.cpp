@@ -18,7 +18,7 @@ Ntp<Clock>::Ntp(Registry* registry) noexcept
 }
 
 template <typename Clock>
-void Ntp<Clock>::update_stats() noexcept
+void Ntp<Clock>::collect() noexcept
 {
     if (can_execute("chronyc"))
     {

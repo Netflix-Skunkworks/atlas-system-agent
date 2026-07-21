@@ -68,6 +68,14 @@ class Perfspect
     bool GatherMetrics();
     static std::optional<std::pair<char, char>> IsValidInstance();
 
+    // Availability-aware factory: builds a collector only on a valid instance (logging when monitoring
+    // is disabled), otherwise returns nullopt.
+    static std::optional<Perfspect> Create(Registry* registry);
+
+    // Gathers metrics from `self` only when present; a no-op when the feature is disabled. The mirror
+    // of Create(): it owns the has_value() guard so callers don't repeat it.
+    static void Collect(std::optional<Perfspect>& self);
+
    private:
     void AsyncRead();
     bool CleanupProcess();
