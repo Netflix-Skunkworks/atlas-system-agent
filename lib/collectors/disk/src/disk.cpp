@@ -43,8 +43,8 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept
 {
     auto unwanted_filesystems = get_nodev_filesystems(path_prefix_);
     unwanted_filesystems.erase("tmpfs");
-#if defined(TITUS_SYSTEM_SERVICE)
-    // for titus we generate metrics for overlay fs
+#if defined(AGENT_FLAVOR_TITUS) || defined(AGENT_FLAVOR_K8S)
+    // for titus and k8s (both container flavors) we generate metrics for overlay fs
     // see overlay_stats()
     unwanted_filesystems.erase("overlay");
 #endif

@@ -1,9 +1,11 @@
 #-- atlas_system_agent executable
 # The entry point is shared; the per-flavor collection logic lives in a separate
-# source selected by TITUS_SYSTEM_SERVICE (see the top-level CMakeLists.txt), so
-# only one collector implementation is ever compiled into the binary.
-if(TITUS_SYSTEM_SERVICE)
+# source selected by AGENT_FLAVOR (see the top-level CMakeLists.txt), so only one
+# collector implementation is ever compiled into the binary.
+if(AGENT_FLAVOR STREQUAL "titus")
     set(ATLAS_AGENT_SOURCES src/atlas-agent.cpp src/titus-agent.cpp)
+elseif(AGENT_FLAVOR STREQUAL "k8s")
+    set(ATLAS_AGENT_SOURCES src/atlas-agent.cpp src/k8s-agent.cpp)
 else()
     set(ATLAS_AGENT_SOURCES src/atlas-agent.cpp src/system-agent.cpp)
 endif()

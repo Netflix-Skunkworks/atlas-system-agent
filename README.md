@@ -1,10 +1,16 @@
-# Atlas System Agent / Atlas Titus Agent
+# Atlas System Agent / Atlas Titus Agent / Atlas K8s Agent
 
 [![Build](https://github.com/Netflix-Skunkworks/atlas-system-agent/actions/workflows/build.yml/badge.svg)](https://github.com/Netflix-Skunkworks/atlas-system-agent/actions/workflows/build.yml)
 
-An agent that reports metrics for EC2 instances or [Titus] containers.
+An agent that reports metrics for EC2 instances, [Titus] containers, or
+[Kubernetes] containers.
+
+The build produces one of three mutually-exclusive flavors, selected at compile
+time via the `AGENT_FLAVOR` environment variable (`system` (default), `titus`, or
+`k8s`) consumed by `build.sh`.
 
 [Titus]: https://github.com/Netflix/titus/
+[Kubernetes]: https://kubernetes.io/
 
 ## Local & IDE Configuration
 
@@ -21,6 +27,10 @@ sudo apt install pkg-config
 source venv/bin/activate
 
 ./build.sh  # [clean|clean --confirm|skiptest]
+
+# build a specific flavor (default is system)
+AGENT_FLAVOR=titus ./build.sh
+AGENT_FLAVOR=k8s ./build.sh
 ```
 
 * Install the Conan plugin for CLion.

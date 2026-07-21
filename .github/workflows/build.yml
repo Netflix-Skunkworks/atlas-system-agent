@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent: [system, titus]
+        agent: [system, titus, k8s]
     steps:
       - uses: actions/checkout@v4
 
@@ -21,16 +21,8 @@ jobs:
           sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
           sudo apt-get update && sudo apt-get install -y binutils-dev g++-15 libiberty-dev libdrm-dev
 
-      - name: Build atlas-system-agent
-        if: ${{ startsWith(matrix.agent, 'system') }}
+      - name: Build atlas-${{ matrix.agent }}-agent
         run: |
           ./setup-venv.sh
           source venv/bin/activate
-          TITUS_SYSTEM_SERVICE=OFF ./build.sh
-
-      - name: Build atlas-titus-agent
-        if: ${{ startsWith(matrix.agent, 'titus') }}
-        run: |
-          ./setup-venv.sh
-          source venv/bin/activate
-          TITUS_SYSTEM_SERVICE=ON ./build.sh
+          AGENT_FLAVOR=${{ matrix.agent }} ./build.sh

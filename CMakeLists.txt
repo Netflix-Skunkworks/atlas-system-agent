@@ -24,12 +24,22 @@ find_package(sdbus-c++ REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(ZLIB REQUIRED)
 
-option(TITUS_SYSTEM_SERVICE "Titus System Service" OFF)
-if(TITUS_SYSTEM_SERVICE)
+# Agent build flavor. Exactly one of the three mutually-exclusive collector
+# implementations is compiled, selected by this value and mapped to a per-flavor
+# preprocessor define. See AtlasAgent/CMakeLists.txt for the source selection.
+set(AGENT_FLAVOR "system" CACHE STRING "Agent flavor: system, titus, or k8s")
+set_property(CACHE AGENT_FLAVOR PROPERTY STRINGS system titus k8s)
+if(AGENT_FLAVOR STREQUAL "titus")
     message(STATUS "building atlas-titus-agent")
-    add_definitions(-DTITUS_SYSTEM_SERVICE)
-else()
+    add_definitions(-DAGENT_FLAVOR_TITUS)
+elseif(AGENT_FLAVOR STREQUAL "k8s")
+    message(STATUS "building atlas-k8s-agent")
+    add_definitions(-DAGENT_FLAVOR_K8S)
+elseif(AGENT_FLAVOR STREQUAL "system")
     message(STATUS "building atlas-system-agent")
+    add_definitions(-DAGENT_FLAVOR_SYSTEM)
+else()
+    message(FATAL_ERROR "Invalid AGENT_FLAVOR '${AGENT_FLAVOR}'; must be system, titus, or k8s")
 endif()
 
 add_subdirectory(thirdparty/spectator-cpp)
