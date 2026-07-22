@@ -17,7 +17,7 @@ class AtlasSystemAgentConan(ConanFile):
         "libcurl/8.10.1",
         "openssl/3.3.2",
         "rapidjson/cci.20230929",
-        "sdbus-cpp/2.0.0",
+        "sdbus-cpp/2.3.1",
         "spdlog/1.15.0",
         "zlib/1.3.1",
     )
