@@ -17,7 +17,7 @@ class AtlasSystemAgentConan(ConanFile):
         "libcurl/8.10.1",
         "openssl/3.3.2",
         "rapidjson/cci.20230929",
-        "sdbus-cpp/2.0.0",
+        "sdbus-cpp/2.3.1",
         "spdlog/1.15.0",
         "zlib/1.3.1",
     )
@@ -25,6 +25,8 @@ class AtlasSystemAgentConan(ConanFile):
     generators = "CMakeDeps", "CMakeToolchain"
 
     def requirements(self):
+        # Pin the libsystemd pulled in transitively by sdbus-cpp
+        self.requires("libsystemd/255.10", override=True)
         # TODO: remove this when SystemD updates package for zstd
         self.requires("zstd/1.5.7", override=True)
         # TODO: remove this when SystemD updates package for xz_utils
