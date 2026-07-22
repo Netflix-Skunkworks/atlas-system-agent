@@ -1,7 +1,13 @@
-// Titus-agent metric collection. Compiled only when AGENT_FLAVOR=titus
-// (AGENT_FLAVOR_TITUS is defined; see AtlasAgent/CMakeLists.txt). The system-agent
-// and k8s-agent equivalents live in system-agent.cpp / k8s-agent.cpp; shared
+// Kubernetes-agent metric collection. Compiled only when AGENT_FLAVOR=k8s
+// (AGENT_FLAVOR_K8S is defined; see the top-level CMakeLists.txt). The titus-agent
+// and system-agent equivalents live in titus-agent.cpp / system-agent.cpp; shared
 // helpers are declared in atlas-agent.h.
+//
+// The k8s flavor currently mirrors the Titus (container) collector set: both are
+// cgroup-v2 container-scoped agents. It uses dedicated k8s collection methods
+// (Proc::CollectK8s, Disk::k8s_disk_stats) that currently duplicate the Titus
+// logic, giving k8s its own place to diverge as its resource semantics differ
+// from Atlas/Titus.
 
 #include "atlas-agent.h"
 
@@ -24,23 +30,23 @@ using Disk = atlasagent::Disk;
 using PerfMetrics = atlasagent::PerfMetrics;
 using Proc = atlasagent::Proc;
 
-static void gather_peak_titus_metrics(CGroup* cGroup, const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
+static void gather_peak_k8s_metrics(CGroup* cGroup, const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
 {
     cGroup->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 }
 
-static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws)
+static void gather_slow_k8s_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws)
 {
     aws->collect();
     cGroup->MemoryStatsV2();
     cGroup->MemoryStatsStdV2();
     cGroup->NetworkStats();
-    disk->titus_disk_stats();
-    proc->CollectTitus();
+    disk->k8s_disk_stats();
+    proc->CollectK8s();
 }
 
-void collect_titus_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
-                           const int& max_monitored_services)
+void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
+                         const int& max_monitored_services)
 {
     using std::chrono::duration_cast;
     using std::chrono::milliseconds;
@@ -69,8 +75,8 @@ void collect_titus_metrics(Registry* registry, const std::unordered_map<std::str
 
     // the first call to this gather function takes ~100ms, so it must be
     // done before we start calculating times to wait for peak metrics
-    gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
-    Logger()->info("Published slow Titus metrics (first iteration)");
+    gather_slow_k8s_metrics(&cGroup, &proc, &disk, &aws);
+    Logger()->info("Published slow Kubernetes metrics (first iteration)");
 
     auto now = system_clock::now();
     auto next_run = now;
@@ -86,7 +92,7 @@ void collect_titus_metrics(Registry* registry, const std::unordered_map<std::str
 
         // 1 second, 5 second, and 60 second CPU metrics are gathered here because they read from
         // the same /proc/stat file
-        gather_peak_titus_metrics(&cGroup, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+        gather_peak_k8s_metrics(&cGroup, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 
         // If its time to gather 5 second metrics, update the next run time
         // Currently we only have CPU metrics that run every 5 seconds, but if we add more in the future
@@ -100,12 +106,12 @@ void collect_titus_metrics(Registry* registry, const std::unordered_map<std::str
         // If its time to gather 60 second metrics, gather the metrics and update the next run time
         if (sixtySecondMetricsEnabled == true)
         {
-            gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
+            gather_slow_k8s_metrics(&cGroup, &proc, &disk, &aws);
             perf_metrics.collect();
             GpuMetrics::Collect(gpu);
             ServiceMonitor::Collect(serviceMetrics);
             auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
-            Logger()->info("Published Titus metrics (delay={})", elapsed);
+            Logger()->info("Published Kubernetes metrics (delay={})", elapsed);
             next_sixty_second_run += seconds(60);
         }
 

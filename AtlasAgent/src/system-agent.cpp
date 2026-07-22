@@ -1,6 +1,7 @@
-// System-agent metric collection. Compiled only when TITUS_SYSTEM_SERVICE is
-// NOT defined (see AtlasAgent/CMakeLists.txt). The titus-agent equivalent lives
-// in titus-agent.cpp; shared helpers are declared in atlas-agent.h.
+// System-agent metric collection. Compiled only when AGENT_FLAVOR=system
+// (the default; see AtlasAgent/CMakeLists.txt). The titus-agent and k8s-agent
+// equivalents live in titus-agent.cpp / k8s-agent.cpp; shared helpers are
+// declared in atlas-agent.h.
 
 #include "atlas-agent.h"
 

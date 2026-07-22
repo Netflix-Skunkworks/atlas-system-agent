@@ -1,9 +1,10 @@
 #pragma once
 
-// Declarations shared between the entry point (atlas-agent.cpp) and the two
-// mutually-exclusive collector implementations (system-agent.cpp and
-// titus-agent.cpp). Only one collector source is compiled per build, selected
-// by the TITUS_SYSTEM_SERVICE definition (see the top-level CMakeLists.txt).
+// Declarations shared between the entry point (atlas-agent.cpp) and the three
+// mutually-exclusive collector implementations (system-agent.cpp,
+// titus-agent.cpp, and k8s-agent.cpp). Only one collector source is compiled per
+// build, selected by AGENT_FLAVOR (system|titus|k8s), which maps to one of the
+// AGENT_FLAVOR_{SYSTEM,TITUS,K8S} defines (see the top-level CMakeLists.txt).
 
 #include <lib/collectors/nvml/src/gpumetrics.h>
 #include <lib/logger/src/logger.h>
@@ -57,9 +58,12 @@ extern terminator runner;
 // boundary. Shared by both collector loops.
 long initial_polling_delay();
 
-#if defined(TITUS_SYSTEM_SERVICE)
+#if defined(AGENT_FLAVOR_TITUS)
 void collect_titus_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                            const int& max_monitored_services);
+#elif defined(AGENT_FLAVOR_K8S)
+void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
+                         const int& max_monitored_services);
 #else
 void collect_system_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                             const int& max_monitored_services);

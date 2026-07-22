@@ -76,10 +76,14 @@ if [[ $OSTYPE == "darwin"* ]]; then
 fi
 
 echo -e "${BLUE}==== generate build files ====${NC}"
-if [[ "$TITUS_SYSTEM_SERVICE" != "ON" ]]; then
-  TITUS_SYSTEM_SERVICE=OFF
+if [[ -z "$AGENT_FLAVOR" ]]; then
+  AGENT_FLAVOR=system
 fi
-cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DTITUS_SYSTEM_SERVICE="$TITUS_SYSTEM_SERVICE"
+if [[ "$AGENT_FLAVOR" != "system" && "$AGENT_FLAVOR" != "titus" && "$AGENT_FLAVOR" != "k8s" ]]; then
+  echo -e "${RED}ERROR: AGENT_FLAVOR must be system, titus, or k8s (got '$AGENT_FLAVOR')${NC}"
+  exit 1
+fi
+cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DAGENT_FLAVOR="$AGENT_FLAVOR"
 
 echo -e "${BLUE}==== build ====${NC}"
 cmake --build .

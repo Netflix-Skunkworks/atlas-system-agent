@@ -1,8 +1,9 @@
-// Entry point for the Atlas agent. This file holds the pieces common to both
+// Entry point for the Atlas agent. This file holds the pieces common to all
 // build flavors — option parsing, signal handling, and the helpers shared by
 // the collector loops. The per-flavor collection logic lives in
-// system-agent.cpp / titus-agent.cpp (only one is compiled per build, selected
-// by TITUS_SYSTEM_SERVICE); the shared declarations live in atlas-agent.h.
+// system-agent.cpp / titus-agent.cpp / k8s-agent.cpp (only one is compiled per
+// build, selected by AGENT_FLAVOR); the shared declarations live in
+// atlas-agent.h.
 
 #include "atlas-agent.h"
 
@@ -168,8 +169,10 @@ int main(int argc, char* const argv[])
     argc -= idx;
     argv += idx;
 
-#if defined(TITUS_SYSTEM_SERVICE)
+#if defined(AGENT_FLAVOR_TITUS)
     const char* process = argc > 1 ? argv[1] : "atlas-titus-agent";
+#elif defined(AGENT_FLAVOR_K8S)
+    const char* process = argc > 1 ? argv[1] : "atlas-k8s-agent";
 #else
     const char* process = argc > 1 ? argv[1] : "atlas-system-agent";
 #endif
@@ -178,7 +181,7 @@ int main(int argc, char* const argv[])
     backward::SignalHandling sh;
 
     std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", process}};
-#if defined(TITUS_SYSTEM_SERVICE)
+#if defined(AGENT_FLAVOR_TITUS)
     auto titus_host = std::getenv("TITUS_HOST_EC2_INSTANCE_ID");
     if (titus_host != nullptr && titus_host[0] != '\0')
     {
@@ -197,9 +200,12 @@ int main(int argc, char* const argv[])
 
     Config config(WriterConfig(WriterTypes::Unix), common_tags);
     Registry registry(config);
-#if defined(TITUS_SYSTEM_SERVICE)
+#if defined(AGENT_FLAVOR_TITUS)
     Logger()->info("Start gathering Titus system metrics");
     collect_titus_metrics(&registry, options.network_tags, options.max_monitored_services);
+#elif defined(AGENT_FLAVOR_K8S)
+    Logger()->info("Start gathering Kubernetes system metrics");
+    collect_k8s_metrics(&registry, options.network_tags, options.max_monitored_services);
 #else
     Logger()->info("Start gathering EC2 system metrics");
     collect_system_metrics(&registry, options.network_tags, options.max_monitored_services);
