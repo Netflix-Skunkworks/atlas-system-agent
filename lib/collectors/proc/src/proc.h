@@ -17,6 +17,7 @@ class Proc
     // the individual per-metric collectors below are internal.
     void CollectSystem() noexcept;
     void CollectTitus() noexcept;
+    void CollectK8s() noexcept;
 
     // Peak CPU metrics run every second (1s/5s/60s cadence), separate from the slow set above.
     void CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept;

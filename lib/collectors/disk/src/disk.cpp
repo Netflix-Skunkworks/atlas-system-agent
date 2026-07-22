@@ -304,6 +304,13 @@ void Disk::titus_disk_stats() noexcept
     stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
 }
 
+// Currently a copy of titus_disk_stats(): the k8s flavor is container-scoped like Titus. Kept as a
+// separate entry point so k8s disk metrics can diverge from Titus without touching titus_disk_stats().
+void Disk::k8s_disk_stats() noexcept
+{
+    stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
+}
+
 void Disk::update_stats_for(const MountPoint& mp) noexcept
 {
     struct statvfs st;

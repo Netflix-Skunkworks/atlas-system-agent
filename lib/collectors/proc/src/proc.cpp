@@ -758,6 +758,17 @@ void Proc::CollectTitus() noexcept
     uptime_stats();
 }
 
+// Currently a copy of CollectTitus(): the k8s flavor is container-scoped like Titus. Kept as a
+// separate entry point so k8s proc metrics can diverge from Titus without touching CollectTitus().
+void Proc::CollectK8s() noexcept
+{
+    netstat_stats();
+    network_stats();
+    process_stats();
+    snmp_stats();
+    uptime_stats();
+}
+
 void Proc::CpuStats(const bool fiveSecondMetrics, const bool sixtySecondMetricsEnabled) noexcept
 {
     auto cpuLines = ParseProcStatFile();

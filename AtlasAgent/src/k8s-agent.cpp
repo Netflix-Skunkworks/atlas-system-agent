@@ -3,11 +3,11 @@
 // and system-agent equivalents live in titus-agent.cpp / system-agent.cpp; shared
 // helpers are declared in atlas-agent.h.
 //
-// The k8s flavor currently mirrors the Titus (container) collector set exactly:
-// both are cgroup-v2 container-scoped agents. It intentionally reuses the shared
-// container-scoped collector methods (Proc::CollectTitus, Disk::titus_disk_stats)
-// until k8s resource semantics diverge from Atlas/Titus, at which point they can
-// be split into dedicated k8s methods.
+// The k8s flavor currently mirrors the Titus (container) collector set: both are
+// cgroup-v2 container-scoped agents. It uses dedicated k8s collection methods
+// (Proc::CollectK8s, Disk::k8s_disk_stats) that currently duplicate the Titus
+// logic, giving k8s its own place to diverge as its resource semantics differ
+// from Atlas/Titus.
 
 #include "atlas-agent.h"
 
@@ -41,8 +41,8 @@ static void gather_slow_k8s_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws*
     cGroup->MemoryStatsV2();
     cGroup->MemoryStatsStdV2();
     cGroup->NetworkStats();
-    disk->titus_disk_stats();
-    proc->CollectTitus();
+    disk->k8s_disk_stats();
+    proc->CollectK8s();
 }
 
 void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
