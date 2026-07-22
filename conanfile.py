@@ -25,6 +25,8 @@ class AtlasSystemAgentConan(ConanFile):
     generators = "CMakeDeps", "CMakeToolchain"
 
     def requirements(self):
+        # Pin the libsystemd pulled in transitively by sdbus-cpp
+        self.requires("libsystemd/255.10", override=True)
         # TODO: remove this when SystemD updates package for zstd
         self.requires("zstd/1.5.7", override=True)
         # TODO: remove this when SystemD updates package for xz_utils
