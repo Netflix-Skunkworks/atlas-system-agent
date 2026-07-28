@@ -61,10 +61,6 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
 
     auto gpu = GpuMetrics::Create(registry);
 
-    // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
-    // check if these optionals have a set value. lets improve how we handle this
-    auto serviceMetrics = ServiceMonitor::Create(registry, max_monitored_services);
-
     // initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
     Logger()->info("Initial polling delay is {}s", delay);
@@ -109,7 +105,6 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
             gather_slow_k8s_metrics(&cGroup, &proc, &disk, &aws);
             perf_metrics.collect();
             GpuMetrics::Collect(gpu);
-            ServiceMonitor::Collect(serviceMetrics);
             auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
             Logger()->info("Published Kubernetes metrics (delay={})", elapsed);
             next_sixty_second_run += seconds(60);
