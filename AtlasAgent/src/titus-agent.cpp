@@ -18,18 +18,14 @@
 #include <regex>
 #include <vector>
 
-using Aws = atlasagent::Aws;
-using CGroup = atlasagent::CGroup;
-using Disk = atlasagent::Disk;
-using PerfMetrics = atlasagent::PerfMetrics;
-using Proc = atlasagent::Proc;
-
-static void gather_peak_titus_metrics(CGroup* cGroup, const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
+static void gather_peak_titus_metrics(atlasagent::CGroup* cGroup, const bool fiveSecondMetricsEnabled,
+                                      const bool sixtySecondMetricsEnabled)
 {
     cGroup->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 }
 
-static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws)
+static void gather_slow_titus_metrics(atlasagent::CGroup* cGroup, atlasagent::Proc* proc, atlasagent::Disk* disk,
+                                      atlasagent::Aws* aws)
 {
     aws->collect();
     cGroup->MemoryStatsV2();
@@ -42,21 +38,13 @@ static void gather_slow_titus_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aw
 void collect_titus_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                            const int& max_monitored_services)
 {
-    using std::chrono::duration_cast;
-    using std::chrono::milliseconds;
-    using std::chrono::seconds;
-    using std::chrono::system_clock;
-
-    Aws aws{registry};
-    CGroup cGroup{registry};
-    Disk disk{registry, ""};
-    PerfMetrics perf_metrics{registry, ""};
-    Proc proc{registry, std::move(net_tags)};
+    atlasagent::Aws aws{registry};
+    atlasagent::CGroup cGroup{registry};
+    atlasagent::Disk disk{registry, ""};
+    atlasagent::PerfMetrics perf_metrics{registry, ""};
+    atlasagent::Proc proc{registry, std::move(net_tags)};
 
     auto gpu = GpuMetrics::Create(registry);
-
-    // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
-    // check if these optionals have a set value. lets improve how we handle this
     auto serviceMetrics = ServiceMonitor::Create(registry, max_monitored_services);
 
     // initial polling delay, to prevent publishing too close to a minute boundary
@@ -64,7 +52,7 @@ void collect_titus_metrics(Registry* registry, const std::unordered_map<std::str
     Logger()->info("Initial polling delay is {}s", delay);
     if (delay > 0)
     {
-        runner.wait_for(seconds(delay));
+        runner.wait_for(std::chrono::seconds(delay));
     }
 
     // the first call to this gather function takes ~100ms, so it must be
@@ -72,15 +60,15 @@ void collect_titus_metrics(Registry* registry, const std::unordered_map<std::str
     gather_slow_titus_metrics(&cGroup, &proc, &disk, &aws);
     Logger()->info("Published slow Titus metrics (first iteration)");
 
-    auto now = system_clock::now();
+    auto now = std::chrono::system_clock::now();
     auto next_run = now;
-    auto next_sixty_second_run = now + seconds(60);
-    auto next_five_second_run = now + seconds(5);
+    auto next_sixty_second_run = now + std::chrono::seconds(60);
+    auto next_five_second_run = now + std::chrono::seconds(5);
     std::chrono::nanoseconds time_to_sleep;
 
     do
     {
-        auto start = system_clock::now();
+        auto start = std::chrono::system_clock::now();
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
 
@@ -94,7 +82,7 @@ void collect_titus_metrics(Registry* registry, const std::unordered_map<std::str
         if (fiveSecondMetricsEnabled == true)
         {
             cGroup.IOStats();
-            next_five_second_run += seconds(5);
+            next_five_second_run += std::chrono::seconds(5);
         }
 
         // If its time to gather 60 second metrics, gather the metrics and update the next run time
@@ -104,12 +92,13 @@ void collect_titus_metrics(Registry* registry, const std::unordered_map<std::str
             perf_metrics.collect();
             GpuMetrics::Collect(gpu);
             ServiceMonitor::Collect(serviceMetrics);
-            auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
+            auto elapsed =
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start);
             Logger()->info("Published Titus metrics (delay={})", elapsed);
-            next_sixty_second_run += seconds(60);
+            next_sixty_second_run += std::chrono::seconds(60);
         }
 
-        next_run += seconds(1);
-        time_to_sleep = next_run - system_clock::now();
+        next_run += std::chrono::seconds(1);
+        time_to_sleep = next_run - std::chrono::system_clock::now();
     } while (runner.wait_for(time_to_sleep));
 }
