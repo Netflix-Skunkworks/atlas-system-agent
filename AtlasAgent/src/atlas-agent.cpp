@@ -59,7 +59,7 @@ long initial_polling_delay()
     std::random_device rdev;
     std::mt19937 generator(rdev());
 
-    // calculate previous step boundary using integer arithmetic, to determine start second
+    // Calculate previous step boundary using integer arithmetic, to determine start second
     auto now = std::chrono::system_clock::now();
     auto now_epoch = now.time_since_epoch();
     auto epoch = std::chrono::duration_cast<std::chrono::seconds>(now_epoch);
@@ -73,16 +73,13 @@ long initial_polling_delay()
         std::uniform_int_distribution<long> start_delay_dist(10 - start_second, 50 - start_second);
         return start_delay_dist(generator);
     }
-    else if (start_second > 50)
+    if (start_second > 50)
     {
         auto next_min = 60 - start_second;
         std::uniform_int_distribution<long> start_delay_dist(10, 50);
         return next_min + start_delay_dist(generator);
     }
-    else
-    {
-        return 0;
-    }
+    return 0;
 }
 
 struct agent_options

@@ -48,11 +48,6 @@ static void gather_slow_k8s_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws*
 void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                          const int& max_monitored_services)
 {
-    using std::chrono::duration_cast;
-    using std::chrono::milliseconds;
-    using std::chrono::seconds;
-    using std::chrono::system_clock;
-
     Aws aws{registry};
     CGroup cGroup{registry};
     Disk disk{registry, ""};
@@ -60,33 +55,30 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     Proc proc{registry, std::move(net_tags)};
 
     auto gpu = GpuMetrics::Create(registry);
-
-    // TODO: DCGM & ServiceMonitor have Dynamic metric collection. During each iteration we have to
-    // check if these optionals have a set value. lets improve how we handle this
     auto serviceMetrics = ServiceMonitor::Create(registry, max_monitored_services);
 
-    // initial polling delay, to prevent publishing too close to a minute boundary
+    // Initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
     Logger()->info("Initial polling delay is {}s", delay);
     if (delay > 0)
     {
-        runner.wait_for(seconds(delay));
+        runner.wait_for(std::chrono::seconds(delay));
     }
 
-    // the first call to this gather function takes ~100ms, so it must be
+    // The first call to this gather function takes ~100ms, so it must be
     // done before we start calculating times to wait for peak metrics
     gather_slow_k8s_metrics(&cGroup, &proc, &disk, &aws);
     Logger()->info("Published slow Kubernetes metrics (first iteration)");
 
-    auto now = system_clock::now();
+    auto now = std::chrono::system_clock::now();
     auto next_run = now;
-    auto next_sixty_second_run = now + seconds(60);
-    auto next_five_second_run = now + seconds(5);
+    auto next_sixty_second_run = now + std::chrono::seconds(60);
+    auto next_five_second_run = now + std::chrono::seconds(5);
     std::chrono::nanoseconds time_to_sleep;
 
     do
     {
-        auto start = system_clock::now();
+        auto start = std::chrono::system_clock::now();
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
 
@@ -100,7 +92,7 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
         if (fiveSecondMetricsEnabled == true)
         {
             cGroup.IOStats();
-            next_five_second_run += seconds(5);
+            next_five_second_run += std::chrono::seconds(5);
         }
 
         // If its time to gather 60 second metrics, gather the metrics and update the next run time
@@ -110,12 +102,13 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
             perf_metrics.collect();
             GpuMetrics::Collect(gpu);
             ServiceMonitor::Collect(serviceMetrics);
-            auto elapsed = duration_cast<milliseconds>(system_clock::now() - start);
+            auto elapsed =
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start);
             Logger()->info("Published Kubernetes metrics (delay={})", elapsed);
-            next_sixty_second_run += seconds(60);
+            next_sixty_second_run += std::chrono::seconds(60);
         }
 
-        next_run += seconds(1);
-        time_to_sleep = next_run - system_clock::now();
+        next_run += std::chrono::seconds(1);
+        time_to_sleep = next_run - std::chrono::system_clock::now();
     } while (runner.wait_for(time_to_sleep));
 }
