@@ -38,27 +38,39 @@ namespace detail
 
 // Unscoped gauge: the metric name itself carries the distinction (e.g. RssName is always the main
 // PID, MemoryName is always the whole cgroup), so no scope tag is needed.
-inline auto gauge(Registry* registry, const std::string_view name, const std::string_view serviceName)
+inline void maybeAddStatus(std::unordered_map<std::string, std::string>& tags, const std::string_view status)
+{
+    if (!status.empty())
+    {
+        tags.emplace("service.status", fmt::format("{}", status));
+    }
+}
+
+inline auto gauge(Registry* registry, const std::string_view name, const std::string_view serviceName,
+                  const std::string_view status = {})
 {
     auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)}};
+    maybeAddStatus(tags, status);
     return registry->CreateGauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
 }
 
 // Scoped gauge: the same metric name is published for both the main PID ("process") and the whole
 // cgroup ("service"); the scope tag tells them apart.
 inline auto gaugeScoped(Registry* registry, const std::string_view name, const std::string_view serviceName,
-                        const std::string_view scope)
+                        const std::string_view scope, const std::string_view status = {})
 {
     auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)},
                                                              {"scope", fmt::format("{}", scope)}};
+    maybeAddStatus(tags, status);
     return registry->CreateGauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
 }
 
 inline auto gaugeServiceState(Registry* registry, const std::string_view name, const std::string_view serviceName,
-                              const std::string_view state)
+                              const std::string_view state, const std::string_view status = {})
 {
     auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)}};
     tags.emplace("state", fmt::format("{}", state));
+    maybeAddStatus(tags, status);
     return registry->CreateGauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
 }
 }  // namespace detail
@@ -85,14 +97,6 @@ class ServiceMonitor
 
     bool gather_metrics();
 
-    // Availability-aware factory: builds a monitor only when a valid config directory is found (logging
-    // when monitoring is disabled), otherwise returns nullopt.
-    static std::optional<ServiceMonitor> Create(Registry* registry, unsigned int max_services);
-
-    // Gathers metrics from `self` only when present; a no-op when disabled, logging on gather failure.
-    // The mirror of Create(): it owns the has_value() guard so callers don't repeat it.
-    static void Collect(std::optional<ServiceMonitor>& self);
-
    private:
     bool init_monitored_services();
     bool update_metrics();
@@ -104,7 +108,7 @@ class ServiceMonitor
     // gauge; a non-empty scope adds the "scope" tag.
     template <typename T>
     bool publish_metric(const std::string& service, std::optional<T> val, double scale, std::string_view name,
-                        std::string_view scope, std::string_view errMsg = {}) const;
+                        std::string_view scope, std::string_view status, std::string_view errMsg = {}) const;
 
     // Publish the per-main-PID metrics (rss, process-scope fds, process-scope cpu) and advance the
     // process CPU tracker. Returns whether every metric this cycle was collected successfully. const:

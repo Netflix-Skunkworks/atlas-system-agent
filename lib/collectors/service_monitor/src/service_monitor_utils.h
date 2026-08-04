@@ -35,6 +35,7 @@ struct DBusConstants
     // Service interface constants
     static constexpr auto ServiceInterface = "org.freedesktop.systemd1.Service";
     static constexpr auto PropertyMainPID = "MainPID";
+    static constexpr auto PropertyStatusText = "StatusText";
 };
 
 struct ServiceMonitorUtilConstants
@@ -73,6 +74,7 @@ struct ServiceProperties
     std::string subState;
     unsigned int mainPid;
     std::string controlGroup;
+    std::string statusText;
 };
 
 // DBus Functions

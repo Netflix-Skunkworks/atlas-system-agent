@@ -15,13 +15,14 @@ class AtlasSystemAgentConan(ConanFile):
         "fmt/11.0.2",
         "gtest/1.15.0",
         "libcurl/8.10.1",
+        "libdrm/2.4.124",
         "openssl/3.3.2",
         "rapidjson/cci.20230929",
         "sdbus-cpp/2.3.1",
         "spdlog/1.15.0",
         "zlib/1.3.1",
     )
-    tool_requires = ()
+    tool_requires = ("pkgconf/2.5.1",)
     generators = "CMakeDeps", "CMakeToolchain"
 
     def requirements(self):
