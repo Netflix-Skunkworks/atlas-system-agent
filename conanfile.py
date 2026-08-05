@@ -15,7 +15,7 @@ class AtlasSystemAgentConan(ConanFile):
         # Pinned to 12.1.0 to match the fmt that spdlog/1.17.0 requires
         "fmt/12.1.0",
         "gtest/1.17.0",
-        "libcurl/8.21.0",
+        "libcurl/8.10.1",
         # libcurl/8.21.0 requires openssl/[>=3 <4], so 4.x is not usable yet
         "openssl/3.6.3",
         "rapidjson/cci.20250205",
@@ -29,7 +29,7 @@ class AtlasSystemAgentConan(ConanFile):
     def requirements(self):
         # Pin the libsystemd pulled in transitively by sdbus-cpp
         self.requires("libsystemd/255.10", override=True)
-        
+
     def configure(self):
         self.options["libcurl"].with_c_ares = True
         self.options["libcurl"].with_ssl = "openssl"
