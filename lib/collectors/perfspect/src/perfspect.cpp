@@ -2,7 +2,7 @@
 #include <lib/logger/src/logger.h>
 #include <lib/util/src/util.h>
 
-#include <boost/process.hpp>
+#include <boost/process/v1.hpp>
 #include <boost/asio.hpp>
 
 #include <string>
@@ -129,7 +129,7 @@ bool Perfspect::StartScript() try
 
     // Create io_context, async pipe, and buffer for stdout
     this->ioContext = std::make_unique<boost::asio::io_context>();
-    this->asyncPipe = std::make_unique<boost::process::async_pipe>(*this->ioContext);
+    this->asyncPipe = std::make_unique<boost::process::v1::async_pipe>(*this->ioContext);
     this->buffer = std::make_unique<boost::asio::streambuf>();
 
     // Select the appropriate event and metric file paths based on processor type
@@ -138,11 +138,11 @@ bool Perfspect::StartScript() try
     const char* metricfilePath =
         this->isAmd ? PerfspectConstants::metricfilePathAmd : PerfspectConstants::metricfilePathIntel;
 
-    this->scriptProcess = std::make_unique<boost::process::child>(
+    this->scriptProcess = std::make_unique<boost::process::v1::child>(
         fullBinaryPath.string(), PerfspectConstants::command, PerfspectConstants::eventfileFlag, eventfilePath,
         PerfspectConstants::metricfileFlag, metricfilePath, PerfspectConstants::intervalFlag,
-        PerfspectConstants::intervalValue, PerfspectConstants::liveFlag, PerfspectConstants::syslogFlag, boost::process::std_out > *this->asyncPipe,
-        boost::process::std_err > boost::process::null);
+        PerfspectConstants::intervalValue, PerfspectConstants::liveFlag, PerfspectConstants::syslogFlag, boost::process::v1::std_out > *this->asyncPipe,
+        boost::process::v1::std_err > boost::process::v1::null);
 
     // Start async reading
     AsyncRead();

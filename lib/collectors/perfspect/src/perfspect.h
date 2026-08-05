@@ -1,6 +1,13 @@
 #pragma once
 
-#include <boost/process.hpp>
+// Boost.Process v1 explicitly. As of Boost 1.88 <boost/process.hpp> resolves to v2,
+// which has no child/async_pipe/std_out; v1 still ships under boost/process/v1/ but
+// must be named directly. v1 is deprecated upstream -- porting this collector to the
+// v2 API (asio::readable_pipe + process_stdio) is the durable fix.
+#include <boost/process/v1.hpp>
+// v1.hpp reaches async_pipe only through detail/posix/asio_fwd.hpp, which forward
+// declares it. make_unique<async_pipe> needs the complete type, so include it directly.
+#include <boost/process/v1/async_pipe.hpp>
 #include <boost/asio.hpp>
 
 #include <string>
@@ -91,11 +98,11 @@ class Perfspect
     bool isAmd{false};
     char version;
 
-    std::unique_ptr<boost::process::child> scriptProcess;
+    std::unique_ptr<boost::process::v1::child> scriptProcess;
 
     // Asio components for async reading
     std::unique_ptr<boost::asio::io_context> ioContext;
-    std::unique_ptr<boost::process::async_pipe> asyncPipe;
+    std::unique_ptr<boost::process::v1::async_pipe> asyncPipe;
     std::unique_ptr<boost::asio::streambuf> buffer;
     std::string pendingLine;
     boost::system::error_code lastAsyncError;
