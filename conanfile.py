@@ -8,18 +8,20 @@ from conan.tools.files import download, unzip, check_sha256, load, save
 class AtlasSystemAgentConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     requires = (
-        "abseil/20240116.2",
-        "asio/1.32.0",
+        "abseil/20260526.0",
+        "asio/1.38.2",
         "backward-cpp/1.6",
-        "boost/1.83.0",
-        "fmt/11.0.2",
-        "gtest/1.15.0",
-        "libcurl/8.10.1",
-        "openssl/3.3.2",
-        "rapidjson/cci.20230929",
+        "boost/1.91.0",
+        # Pinned to 12.1.0 to match the fmt that spdlog/1.17.0 requires
+        "fmt/12.1.0",
+        "gtest/1.17.0",
+        "libcurl/8.21.0",
+        # libcurl/8.21.0 requires openssl/[>=3 <4], so 4.x is not usable yet
+        "openssl/3.6.3",
+        "rapidjson/cci.20250205",
         "sdbus-cpp/2.3.1",
-        "spdlog/1.15.0",
-        "zlib/1.3.1",
+        "spdlog/1.17.0",
+        "zlib/1.3.2",
     )
     tool_requires = ()
     generators = "CMakeDeps", "CMakeToolchain"
@@ -27,11 +29,7 @@ class AtlasSystemAgentConan(ConanFile):
     def requirements(self):
         # Pin the libsystemd pulled in transitively by sdbus-cpp
         self.requires("libsystemd/255.10", override=True)
-        # TODO: remove this when SystemD updates package for zstd
-        self.requires("zstd/1.5.7", override=True)
-        # TODO: remove this when SystemD updates package for xz_utils
-        self.requires("xz_utils/5.8.1", override=True)
-
+        
     def configure(self):
         self.options["libcurl"].with_c_ares = True
         self.options["libcurl"].with_ssl = "openssl"
