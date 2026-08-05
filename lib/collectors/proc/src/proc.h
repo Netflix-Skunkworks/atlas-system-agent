@@ -2,10 +2,10 @@
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 class Proc
 {

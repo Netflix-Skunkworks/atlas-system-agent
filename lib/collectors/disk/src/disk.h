@@ -10,11 +10,10 @@
 #include <absl/time/time.h>
 #include <absl/time/clock.h>
 
-using spectator::MeterId;
-using spectator::Registry;
-
 namespace atlasagent
 {
+using namespace spectator;
+
 struct MountPoint
 {
     unsigned device_major;

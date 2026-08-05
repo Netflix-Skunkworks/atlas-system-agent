@@ -10,17 +10,11 @@
 #include <iomanip>
 #include <algorithm>
 
-using spectator::Config;
-using spectator::MemoryWriter;
-using spectator::Registry;
-using spectator::WriterConfig;
-using spectator::WriterTestHelper;
-using spectator::WriterTypes;
+using namespace spectator;
+using atlasagent::Logger;
 
 namespace
 {
-
-using atlasagent::Logger;
 
 // Proc keeps its per-metric collectors protected (production reaches them only via CollectSystem/
 // CollectTitus). This subclass re-exposes them so the tests can exercise each in isolation, matching

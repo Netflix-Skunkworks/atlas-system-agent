@@ -8,10 +8,10 @@
 #include <unordered_map>
 #include <vector>
 
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 class CurlHeaders;
 

@@ -3,12 +3,8 @@
 #include <lib/util/src/util.h>
 #include <lib/logger/src/logger.h>
 
-using spectator::Config;
-using spectator::Registry;
-using spectator::WriterConfig;
-using spectator::WriterTypes;
-
 using atlasagent::Logger;
+using namespace spectator;
 
 int main()
 {
@@ -22,7 +18,7 @@ int main()
     auto instanceInfo = Perfspect::IsValidInstance();
     if (instanceInfo.has_value() == false)
     {
-        Logger::error("Could not run PerfSpect on this machine.");
+        Logger()->error("Could not run PerfSpect on this machine.");
         return 1;
     }
 

@@ -4,11 +4,10 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <lib/util/src/util.h>
 
-using spectator::MonotonicCounter;
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 class Ethtool
 {

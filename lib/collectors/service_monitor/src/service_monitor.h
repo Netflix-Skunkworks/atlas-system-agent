@@ -21,7 +21,7 @@
 #include "cpu_rate_tracker.h"
 #include "service_monitor_utils.h"
 
-using spectator::Registry;
+using namespace spectator;
 
 struct ServiceMonitorConstants
 {

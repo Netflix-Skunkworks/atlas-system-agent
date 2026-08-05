@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <vector>
 
-using spectator::Registry;
+using namespace spectator;
 
 // Constants for NVMe commands
 struct NVMeCommands

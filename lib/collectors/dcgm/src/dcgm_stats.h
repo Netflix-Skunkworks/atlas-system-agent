@@ -10,7 +10,7 @@
 #include <optional>
 #include <array>
 
-using spectator::Registry;
+using namespace spectator;
 
 struct DCGMConstants
 {

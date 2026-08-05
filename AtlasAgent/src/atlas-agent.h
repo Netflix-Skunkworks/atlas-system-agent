@@ -17,7 +17,7 @@
 #include <string>
 #include <unordered_map>
 
-using spectator::Registry;
+using namespace spectator;
 
 using atlasagent::Logger;
 using atlasagent::Nvml;

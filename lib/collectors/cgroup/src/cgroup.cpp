@@ -6,10 +6,10 @@
 #include <unordered_set>
 #include <unistd.h>
 
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 constexpr auto MICROS = 1000 * 1000.0;
 
@@ -303,7 +303,7 @@ std::unordered_map<std::string, std::string> FindDeviceNames()
     {
         if (fields.size() != EXPECTED_FIELDS) [[unlikely]]
         {
-            atlasagent::Logger()->warn("Unexpected number of fields in /proc/diskstats line: {}", fields.size());
+            Logger()->warn("Unexpected number of fields in /proc/diskstats line: {}", fields.size());
             continue;
         }
 
@@ -326,7 +326,7 @@ std::optional<IOStats> ParseIOLine(const std::vector<std::string>& fields, const
     }
     else
     {
-        atlasagent::Logger()->warn("Device major:minor {} not found in /proc/diskstats mapping", stats.majorMinor);
+        Logger()->warn("Device major:minor {} not found in /proc/diskstats mapping", stats.majorMinor);
     }
 
     // Iterate through the remaining fields and parse key-value pairs
@@ -393,7 +393,7 @@ std::optional<IOStats> ParseIOLine(const std::vector<std::string>& fields, const
 }
 catch (const std::exception& ex)
 {
-    atlasagent::Logger()->error("Exception parsing IO stat line: {}", ex.what());
+    Logger()->error("Exception parsing IO stat line: {}", ex.what());
     return std::nullopt;
 }
 
@@ -426,7 +426,7 @@ std::unordered_map<std::string, IOStats> ParseIOLines(const std::vector<std::vec
 }
 catch (const std::exception& ex)
 {
-    atlasagent::Logger()->error("Exception parsing IO stat lines: {}", ex.what());
+    Logger()->error("Exception parsing IO stat lines: {}", ex.what());
     return {};
 }
 
@@ -492,7 +492,7 @@ std::optional<IOThrottle> ParseIOThrottleLine(const std::vector<std::string>& fi
 }
 catch (const std::exception& ex)
 {
-    atlasagent::Logger()->error("Exception parsing IO throttle line: {}", ex.what());
+    Logger()->error("Exception parsing IO throttle line: {}", ex.what());
     return std::nullopt;
 }
 
@@ -520,7 +520,7 @@ std::unordered_map<std::string, IOThrottle> ParseIOThrottleLines(const std::vect
 }
 catch (const std::exception& ex)
 {
-    atlasagent::Logger()->error("Exception parsing IO throttle lines: {}", ex.what());
+    Logger()->error("Exception parsing IO throttle lines: {}", ex.what());
     return {};
 }
 
@@ -534,8 +534,8 @@ void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, co
     // Iterate through current IO statistics
     for (const auto& [deviceKey, currentStat] : ioStats)
     {
-        atlasagent::Logger()->debug("IO Stats for device {}:", deviceKey);
-        atlasagent::Logger()->debug("\tIO Object: {{current_rbytes: {}, current_rios: {}, current_wbytes: {}, current_wios: {}}}",
+        Logger()->debug("IO Stats for device {}:", deviceKey);
+        Logger()->debug("\tIO Object: {{current_rbytes: {}, current_rios: {}, current_wbytes: {}, current_wios: {}}}",
                         currentStat.rBytes.value(), currentStat.rOperations.value(), currentStat.wBytes.value(),
                         currentStat.wOperations.value());
 
@@ -551,7 +551,7 @@ void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, co
             const auto delta_rios = currentStat.rOperations.value() - prevStat.rOperations.value();
             const auto delta_wios = currentStat.wOperations.value() - prevStat.wOperations.value();
 
-            atlasagent::Logger()->debug("\tRealtime Counter: {{delta_rbytes: {}, delta_rios: {}, delta_wbytes: {}, delta_wios: {}}}",
+            Logger()->debug("\tRealtime Counter: {{delta_rbytes: {}, delta_rios: {}, delta_wbytes: {}, delta_wios: {}}}",
                             delta_rbytes, delta_rios, delta_wbytes, delta_wios);
 
             // Update byte and operation counters
@@ -566,7 +566,7 @@ void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, co
             {
                 const auto& throttle = throttle_it->second;
 
-                atlasagent::Logger()->debug("\tThrottle Settings: {{read_bps: {}, write_bps: {}, read_iops: {}, write_iops: {}}}",
+                Logger()->debug("\tThrottle Settings: {{read_bps: {}, write_bps: {}, read_iops: {}, write_iops: {}}}",
                                 throttle.rBps.value(), throttle.wBps.value(), throttle.rIops.value(),
                                 throttle.wIops.value());
 
@@ -604,7 +604,7 @@ void CGroup::IOStats()
     auto ioStats = ParseIOLines(ioStatLines, deviceNames);
     if (ioStats.empty())
     {
-        atlasagent::Logger()->info("No valid IO statistics found in io.stat");
+        Logger()->info("No valid IO statistics found in io.stat");
         return;
     }
 

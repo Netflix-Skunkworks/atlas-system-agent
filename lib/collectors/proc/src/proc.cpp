@@ -9,12 +9,10 @@
 #include <cstring>
 #include <utility>
 
-using spectator::Gauge;
-using spectator::MonotonicCounter;
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 struct ProcStatConstants
 {

@@ -18,7 +18,7 @@
 #include <regex>
 #include <vector>
 
-using spectator::Registry;
+using namespace spectator;
 
 static void gather_peak_titus_metrics(atlasagent::CGroup* cGroup, const bool fiveSecondMetricsEnabled,
                                       const bool sixtySecondMetricsEnabled)

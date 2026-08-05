@@ -1,9 +1,9 @@
 #include "ntp.h"
 
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 template class atlasagent::Ntp<TestClock>;
 template class Ntp<detail::abseil_clock>;
@@ -42,7 +42,7 @@ void Ntp<Clock>::ntp_stats(int err, timex* time)
 {
     if (err == -1)
     {
-        atlasagent::Logger()->warn("Unable to ntp_gettime: {}", strerror(errno));
+        Logger()->warn("Unable to ntp_gettime: {}", strerror(errno));
         return;
     }
 
@@ -77,7 +77,7 @@ void Ntp<Clock>::chrony_stats(const std::string& tracking, const std::vector<std
             }
             catch (const std::invalid_argument& e)
             {
-                atlasagent::Logger()->error("Unable to parse {} as a number: {}", source_fields[6], e.what());
+                Logger()->error("Unable to parse {} as a number: {}", source_fields[6], e.what());
             }
         }
     }

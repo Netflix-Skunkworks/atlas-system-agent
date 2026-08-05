@@ -5,7 +5,7 @@
 #include "dcgm_stats.h"
 #include <lib/util/src/util.h>
 
-using spectator::Registry;
+using namespace spectator;
 
 using atlasagent::GetLogger;
 using atlasagent::Logger;
@@ -67,7 +67,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception thrown in ParseLines: {}", e.what());
+    Logger()->error("Exception thrown in ParseLines: {}", e.what());
     return false;
 }
 
@@ -79,7 +79,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception thrown in ExecuteDCGMI: {}", e.what());
+    Logger()->error("Exception thrown in ExecuteDCGMI: {}", e.what());
     return std::vector<std::string>();
 }
 

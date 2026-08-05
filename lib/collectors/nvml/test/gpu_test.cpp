@@ -5,12 +5,7 @@
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 #include <gtest/gtest.h>
 
-using spectator::Config;
-using spectator::MemoryWriter;
-using spectator::Registry;
-using spectator::WriterConfig;
-using spectator::WriterTestHelper;
-using spectator::WriterTypes;
+using namespace spectator;
 
 using atlasagent::NvmlDeviceHandle;
 using atlasagent::NvmlMemory;

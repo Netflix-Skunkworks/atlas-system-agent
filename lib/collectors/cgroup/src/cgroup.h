@@ -5,10 +5,9 @@
 #include <absl/time/clock.h>
 #include <optional>
 
-using spectator::Registry;
-
 namespace atlasagent
 {
+using namespace spectator;
 
 
 struct IOStats

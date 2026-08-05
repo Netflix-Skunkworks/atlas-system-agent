@@ -21,10 +21,7 @@
 #include <random>
 #include <utility>
 
-using spectator::Config;
-using spectator::Registry;
-using spectator::WriterConfig;
-using spectator::WriterTypes;
+using namespace spectator;
 
 terminator runner;
 
@@ -195,7 +192,7 @@ int main(int argc, char* const argv[])
     if (options.verbose)
     {
         logger->set_level(spdlog::level::debug);
-        Logger::GetLogger()->set_level(spdlog::level::debug);
+        SetLogLevel(spdlog::level::debug);
     }
 
     atlasagent::HttpClient::GlobalInit();

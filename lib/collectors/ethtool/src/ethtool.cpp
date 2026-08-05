@@ -1,10 +1,9 @@
 #include "ethtool.h"
 
-using spectator::MonotonicCounter;
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 Ethtool::Ethtool(Registry* registry, std::unordered_map<std::string, std::string> net_tags) noexcept
     : registry_(registry), net_tags_{std::move(net_tags)}
@@ -60,7 +59,7 @@ void Ethtool::update_metric(const std::string& stat_line, MonotonicCounter metri
     }
     catch (const std::invalid_argument& e)
     {
-        atlasagent::Logger()->error("Unable to parse {} as a number: {}", stat_fields[1], e.what());
+        Logger()->error("Unable to parse {} as a number: {}", stat_fields[1], e.what());
     }
 }
 
@@ -119,7 +118,7 @@ void Ethtool::ethtool_stats(const std::vector<std::string>& nic_stats, const cha
             }
             catch (const std::invalid_argument& e)
             {
-                atlasagent::Logger()->error("Unable to parse {} as a number: {}", stat_fields[1], e.what());
+                Logger()->error("Unable to parse {} as a number: {}", stat_fields[1], e.what());
             }
             continue;
         }

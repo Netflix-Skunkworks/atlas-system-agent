@@ -6,12 +6,7 @@
 
 #include <utility>
 
-using spectator::Config;
-using spectator::MemoryWriter;
-using spectator::Registry;
-using spectator::WriterConfig;
-using spectator::WriterTestHelper;
-using spectator::WriterTypes;
+using namespace spectator;
 
 class CGroupTest : public atlasagent::CGroup
 {

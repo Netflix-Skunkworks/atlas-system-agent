@@ -4,10 +4,10 @@
 #include <lib/util/src/util.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 class PressureStall
 {

@@ -9,9 +9,7 @@
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
-using spectator::Counter;
-using spectator::Gauge;
-using spectator::Registry;
+using namespace spectator;
 
 struct PerfspectConstants
 {

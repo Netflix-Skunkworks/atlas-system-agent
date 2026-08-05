@@ -9,10 +9,10 @@
 #include <optional>
 #include <utility>
 
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 namespace detail
 {

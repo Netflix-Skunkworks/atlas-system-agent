@@ -14,13 +14,10 @@
 #include <utility>
 #include <vector>
 
-using spectator::Counter;
-using spectator::DistributionSummary;
-using spectator::Gauge;
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 // Nested under amd_smi_detail to avoid colliding with atlasagent::detail::gauge
 // defined in lib/collectors/nvml/src/gpumetrics.h, which atlas-agent.cpp also

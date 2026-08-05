@@ -7,9 +7,6 @@
 #include <absl/time/time.h>
 #include <absl/time/clock.h>
 
-using spectator::Gauge;
-using spectator::Registry;
-
 struct TestClock
 {
     static absl::Time now()
@@ -21,6 +18,8 @@ struct TestClock
 
 namespace atlasagent
 {
+
+using namespace spectator;
 
 namespace detail
 {

@@ -7,7 +7,8 @@
 #include <algorithm>
 #include <unistd.h>
 
-using spectator::Registry;
+using namespace spectator;
+using atlasagent::Logger;
 
 ServiceMonitor::ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services)
     : registry_{registry},
@@ -17,7 +18,7 @@ ServiceMonitor::ServiceMonitor(Registry* registry, std::vector<std::regex> confi
 {
     if (this->maxMonitoredServices != ServiceMonitorConstants::DefaultMonitoredServices)
     {
-        atlasagent::Logger()->info("Custom max monitored services value set: {} (default is {})", maxMonitoredServices,
+        Logger()->info("Custom max monitored services value set: {} (default is {})", maxMonitoredServices,
                                    ServiceMonitorConstants::DefaultMonitoredServices);
     }
 }
@@ -27,7 +28,7 @@ std::optional<ServiceMonitor> ServiceMonitor::Create(Registry* registry, unsigne
     auto config = parse_service_monitor_config_directory(ServiceMonitorConstants::ConfigPath);
     if (!config.has_value())
     {
-        atlasagent::Logger()->info("Service Monitoring is disabled.");
+        Logger()->info("Service Monitoring is disabled.");
         return std::nullopt;
     }
     return std::optional<ServiceMonitor>{std::in_place, registry, std::move(config.value()), max_services};
@@ -37,7 +38,7 @@ void ServiceMonitor::Collect(std::optional<ServiceMonitor>& self)
 {
     if (self.has_value() && self->gather_metrics() == false)
     {
-        atlasagent::Logger()->error("Failed to gather Service metrics");
+        Logger()->error("Failed to gather Service metrics");
     }
 }
 
@@ -49,21 +50,21 @@ try
     this->pageSize_ = sysconf(_SC_PAGESIZE);
     if (this->pageSize_ <= 0)
     {
-        atlasagent::Logger()->error("Error getting page size");
+        Logger()->error("Error getting page size");
         return false;
     }
 
     this->clkTck_ = sysconf(_SC_CLK_TCK);
     if (this->clkTck_ <= 0)
     {
-        atlasagent::Logger()->error("Error getting clock ticks per second");
+        Logger()->error("Error getting clock ticks per second");
         return false;
     }
 
     auto all_units = list_all_units();
     if (all_units.has_value() == false)
     {
-        atlasagent::Logger()->error("Error gathering all units from Systemd");
+        Logger()->error("Error gathering all units from Systemd");
         return false;
     }
 
@@ -81,27 +82,27 @@ try
 
         if (monitoredServices_.size() >= maxMonitoredServices)
         {
-            atlasagent::Logger()->info(
+            Logger()->info(
                 "Reached maximum number of monitored services ({}). Ignoring service {} and remaining services.",
                 maxMonitoredServices, unit_name);
             break;
         }
 
         monitoredServices_.emplace_back(unit_name);
-        atlasagent::Logger()->info("Added service {} to monitoring list ({}/{})", unit_name, monitoredServices_.size(),
+        Logger()->info("Added service {} to monitoring list ({}/{})", unit_name, monitoredServices_.size(),
                                    this->maxMonitoredServices);
     }
 
     this->initSuccess = true;
     if (this->monitoredServices_.empty() == true)
     {
-        atlasagent::Logger()->error("User Error: Monitor Service config provided but no services matched pattern");
+        Logger()->error("User Error: Monitor Service config provided but no services matched pattern");
     }
     return true;
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in init_monitored_services", e.what());
+    Logger()->error("Exception: {} in init_monitored_services", e.what());
     return false;
 }
 
@@ -119,7 +120,7 @@ bool ServiceMonitor::publish_metric(const std::string& service, std::optional<T>
     }
     if (!errMsg.empty())
     {
-        atlasagent::Logger()->error("{} for {}", errMsg, service);
+        Logger()->error("{} for {}", errMsg, service);
     }
     return errMsg.empty();
 }
@@ -139,7 +140,7 @@ bool ServiceMonitor::collect_process_metrics(const std::string& service, const S
     auto times = get_process_times(props.mainPid);
     if (!times)
     {
-        atlasagent::Logger()->error("Failed to get process times for {}", service);
+        Logger()->error("Failed to get process times for {}", service);
         return false;
     }
 
@@ -166,7 +167,7 @@ bool ServiceMonitor::collect_cgroup_metrics(const std::string& service, const Se
     auto usage = get_cgroup_cpu_usage(props.controlGroup);
     if (!usage)
     {
-        atlasagent::Logger()->error("Failed to get cgroup CPU usage for {}", service);
+        Logger()->error("Failed to get cgroup CPU usage for {}", service);
         return false;
     }
 
@@ -187,7 +188,7 @@ try
         auto props = get_service_properties(service);
         if (!props)
         {
-            atlasagent::Logger()->error("Failed to get {} properties", service);
+            Logger()->error("Failed to get {} properties", service);
             success = false;
             continue;
         }
@@ -200,7 +201,7 @@ try
         if (props->activeState != ServiceMonitorUtilConstants::Active ||
             props->subState != ServiceMonitorUtilConstants::Running)
         {
-            atlasagent::Logger()->info("Service {} is not active and running, skipping metrics", service);
+            Logger()->info("Service {} is not active and running, skipping metrics", service);
             continue;
         }
 
@@ -216,7 +217,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in update_metrics", e.what());
+    Logger()->error("Exception: {} in update_metrics", e.what());
     return false;
 }
 
@@ -229,7 +230,7 @@ bool ServiceMonitor::gather_metrics()
 
     if (this->monitoredServices_.size() == 0)
     {
-        atlasagent::Logger()->error(
+        Logger()->error(
             "No systemd services to monitor, but configs were provided. "
             "Configured maximum services to monitor: {}.",
             this->maxMonitoredServices);

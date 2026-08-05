@@ -5,18 +5,12 @@
 #include <gtest/gtest.h>
 #include <unordered_set>
 
-using spectator::Config;
-using spectator::MemoryWriter;
-using spectator::Registry;
-using spectator::WriterConfig;
-using spectator::WriterTestHelper;
-using spectator::WriterTypes;
+using namespace spectator;
 
 namespace
 {
 using atlasagent::Disk;
 using atlasagent::DiskIo;
-using atlasagent::Logger;
 using atlasagent::MountPoint;
 
 class TestDisk : public atlasagent::Disk

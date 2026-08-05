@@ -4,18 +4,12 @@
 #include <lib/collectors/ethtool/src/ethtool.h>
 #include <gtest/gtest.h>
 
-using spectator::Config;
-using spectator::MemoryWriter;
-using spectator::Registry;
-using spectator::WriterConfig;
-using spectator::WriterTestHelper;
-using spectator::WriterTypes;
+using namespace spectator;
 
 namespace
 {
 
 using atlasagent::Ethtool;
-using atlasagent::Logger;
 
 class EthtoolTest : public Ethtool
 {

@@ -1,10 +1,9 @@
 #include "perf_metrics.h"
 
-using spectator::DistributionSummary;
-using spectator::Registry;
-
 namespace atlasagent
 {
+
+using namespace spectator;
 
 PerfMetrics::PerfMetrics(Registry* registry, const std::string path_prefix)
     : registry_(registry),

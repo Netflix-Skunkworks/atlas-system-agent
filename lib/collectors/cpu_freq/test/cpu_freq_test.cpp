@@ -7,12 +7,7 @@
 #include <gtest/gtest.h>
 #include <set>
 
-using spectator::Config;
-using spectator::MemoryWriter;
-using spectator::Registry;
-using spectator::WriterConfig;
-using spectator::WriterTestHelper;
-using spectator::WriterTypes;
+using namespace spectator;
 
 namespace
 {
