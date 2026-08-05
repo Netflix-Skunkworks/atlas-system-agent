@@ -11,12 +11,15 @@ class AtlasSystemAgentConan(ConanFile):
         "abseil/20260526.0",
         "asio/1.38.2",
         "backward-cpp/1.6",
-        "boost/1.91.0",
+        # Capped at 1.88.0: boost/1.89.0 removed the compiled Boost.System stub, so the
+        # Boost::system CMake target no longer exists and thirdparty/spectator-cpp fails
+        # to link against it.
+        "boost/1.88.0",
         # Pinned to 12.1.0 to match the fmt that spdlog/1.17.0 requires
         "fmt/12.1.0",
         "gtest/1.17.0",
         "libcurl/8.10.1",
-        # libcurl/8.21.0 requires openssl/[>=3 <4], so 4.x is not usable yet
+        # libcurl/8.10.1 requires openssl/[>=1.1 <4], so 4.x is not usable yet
         "openssl/3.6.3",
         "rapidjson/cci.20250205",
         "sdbus-cpp/2.3.1",
