@@ -11,10 +11,10 @@ class AtlasSystemAgentConan(ConanFile):
         "abseil/20260526.0",
         "asio/1.38.2",
         "backward-cpp/1.6",
-        # Capped at 1.88.0: boost/1.89.0 removed the compiled Boost.System stub, so the
-        # Boost::system CMake target no longer exists and thirdparty/spectator-cpp fails
-        # to link against it.
-        "boost/1.88.0",
+        # Capped at 1.90.0: the boost/1.91.0 recipe expects a cobalt_io_ssl library that it
+        # never provides OpenSSL for, so package_info() fails. Matches the version the
+        # vendored thirdparty/spectator-cpp pins.
+        "boost/1.90.0",
         # Pinned to 12.1.0 to match the fmt that spdlog/1.17.0 requires
         "fmt/12.1.0",
         "gtest/1.17.0",
@@ -36,6 +36,12 @@ class AtlasSystemAgentConan(ConanFile):
     def configure(self):
         self.options["libcurl"].with_c_ares = True
         self.options["libcurl"].with_ssl = "openssl"
+        # b2 builds an extra boost_cobalt_io_ssl library whenever it can find OpenSSL, but
+        # the boost/1.90.0 recipe does not list it, so package_info() aborts with "built,
+        # but were not used in any boost module". This only reproduces where OpenSSL headers
+        # are visible, which is why it breaks CI but not every local build. We do not use
+        # Cobalt, and disabling it stops b2 from building cobalt/cobalt_io/cobalt_io_ssl.
+        self.options["boost"].without_cobalt = True
 
     @staticmethod
     def maybe_remove_dir(path: str):
@@ -50,7 +56,7 @@ class AtlasSystemAgentConan(ConanFile):
     def get_spectator_cpp(self):
         thirdparty_dir = "thirdparty"
         repo = "Netflix/spectator-cpp"
-        commit = "1e69c442528a8450ab48948fef964fc79a73ac49"
+        commit = "364ecf5dab7e22534863b07d264ca5edb02a25f5"
 
         zip_path = os.path.join(thirdparty_dir, f"spectator-cpp-{commit}.zip")
         dir_path = os.path.join(thirdparty_dir, "spectator-cpp")
@@ -60,7 +66,7 @@ class AtlasSystemAgentConan(ConanFile):
         self.maybe_remove_dir(dir_path)
 
         download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_path)
-        check_sha256(self, zip_path, "d39cbc2f101c5ae04324d2255ca8f208985f2879a2289ab74e0207fca79d76ce")
+        check_sha256(self, zip_path, "bdaedab3a46b00441f2a899915b4954493e0258b7591f154c4e6e01fb9ea19b8")
         unzip(self, zip_path, destination=dir_path, strip_root=True)
         self.maybe_remove_file(zip_path)
 
