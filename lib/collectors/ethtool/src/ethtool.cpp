@@ -1,5 +1,8 @@
 #include "ethtool.h"
 
+using spectator::MonotonicCounter;
+using spectator::Registry;
+
 namespace atlasagent
 {
 

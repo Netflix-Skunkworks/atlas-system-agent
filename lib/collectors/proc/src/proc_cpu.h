@@ -8,6 +8,10 @@
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
+using spectator::Gauge;
+using spectator::MaxGauge;
+using spectator::Registry;
+
 struct Cpu_Gauge_Values
 {
     double user;

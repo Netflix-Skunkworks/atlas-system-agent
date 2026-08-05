@@ -3,6 +3,11 @@
 #include <lib/util/src/util.h>
 #include <lib/logger/src/logger.h>
 
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTypes;
+
 using atlasagent::Logger;
 
 int main()

@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <unistd.h>
 
+using spectator::Registry;
+
 namespace atlasagent
 {
 

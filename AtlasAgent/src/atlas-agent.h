@@ -17,6 +17,8 @@
 #include <string>
 #include <unordered_map>
 
+using spectator::Registry;
+
 using atlasagent::Logger;
 using atlasagent::Nvml;
 using GpuMetrics = atlasagent::GpuMetrics<Nvml>;

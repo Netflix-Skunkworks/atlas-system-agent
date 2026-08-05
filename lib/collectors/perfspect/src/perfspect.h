@@ -9,6 +9,10 @@
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
+using spectator::Counter;
+using spectator::Gauge;
+using spectator::Registry;
+
 struct PerfspectConstants
 {
     static constexpr auto BinaryLocation{"/apps/nflx-perfspect/bin"};

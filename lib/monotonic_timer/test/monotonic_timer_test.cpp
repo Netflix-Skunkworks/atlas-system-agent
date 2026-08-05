@@ -2,6 +2,14 @@
 #include <gtest/gtest.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
+
+using spectator::Config;
+using spectator::MemoryWriter;
+using spectator::MeterId;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTestHelper;
+using spectator::WriterTypes;
 namespace
 {
 

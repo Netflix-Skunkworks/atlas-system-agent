@@ -3,6 +3,10 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <absl/time/time.h>
 
+using spectator::Counter;
+using spectator::MeterId;
+using spectator::Registry;
+
 namespace atlasagent
 {
 

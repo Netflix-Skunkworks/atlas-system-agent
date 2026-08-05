@@ -5,6 +5,13 @@
 
 #include <gtest/gtest.h>
 
+using spectator::Config;
+using spectator::MemoryWriter;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTestHelper;
+using spectator::WriterTypes;
+
 // TODD: Move this file to "testdata/resources/proc/pressure"
 class PressureStallTest : public atlasagent::PressureStall
 {

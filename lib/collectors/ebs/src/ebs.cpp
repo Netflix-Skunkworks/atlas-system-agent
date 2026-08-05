@@ -8,6 +8,8 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+using spectator::Registry;
+
 struct EBSMetricConstants
 {
     // Operation types

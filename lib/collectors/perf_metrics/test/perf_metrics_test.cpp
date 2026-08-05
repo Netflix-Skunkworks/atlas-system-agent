@@ -4,6 +4,11 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTypes;
+
 TEST(PerfMetrics, OnlineCpus)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));

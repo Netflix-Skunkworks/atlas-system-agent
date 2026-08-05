@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <unistd.h>
 
+using spectator::Registry;
+
 ServiceMonitor::ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services)
     : registry_{registry},
       config_{std::move(config)},

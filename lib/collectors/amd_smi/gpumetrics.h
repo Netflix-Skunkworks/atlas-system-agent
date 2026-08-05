@@ -14,6 +14,11 @@
 #include <utility>
 #include <vector>
 
+using spectator::Counter;
+using spectator::DistributionSummary;
+using spectator::Gauge;
+using spectator::Registry;
+
 namespace atlasagent
 {
 

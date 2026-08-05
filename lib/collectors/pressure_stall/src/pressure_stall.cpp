@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <string>
 
+using spectator::Registry;
+
 namespace atlasagent
 {
 

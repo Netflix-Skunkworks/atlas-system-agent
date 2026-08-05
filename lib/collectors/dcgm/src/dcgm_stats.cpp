@@ -5,6 +5,8 @@
 #include "dcgm_stats.h"
 #include <lib/util/src/util.h>
 
+using spectator::Registry;
+
 using atlasagent::GetLogger;
 using atlasagent::Logger;
 

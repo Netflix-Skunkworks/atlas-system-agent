@@ -10,6 +10,13 @@
 #include <iomanip>
 #include <algorithm>
 
+using spectator::Config;
+using spectator::MemoryWriter;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTestHelper;
+using spectator::WriterTypes;
+
 namespace
 {
 

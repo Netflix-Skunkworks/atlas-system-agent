@@ -7,6 +7,10 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 
+using spectator::Config;
+using spectator::DistributionSummary;
+using spectator::Registry;
+
 #ifndef __linux__
 enum perf_hw_id
 {

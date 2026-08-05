@@ -5,6 +5,8 @@
 #include <absl/time/clock.h>
 #include <optional>
 
+using spectator::Registry;
+
 namespace atlasagent
 {
 

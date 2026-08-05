@@ -24,6 +24,8 @@
 #include <regex>
 #include <vector>
 
+using spectator::Registry;
+
 using Aws = atlasagent::Aws;
 using CGroup = atlasagent::CGroup;
 using Disk = atlasagent::Disk;

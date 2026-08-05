@@ -4,6 +4,9 @@
 
 #include <limits>
 
+using spectator::Gauge;
+using spectator::Registry;
+
 namespace atlasagent
 {
 
