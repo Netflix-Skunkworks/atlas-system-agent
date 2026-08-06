@@ -5,6 +5,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 class Proc
 {
    public:

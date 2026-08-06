@@ -2,6 +2,7 @@
 
 namespace atlasagent
 {
+using namespace spectator;
 
 CpuFreq::CpuFreq(Registry* registry, std::string path_prefix) noexcept
     : registry_{registry}, path_prefix_{std::move(path_prefix)}, enabled_{detail::is_directory(path_prefix_)}

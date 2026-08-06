@@ -68,6 +68,8 @@ inline void parse_range(FILE* fp, std::vector<bool>* result)
 namespace atlasagent
 {
 
+using namespace spectator;
+
 struct perf_count
 {
     uint64_t raw_value;

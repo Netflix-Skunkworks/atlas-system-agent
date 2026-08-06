@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+using namespace spectator;
+
 struct AwsTestingConstants
 {
     static constexpr auto expectedMessage1 = "g:aws.credentialsAge:600.000000\n";

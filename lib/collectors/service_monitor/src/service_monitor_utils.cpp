@@ -4,6 +4,8 @@
 #include "service_monitor_utils.h"
 #include <lib/util/src/util.h>
 
+using atlasagent::Logger;
+
 std::optional<std::vector<Unit>> list_all_units()
 try
 {
@@ -19,12 +21,12 @@ try
 }
 catch (const sdbus::Error& e)
 {
-    atlasagent::Logger()->error("D-Bus Exception: {} with message: {}", e.getName(), e.getMessage());
+    Logger()->error("D-Bus Exception: {} with message: {}", e.getName(), e.getMessage());
     return std::nullopt;
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("list_all_units exception: {}", e.what());
+    Logger()->error("list_all_units exception: {}", e.what());
     return std::nullopt;
 }
 
@@ -85,12 +87,12 @@ try
 }
 catch (const sdbus::Error& e)
 {
-    atlasagent::Logger()->error("D-Bus Exception: {} with message: {}", e.getName(), e.getMessage());
+    Logger()->error("D-Bus Exception: {} with message: {}", e.getName(), e.getMessage());
     return std::nullopt;
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("get_service_properties exception: {}", e.what());
+    Logger()->error("get_service_properties exception: {}", e.what());
     return std::nullopt;
 }
 
@@ -100,13 +102,13 @@ try
     std::optional<std::vector<std::string>> stringPatterns = atlasagent::read_file(configFilePath);
     if (stringPatterns.has_value() == false)
     {
-        atlasagent::Logger()->error("Error reading config file {}", configFilePath);
+        Logger()->error("Error reading config file {}", configFilePath);
         return std::nullopt;
     }
 
     if (stringPatterns.value().empty())
     {
-        atlasagent::Logger()->debug("Empty config file {}", configFilePath);
+        Logger()->debug("Empty config file {}", configFilePath);
         return std::nullopt;
     }
 
@@ -123,7 +125,7 @@ try
         }
         catch (const std::regex_error& e)
         {
-            atlasagent::Logger()->error("Exception: {}, for regex:{}, in config file {}", e.what(), regex_pattern,
+            Logger()->error("Exception: {}, for regex:{}, in config file {}", e.what(), regex_pattern,
                                         configFilePath);
             return std::nullopt;
         }
@@ -132,7 +134,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in parse_regex_config_file", e.what());
+    Logger()->error("Exception: {} in parse_regex_config_file", e.what());
     return std::nullopt;
 }
 
@@ -141,7 +143,7 @@ try
 {
     if (std::filesystem::exists(directoryPath) == false || std::filesystem::is_directory(directoryPath) == false)
     {
-        atlasagent::Logger()->error("Invalid service monitor config directory {}", directoryPath);
+        Logger()->error("Invalid service monitor config directory {}", directoryPath);
         return std::nullopt;
     }
 
@@ -158,7 +160,7 @@ try
         auto regexExpressions = parse_regex_config_file(file.path().c_str());
         if (regexExpressions.has_value() == false)
         {
-            atlasagent::Logger()->error("Could not add regex expressions from file {}", file.path().c_str());
+            Logger()->error("Could not add regex expressions from file {}", file.path().c_str());
             continue;
         }
         allRegexPatterns.insert(allRegexPatterns.end(), regexExpressions.value().begin(),
@@ -167,7 +169,7 @@ try
 
     if (allRegexPatterns.empty())
     {
-        atlasagent::Logger()->info("No service monitor regex patterns found in directory {}", directoryPath);
+        Logger()->info("No service monitor regex patterns found in directory {}", directoryPath);
         return std::nullopt;
     }
 
@@ -175,7 +177,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
+    Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
     return std::nullopt;
 }
 
@@ -197,7 +199,7 @@ static std::optional<std::vector<std::string>> tokenize_post_comm(const std::str
     auto rparen = statLine.rfind(')');
     if (rparen == std::string::npos)
     {
-        atlasagent::Logger()->error("Malformed proc stat line, no ')' found: {}", statLine);
+        Logger()->error("Malformed proc stat line, no ')' found: {}", statLine);
         return std::nullopt;
     }
     std::vector<std::string> tokens = absl::StrSplit(statLine.substr(rparen + 1), ' ', absl::SkipWhitespace());
@@ -215,7 +217,7 @@ try
 
     if (statTokens->size() <= ServiceMonitorUtilConstants::STimeIndex)
     {
-        atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
+        Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
                                     ServiceMonitorUtilConstants::STimeIndex + 1, statTokens->size());
         return std::nullopt;
     }
@@ -226,7 +228,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in parse_process_times", e.what());
+    Logger()->error("Exception: {} in parse_process_times", e.what());
     return std::nullopt;
 }
 
@@ -250,7 +252,7 @@ try
     }
     if (statTokens->size() <= ServiceMonitorUtilConstants::RssIndex)
     {
-        atlasagent::Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
+        Logger()->error("Not enough tokens in proc stat file. Expected at least {}, got {}",
                                     ServiceMonitorUtilConstants::RssIndex + 1, statTokens->size());
         return std::nullopt;
     }
@@ -259,7 +261,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in parse_rss", e.what());
+    Logger()->error("Exception: {} in parse_rss", e.what());
     return std::nullopt;
 }
 
@@ -291,7 +293,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("get_number_fds exception: {} ", e.what());
+    Logger()->error("get_number_fds exception: {} ", e.what());
     return std::nullopt;
 }
 
@@ -314,7 +316,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in parse_cgroup_cpu_stat", e.what());
+    Logger()->error("Exception: {} in parse_cgroup_cpu_stat", e.what());
     return std::nullopt;
 }
 
@@ -331,7 +333,7 @@ std::optional<unsigned long long> get_cgroup_cpu_usage(const std::string& cgroup
     auto lines = atlasagent::read_file(path.string().c_str());
     if (lines.has_value() == false || lines.value().empty())
     {
-        atlasagent::Logger()->error("Error reading {}", path.string());
+        Logger()->error("Error reading {}", path.string());
         return std::nullopt;
     }
     return parse_cgroup_cpu_stat(lines.value());
@@ -344,14 +346,14 @@ try
     auto lines = atlasagent::read_file(path.string().c_str());
     if (lines.has_value() == false || lines.value().empty())
     {
-        atlasagent::Logger()->error("Error reading {}", path.string());
+        Logger()->error("Error reading {}", path.string());
         return std::nullopt;
     }
     return std::stoull(lines.value().at(0));
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in get_cgroup_memory", e.what());
+    Logger()->error("Exception: {} in get_cgroup_memory", e.what());
     return std::nullopt;
 }
 
@@ -362,7 +364,7 @@ try
     auto lines = atlasagent::read_file(path.string().c_str());
     if (lines.has_value() == false)
     {
-        atlasagent::Logger()->error("Error reading {}", path.string());
+        Logger()->error("Error reading {}", path.string());
         return std::nullopt;
     }
 
@@ -379,7 +381,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in get_cgroup_pids", e.what());
+    Logger()->error("Exception: {} in get_cgroup_pids", e.what());
     return std::nullopt;
 }
 
@@ -401,7 +403,7 @@ std::optional<unsigned long> get_total_fds(const std::string& cgroupPath)
         }
         else
         {
-            atlasagent::Logger()->debug("Could not get fd count for pid {}, skipping", pid);
+            Logger()->debug("Could not get fd count for pid {}, skipping", pid);
         }
     }
     return total;

@@ -299,7 +299,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception thrown in is_file_present: {}", e.what());
+    Logger()->error("Exception thrown in is_file_present: {}", e.what());
     return false;
 }
 
@@ -323,7 +323,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception thrown in read_file: {}", e.what());
+    Logger()->error("Exception thrown in read_file: {}", e.what());
     return std::nullopt;
 }
 

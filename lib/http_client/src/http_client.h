@@ -11,6 +11,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 class CurlHeaders;
 
 struct HttpClientConfig

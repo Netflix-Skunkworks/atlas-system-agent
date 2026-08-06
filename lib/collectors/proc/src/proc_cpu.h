@@ -8,6 +8,8 @@
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
+using namespace spectator;
+
 struct Cpu_Gauge_Values
 {
     double user;

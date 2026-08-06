@@ -3,6 +3,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 PerfMetrics::PerfMetrics(Registry* registry, const std::string path_prefix)
     : registry_(registry),
       path_prefix_(std::move(path_prefix)),

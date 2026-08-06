@@ -8,18 +8,23 @@ from conan.tools.files import download, unzip, check_sha256, load, save
 class AtlasSystemAgentConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     requires = (
-        "abseil/20240116.2",
-        "asio/1.32.0",
+        "abseil/20260526.0",
+        "asio/1.38.2",
         "backward-cpp/1.6",
-        "boost/1.83.0",
-        "fmt/11.0.2",
-        "gtest/1.15.0",
+        # Capped at 1.90.0: the boost/1.91.0 recipe expects a cobalt_io_ssl library that it
+        # never provides OpenSSL for, so package_info() fails. Matches the version the
+        # vendored thirdparty/spectator-cpp pins.
+        "boost/1.90.0",
+        # Pinned to 12.1.0 to match the fmt that spdlog/1.17.0 requires
+        "fmt/12.1.0",
+        "gtest/1.17.0",
         "libcurl/8.10.1",
-        "openssl/3.3.2",
-        "rapidjson/cci.20230929",
+        # libcurl/8.10.1 requires openssl/[>=1.1 <4], so 4.x is not usable yet
+        "openssl/3.6.3",
+        "rapidjson/cci.20250205",
         "sdbus-cpp/2.3.1",
-        "spdlog/1.15.0",
-        "zlib/1.3.1",
+        "spdlog/1.17.0",
+        "zlib/1.3.2",
     )
     tool_requires = ()
     generators = "CMakeDeps", "CMakeToolchain"
@@ -27,14 +32,16 @@ class AtlasSystemAgentConan(ConanFile):
     def requirements(self):
         # Pin the libsystemd pulled in transitively by sdbus-cpp
         self.requires("libsystemd/255.10", override=True)
-        # TODO: remove this when SystemD updates package for zstd
-        self.requires("zstd/1.5.7", override=True)
-        # TODO: remove this when SystemD updates package for xz_utils
-        self.requires("xz_utils/5.8.1", override=True)
 
     def configure(self):
         self.options["libcurl"].with_c_ares = True
         self.options["libcurl"].with_ssl = "openssl"
+        # b2 builds an extra boost_cobalt_io_ssl library whenever it can find OpenSSL, but
+        # the boost/1.90.0 recipe does not list it, so package_info() aborts with "built,
+        # but were not used in any boost module". This only reproduces where OpenSSL headers
+        # are visible, which is why it breaks CI but not every local build. We do not use
+        # Cobalt, and disabling it stops b2 from building cobalt/cobalt_io/cobalt_io_ssl.
+        self.options["boost"].without_cobalt = True
 
     @staticmethod
     def maybe_remove_dir(path: str):
@@ -49,7 +56,7 @@ class AtlasSystemAgentConan(ConanFile):
     def get_spectator_cpp(self):
         thirdparty_dir = "thirdparty"
         repo = "Netflix/spectator-cpp"
-        commit = "1e69c442528a8450ab48948fef964fc79a73ac49"
+        commit = "656bf58c5560e83b31918bd71b73cecb2c634014"  # v2.3.0
 
         zip_path = os.path.join(thirdparty_dir, f"spectator-cpp-{commit}.zip")
         dir_path = os.path.join(thirdparty_dir, "spectator-cpp")
@@ -59,7 +66,7 @@ class AtlasSystemAgentConan(ConanFile):
         self.maybe_remove_dir(dir_path)
 
         download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_path)
-        check_sha256(self, zip_path, "d39cbc2f101c5ae04324d2255ca8f208985f2879a2289ab74e0207fca79d76ce")
+        check_sha256(self, zip_path, "22e31a33eb796a91b52cf14ff18d2a29e2dd0be9969e67b8f3130e4dea0a096a")
         unzip(self, zip_path, destination=dir_path, strip_root=True)
         self.maybe_remove_file(zip_path)
 

@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+using namespace spectator;
+
 // TODD: Move this file to "testdata/resources/proc/pressure"
 class PressureStallTest : public atlasagent::PressureStall
 {

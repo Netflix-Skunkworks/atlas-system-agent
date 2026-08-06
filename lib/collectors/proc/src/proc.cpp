@@ -12,6 +12,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 struct ProcStatConstants
 {
     static constexpr unsigned int FirstProcessorIndex{1};

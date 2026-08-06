@@ -6,6 +6,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 class MonotonicTimer
 {
    public:

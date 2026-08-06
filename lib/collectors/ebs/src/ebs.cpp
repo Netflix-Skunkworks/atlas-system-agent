@@ -8,6 +8,10 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+using namespace spectator;
+
+using atlasagent::Logger;
+
 struct EBSMetricConstants
 {
     // Operation types
@@ -39,14 +43,14 @@ try
     std::optional<std::vector<std::string>> configContents = atlasagent::read_file(configFilePath);
     if (configContents.has_value() == false)
     {
-        atlasagent::Logger()->error("Error reading config file {}", configFilePath);
+        Logger()->error("Error reading config file {}", configFilePath);
         return std::nullopt;
     }
 
     // Skip empty files
     if (configContents.value().empty())
     {
-        atlasagent::Logger()->debug("Empty config file {}", configFilePath);
+        Logger()->debug("Empty config file {}", configFilePath);
         return std::nullopt;
     }
 
@@ -56,7 +60,7 @@ try
     {
         if (std::filesystem::exists(device) == false)
         {
-            atlasagent::Logger()->error("Device path: {} not valid in config file {}", device, configFilePath);
+            Logger()->error("Device path: {} not valid in config file {}", device, configFilePath);
             return std::nullopt;
         }
         devicePaths.emplace_back(device);
@@ -65,7 +69,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in parse_regex_config_file", e.what());
+    Logger()->error("Exception: {} in parse_regex_config_file", e.what());
     return std::nullopt;
 }
 
@@ -75,7 +79,7 @@ try
     // Check if the directory exists and is a directory
     if (std::filesystem::exists(directoryPath) == false || std::filesystem::is_directory(directoryPath) == false)
     {
-        atlasagent::Logger()->error("Invalid service ebs config directory {}", directoryPath);
+        Logger()->error("Invalid service ebs config directory {}", directoryPath);
         return std::nullopt;
     }
 
@@ -95,7 +99,7 @@ try
         auto devicePaths = ebs_parse_regex_config_file(file.path().c_str());
         if (devicePaths.has_value() == false)
         {
-            atlasagent::Logger()->error("Could not add devices from config file {}", file.path().c_str());
+            Logger()->error("Could not add devices from config file {}", file.path().c_str());
             continue;
         }
 
@@ -109,7 +113,7 @@ try
     // If no devices are to be monitored, log the error and return nullopt
     if (allDevices.empty())
     {
-        atlasagent::Logger()->info("No ebs regex patterns found in directory {}", directoryPath);
+        Logger()->info("No ebs regex patterns found in directory {}", directoryPath);
         return std::nullopt;
     }
 
@@ -117,7 +121,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
+    Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
     return std::nullopt;
 }
 
@@ -131,7 +135,7 @@ std::optional<EBSCollector> EBSCollector::Create(Registry* registry)
     auto config = parse_ebs_config_directory(EBSConstants::ConfigPath);
     if (!config.has_value())
     {
-        atlasagent::Logger()->info("EBS Monitoring is disabled.");
+        Logger()->info("EBS Monitoring is disabled.");
         return std::nullopt;
     }
     return std::optional<EBSCollector>{std::in_place, registry, config.value()};
@@ -141,7 +145,7 @@ void EBSCollector::Collect(std::optional<EBSCollector>& self)
 {
     if (self.has_value() && self->gather_metrics() == false)
     {
-        atlasagent::Logger()->error("Failed to gather EBS metrics");
+        Logger()->error("Failed to gather EBS metrics");
     }
 }
 
@@ -159,7 +163,7 @@ try
     if (fd == -1)
     {
         std::error_code ec(errno, std::system_category());
-        atlasagent::Logger()->error("Failed to open device {}: {}", device, ec.message());
+        Logger()->error("Failed to open device {}: {}", device, ec.message());
         return false;
     }
 
@@ -169,13 +173,13 @@ try
     if (ret < 0)
     {
         std::error_code ec(errno, std::system_category());
-        atlasagent::Logger()->error("Failed to call ioctl on device {}: {}", device, ec.message());
+        Logger()->error("Failed to call ioctl on device {}: {}", device, ec.message());
         return false;
     }
 
     if (stats._magic != NVMeCommands::StatsMagic)
     {
-        atlasagent::Logger()->error("Not an EBS device: {}", device);
+        Logger()->error("Not an EBS device: {}", device);
         return false;
     }
 
@@ -183,7 +187,7 @@ try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
+    Logger()->error("Exception: {} in parse_service_monitor_config_directory", e.what());
     return false;
 }
 
@@ -192,7 +196,7 @@ bool EBSCollector::handle_histogram(const ebs_nvme_histogram& histogram, const s
 {
     if (histogram.num_bins > AtlasNamingConvention.size())
     {
-        atlasagent::Logger()->error("Histogram has more bins than expected: {} > {}", histogram.num_bins,
+        Logger()->error("Histogram has more bins than expected: {} > {}", histogram.num_bins,
                                     AtlasNamingConvention.size());
         return false;
     }
@@ -237,13 +241,13 @@ bool EBSCollector::update_metrics(const std::string& devicePath, const nvme_get_
     bool success{true};
     if (false == handle_histogram(stats.read_io_latency_histogram, devicePath, EBSMC::ReadOp))
     {
-        atlasagent::Logger()->error("Failed to handle read histogram for device {}", devicePath);
+        Logger()->error("Failed to handle read histogram for device {}", devicePath);
         success = false;
     }
 
     if (false == handle_histogram(stats.write_io_latency_histogram, devicePath, EBSMC::WriteOp))
     {
-        atlasagent::Logger()->error("Failed to handle write histogram for device {}", devicePath);
+        Logger()->error("Failed to handle write histogram for device {}", devicePath);
         success = false;
     }
 
@@ -260,14 +264,14 @@ bool EBSCollector::gather_metrics()
         nvme_get_amzn_stats_logpage stats{};
         if (false == query_stats_from_device(device, stats))
         {
-            atlasagent::Logger()->error("Failed to query stats from device {}", device);
+            Logger()->error("Failed to query stats from device {}", device);
             success = false;
             continue;
         }
         // Push the metrics to spectatorD
         if (update_metrics(device, stats) == false)
         {
-            atlasagent::Logger()->error("Failed to update metrics for device {}", device);
+            Logger()->error("Failed to update metrics for device {}", device);
             success = false;
         }
     }

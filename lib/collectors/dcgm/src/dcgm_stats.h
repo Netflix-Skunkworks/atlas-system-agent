@@ -10,6 +10,8 @@
 #include <optional>
 #include <array>
 
+using namespace spectator;
+
 struct DCGMConstants
 {
     static constexpr auto ServiceName{"nvidia-dcgm.service"};

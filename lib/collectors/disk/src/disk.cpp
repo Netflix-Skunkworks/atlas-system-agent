@@ -9,6 +9,7 @@
 
 namespace atlasagent
 {
+using namespace spectator;
 
 inline std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
 {

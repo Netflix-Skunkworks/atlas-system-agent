@@ -8,6 +8,7 @@
 
 namespace atlasagent
 {
+using namespace spectator;
 
 namespace detail
 {

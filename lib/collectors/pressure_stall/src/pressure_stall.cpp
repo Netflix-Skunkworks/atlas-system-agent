@@ -5,6 +5,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 PressureStall::PressureStall(Registry* registry, const std::string path_prefix) noexcept
     : registry_(registry), path_prefix_(std::move(path_prefix))
 {

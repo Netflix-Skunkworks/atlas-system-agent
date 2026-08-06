@@ -5,6 +5,8 @@
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 #include <gtest/gtest.h>
 
+using namespace spectator;
+
 using atlasagent::NvmlDeviceHandle;
 using atlasagent::NvmlMemory;
 using atlasagent::NvmlPerfState;

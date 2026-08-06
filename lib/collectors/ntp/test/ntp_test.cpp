@@ -6,9 +6,10 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
+using namespace spectator;
+
 namespace
 {
-using atlasagent::Logger;
 using atlasagent::Ntp;
 
 class NtpTest : public Ntp<TestClock>

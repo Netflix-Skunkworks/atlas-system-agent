@@ -7,6 +7,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 class PressureStall
 {
    public:

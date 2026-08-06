@@ -6,6 +6,8 @@
 
 #include <utility>
 
+using namespace spectator;
+
 class CGroupTest : public atlasagent::CGroup
 {
    public:

@@ -12,6 +12,8 @@
 
 namespace atlasagent
 {
+using namespace spectator;
+
 struct MountPoint
 {
     unsigned device_major;

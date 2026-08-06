@@ -12,6 +12,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 namespace detail
 {
 inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)

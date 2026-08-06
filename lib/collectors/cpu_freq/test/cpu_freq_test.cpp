@@ -7,6 +7,8 @@
 #include <gtest/gtest.h>
 #include <set>
 
+using namespace spectator;
+
 namespace
 {
 using atlasagent::CpuFreq;

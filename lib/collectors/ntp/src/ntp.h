@@ -19,6 +19,8 @@ struct TestClock
 namespace atlasagent
 {
 
+using namespace spectator;
+
 namespace detail
 {
 struct abseil_clock

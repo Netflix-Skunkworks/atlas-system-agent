@@ -4,11 +4,12 @@
 #include <lib/collectors/ethtool/src/ethtool.h>
 #include <gtest/gtest.h>
 
+using namespace spectator;
+
 namespace
 {
 
 using atlasagent::Ethtool;
-using atlasagent::Logger;
 
 class EthtoolTest : public Ethtool
 {

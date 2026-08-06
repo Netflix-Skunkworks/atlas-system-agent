@@ -4,6 +4,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 MonotonicTimer::MonotonicTimer(Registry* registry, const MeterId& id)
     : count_{registry->CreateCounter(id.WithStat("count"))},
       total_time_{registry->CreateCounter(id.WithStat("totalTime"))}

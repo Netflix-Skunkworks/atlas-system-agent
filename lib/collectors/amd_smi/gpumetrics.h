@@ -17,6 +17,8 @@
 namespace atlasagent
 {
 
+using namespace spectator;
+
 // Nested under amd_smi_detail to avoid colliding with atlasagent::detail::gauge
 // defined in lib/collectors/nvml/src/gpumetrics.h, which atlas-agent.cpp also
 // includes. Used only at construction time to build the cached per-GPU meter

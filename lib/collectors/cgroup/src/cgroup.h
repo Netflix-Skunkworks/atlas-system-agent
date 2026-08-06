@@ -7,6 +7,7 @@
 
 namespace atlasagent
 {
+using namespace spectator;
 
 
 struct IOStats

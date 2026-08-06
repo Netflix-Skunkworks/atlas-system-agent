@@ -5,11 +5,12 @@
 #include <gtest/gtest.h>
 #include <unordered_set>
 
+using namespace spectator;
+
 namespace
 {
 using atlasagent::Disk;
 using atlasagent::DiskIo;
-using atlasagent::Logger;
 using atlasagent::MountPoint;
 
 class TestDisk : public atlasagent::Disk
