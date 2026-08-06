@@ -31,6 +31,9 @@ class AtlasSystemAgentConan(ConanFile):
         self.requires("zstd/1.5.7", override=True)
         # TODO: remove this when SystemD updates package for xz_utils
         self.requires("xz_utils/5.8.1", override=True)
+        # TODO: remove this when backward-cpp updates package for elfutils
+        self.requires("elfutils/0.195", override=True)
+
 
     def configure(self):
         self.options["libcurl"].with_c_ares = True
