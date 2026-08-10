@@ -35,6 +35,11 @@ class AtlasSystemAgentConan(ConanFile):
     def configure(self):
         self.options["libcurl"].with_c_ares = True
         self.options["libcurl"].with_ssl = "openssl"
+        # backward-cpp defaults to stack_details=dw on Linux, which pulls in elfutils.
+        # elfutils fetches its tarball from sourceware.org, which 403s the cloud build
+        # egress IPs. backtrace_symbol has no dependencies; we lose file/line numbers in
+        # crash traces but keep symbol names.
+        self.options["backward-cpp"].stack_details = "backtrace_symbol"
 
     @staticmethod
     def maybe_remove_dir(path: str):
