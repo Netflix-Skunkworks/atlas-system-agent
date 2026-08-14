@@ -1,7 +1,7 @@
-// System-agent metric collection. Compiled only when AGENT_FLAVOR=system
-// (the default; see AtlasAgent/CMakeLists.txt). The titus-agent and k8s-agent
-// equivalents live in titus-agent.cpp / k8s-agent.cpp; shared helpers are
-// declared in atlas-agent.h.
+// K8s-agent metric collection. Compiled only when AGENT_FLAVOR=k8s
+// (AGENT_FLAVOR_K8S is defined; see AtlasAgent/CMakeLists.txt). The system-agent
+// and titus-agent equivalents live in system-agent.cpp / titus-agent.cpp; shared
+// helpers are declared in atlas-agent.h.
 
 #include "atlas-agent.h"
 
@@ -47,8 +47,8 @@ static void gather_slow_system_metrics(atlasagent::Proc* proc, atlasagent::Disk*
     proc->CollectSystem();
 }
 
-void collect_system_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
-                            const int& max_monitored_services)
+void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
+                         const int& max_monitored_services)
 {
     atlasagent::Aws aws{registry};
     atlasagent::CpuFreq cpufreq{registry};
