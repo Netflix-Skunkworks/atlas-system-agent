@@ -46,4 +46,10 @@ bool is_file_present(const char* fileName);
 // read a file line by line into a vector
 std::optional<std::vector<std::string>> read_file(const std::string& filePath);
 
+// Read an entire file into a single string with trailing CR/LF trimmed. Intended for small
+// single-value files whose content can rotate underneath the process (e.g. a projected
+// ServiceAccount token) -- callers must not cache the result across calls. nullopt if
+// unreadable.
+std::optional<std::string> read_file_to_string(const std::string& filePath);
+
 }  // namespace atlasagent

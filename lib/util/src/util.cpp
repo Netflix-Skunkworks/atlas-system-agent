@@ -327,4 +327,27 @@ catch (const std::exception& e)
     return std::nullopt;
 }
 
+std::optional<std::string> read_file_to_string(const std::string& filePath)
+try
+{
+    std::ifstream file(filePath);
+    if (file.is_open() == false)
+    {
+        return std::nullopt;
+    }
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    std::string contents = buffer.str();
+    while (!contents.empty() && (contents.back() == '\n' || contents.back() == '\r'))
+    {
+        contents.pop_back();
+    }
+    return contents;
+}
+catch (const std::exception& e)
+{
+    atlasagent::Logger()->error("Exception thrown in read_file_to_string: {}", e.what());
+    return std::nullopt;
+}
+
 }  // namespace atlasagent

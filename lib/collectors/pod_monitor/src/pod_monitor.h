@@ -3,6 +3,8 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <absl/container/flat_hash_map.h>
 
+#include "pod_identity_client.h"
+
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -14,11 +16,21 @@ namespace atlasagent
 // Pod UID (canonical dashed form) -> that pod's cgroup v2 directory.
 using PodCgroupMap = absl::flat_hash_map<std::string, std::filesystem::path>;
 
+// Pod UID (canonical dashed form) -> cgroup path plus identity resolved from the apiserver.
+struct PodInfo
+{
+    std::string uid;
+    std::filesystem::path cgroup_path;
+    std::string name;
+    std::string pod_namespace;
+};
+using PodInfoMap = absl::flat_hash_map<std::string, PodInfo>;
+
 class PodMonitor
 {
    public:
     explicit PodMonitor(Registry* registry, std::string path_prefix = "/sys/fs/cgroup") noexcept
-        : registry_(registry), path_prefix_(std::move(path_prefix))
+        : registry_(registry), path_prefix_(std::move(path_prefix)), identity_client_(registry)
     {
     }
 
@@ -27,6 +39,11 @@ class PodMonitor
     // on each call, and walks at most two levels deep, so it only ever finds pod-aggregate
     // cgroups, never per-container leaves.
     [[nodiscard]] PodCgroupMap FindAllActivePods() const noexcept;
+
+    // Same as FindAllActivePods(), but also resolves each pod's Name and Namespace via a live
+    // apiserver call. Slower and network-dependent; FindAllActivePods() alone is sufficient when
+    // only cgroup paths are needed.
+    [[nodiscard]] PodInfoMap FindAllActivePods2() const noexcept;
 
     void SetPrefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
@@ -37,12 +54,16 @@ class PodMonitor
     static std::optional<std::string_view> MatchPodSliceName(std::string_view name, std::string_view name_prefix,
                                                                std::string_view name_suffix) noexcept;
     static std::optional<std::string> NormalizePodUid(std::string_view raw_uid) noexcept;
+    [[nodiscard]] static PodInfoMap JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
+                                                           const std::optional<PodIdentityMap>& identities) noexcept;
 
    private:
-    // Not read by FindAllActivePods() itself; stored for methods added in a later increment
-    // (e.g. per-pod CGroup construction/metric emission needs it).
-    [[maybe_unused]] Registry* registry_;
+    // Not read anywhere in this class today (identity_client_ is constructed from the
+    // constructor's `registry` parameter directly); kept for parity with this codebase's other
+    // collectors, which hold their own registry_ to record metrics (see e.g. aws.h).
+    Registry* registry_;
     std::string path_prefix_;
+    PodIdentityClient identity_client_;
 };
 
 }  // namespace atlasagent
