@@ -52,4 +52,9 @@ std::optional<std::vector<std::string>> read_file(const std::string& filePath);
 // unreadable.
 std::optional<std::string> read_file_to_string(const std::string& filePath);
 
+// Write the given contents to filePath, creating parent directories as needed and truncating
+// any existing file. Returns false (never throws) if the parent directory could not be
+// created or the file could not be opened/written.
+bool write_string_to_file(const std::string& filePath, const std::string& contents);
+
 }  // namespace atlasagent

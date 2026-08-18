@@ -1,6 +1,8 @@
 #include <lib/util/src/util.h>
 #include <gtest/gtest.h>
 
+#include <filesystem>
+
 namespace
 {
 
@@ -92,5 +94,30 @@ TEST(Utils, ParseTagsEmpty)
     auto some_invalid = atlasagent::parse_tags("key=val, key2=, =");
     EXPECT_EQ(some_invalid.size(), 1);
     EXPECT_EQ(some_invalid.at("key"), "val");
+}
+
+TEST(Util, WriteStringToFileRoundTrip)
+{
+    auto path = ::testing::TempDir() + "/write_string_to_file_round_trip.txt";
+    EXPECT_TRUE(atlasagent::write_string_to_file(path, "hello world"));
+
+    auto contents = atlasagent::read_file_to_string(path);
+    ASSERT_TRUE(contents.has_value());
+    EXPECT_EQ(*contents, "hello world");
+
+    std::filesystem::remove(path);
+}
+
+TEST(Util, WriteStringToFileCreatesParentDirectory)
+{
+    auto nested_dir = ::testing::TempDir() + "/nested";
+    auto path = nested_dir + "/dir/file.txt";
+    EXPECT_TRUE(atlasagent::write_string_to_file(path, "hello world"));
+
+    auto contents = atlasagent::read_file_to_string(path);
+    ASSERT_TRUE(contents.has_value());
+    EXPECT_EQ(*contents, "hello world");
+
+    std::filesystem::remove_all(nested_dir);
 }
 }  // namespace

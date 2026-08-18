@@ -3,10 +3,12 @@
 // prints what it discovers, so behavior can be checked by hand against `kubectl get
 // pods` on a live node. Not part of the atlas_system_agent binary itself.
 //
-// Identity resolution requires KUBERNETES_SERVICE_HOST, KUBERNETES_SERVICE_PORT, and
-// NODE_NAME to be set in the environment (the first two are present in any real pod by
-// default; NODE_NAME must be injected via the Downward API). Without them, every pod
-// still appears (from the cgroup walk) but with empty name/namespace.
+// Identity resolution reads kubelet's own kubeconfig at /run/kubernetes/config (must be
+// present and readable), runs its exec-credential plugin (typically "aws eks get-token")
+// to obtain a bearer token, and reads NETFLIX_INSTANCE_ID from the environment as the
+// node name -- all of which are already present on a real node, no manual setup needed
+// (unlike the old design). Without a readable kubeconfig, every pod still appears (from
+// the cgroup walk) but with empty name/namespace.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 

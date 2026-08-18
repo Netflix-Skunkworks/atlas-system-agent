@@ -350,4 +350,32 @@ catch (const std::exception& e)
     return std::nullopt;
 }
 
+bool write_string_to_file(const std::string& filePath, const std::string& contents)
+try
+{
+    std::filesystem::path path{filePath};
+    if (path.has_parent_path())
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(path.parent_path(), ec);
+        if (ec)
+        {
+            Logger()->warn("Unable to create parent directory for {}: {}", filePath, ec.message());
+            return false;
+        }
+    }
+    std::ofstream file(filePath, std::ios::trunc);
+    if (!file.is_open())
+    {
+        return false;
+    }
+    file << contents;
+    return file.good();
+}
+catch (const std::exception& e)
+{
+    atlasagent::Logger()->error("Exception thrown in write_string_to_file: {}", e.what());
+    return false;
+}
+
 }  // namespace atlasagent

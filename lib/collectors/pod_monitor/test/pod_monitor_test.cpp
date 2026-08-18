@@ -3,9 +3,10 @@
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
+#include <absl/strings/str_split.h>
+
 #include <gtest/gtest.h>
 
-#include <cstdlib>
 #include <optional>
 #include <string>
 #include <utility>
@@ -14,8 +15,10 @@
 class PodMonitorTest : public atlasagent::PodMonitor
 {
    public:
-    explicit PodMonitorTest(Registry* registry, std::string path_prefix = "/sys/fs/cgroup") noexcept
-        : PodMonitor(registry, std::move(path_prefix))
+    explicit PodMonitorTest(
+        Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
+        std::string kubeconfig_path = "lib/collectors/pod_monitor/test/resources/does_not_exist/kubeconfig") noexcept
+        : PodMonitor(registry, std::move(path_prefix), std::move(kubeconfig_path))
     {
     }
 
@@ -29,56 +32,23 @@ class PodMonitorTest : public atlasagent::PodMonitor
 class PodIdentityClientTest : public atlasagent::PodIdentityClient
 {
    public:
-    explicit PodIdentityClientTest(Registry* registry) noexcept : PodIdentityClient(registry) {}
+    explicit PodIdentityClientTest(
+        Registry* registry,
+        std::string kubeconfig_path = "lib/collectors/pod_monitor/test/resources/does_not_exist/kubeconfig") noexcept
+        : PodIdentityClient(registry, std::move(kubeconfig_path))
+    {
+    }
 
     // Expose protected methods for testing
     using PodIdentityClient::ParsePodList;
+    using PodIdentityClient::ExtractKubeconfigFields;
+    using PodIdentityClient::ParseExecCredentialToken;
+    using PodIdentityClient::BuildExecCommandLine;
     using PodIdentityClient::BuildApiServerUrl;
 };
 
 namespace
 {
-
-// Unsets the given environment variables for the lifetime of the object and restores their
-// prior values (or leaves them unset, if they were unset) on destruction, regardless of how
-// the enclosing scope is exited (including an early return from an ASSERT_* failure).
-class ScopedEnvUnset
-{
-   public:
-    explicit ScopedEnvUnset(std::initializer_list<const char*> names) : names_(names)
-    {
-        for (const auto* name : names_)
-        {
-            const auto* value = std::getenv(name);
-            std::optional<std::string> saved_value;
-            if (value != nullptr)
-            {
-                saved_value = std::string(value);
-            }
-            saved_.push_back(std::move(saved_value));
-            unsetenv(name);
-        }
-    }
-
-    ~ScopedEnvUnset()
-    {
-        for (size_t i = 0; i < names_.size(); ++i)
-        {
-            if (saved_[i].has_value())
-            {
-                setenv(names_[i], saved_[i]->c_str(), 1);
-            }
-            else
-            {
-                unsetenv(names_[i]);
-            }
-        }
-    }
-
-   private:
-    std::vector<const char*> names_;
-    std::vector<std::optional<std::string>> saved_;
-};
 
 TEST(PodMonitor, NormalizePodUidUnderscoresToDash)
 {
@@ -194,27 +164,6 @@ TEST(PodMonitor, FindAllActivePodsMissingRoot)
     auto pods = podMonitor.FindAllActivePods();
 
     EXPECT_TRUE(pods.empty());
-}
-
-TEST(PodIdentityClient, BuildApiServerUrlIpv4)
-{
-    auto result = PodIdentityClientTest::BuildApiServerUrl("10.0.0.1", "443", "my-node");
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, "https://10.0.0.1:443/api/v1/pods?fieldSelector=spec.nodeName=my-node");
-}
-
-TEST(PodIdentityClient, BuildApiServerUrlIpv6Bracketed)
-{
-    auto result = PodIdentityClientTest::BuildApiServerUrl("fdf6:8ce:f8e4::1", "443", "my-node");
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, "https://[fdf6:8ce:f8e4::1]:443/api/v1/pods?fieldSelector=spec.nodeName=my-node");
-}
-
-TEST(PodIdentityClient, BuildApiServerUrlEmptyInputsFail)
-{
-    EXPECT_FALSE(PodIdentityClientTest::BuildApiServerUrl("", "443", "my-node").has_value());
-    EXPECT_FALSE(PodIdentityClientTest::BuildApiServerUrl("10.0.0.1", "", "my-node").has_value());
-    EXPECT_FALSE(PodIdentityClientTest::BuildApiServerUrl("10.0.0.1", "443", "").has_value());
 }
 
 TEST(PodIdentityClient, ParsePodListWellFormed)
@@ -386,10 +335,8 @@ TEST(PodMonitor, JoinCgroupAndIdentityDropsIdentityWithoutCgroup)
     EXPECT_EQ(result.find("99999999-9999-9999-9999-999999999999"), result.end());
 }
 
-TEST(PodMonitor, FindAllActivePods2WithoutEnvIsHermetic)
+TEST(PodMonitor, FindAllActivePods2WithoutKubeconfigIsHermetic)
 {
-    ScopedEnvUnset scoped_env_unset{"KUBERNETES_SERVICE_HOST", "KUBERNETES_SERVICE_PORT", "NODE_NAME"};
-
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
@@ -416,6 +363,154 @@ TEST(PodMonitor, FindAllActivePods2WithoutEnvIsHermetic)
         EXPECT_EQ(info.name, "");
         EXPECT_EQ(info.pod_namespace, "");
     }
+}
+
+TEST(PodIdentityClient, FetchPodIdentitiesReturnsNulloptWhenKubeconfigMissing)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    PodIdentityClientTest client{&r};
+    EXPECT_FALSE(client.FetchPodIdentities().has_value());
+}
+
+TEST(PodIdentityClient, ExtractKubeconfigFieldsWellFormed)
+{
+    std::string yaml = R"yaml(
+clusters:
+- cluster:
+    certificate-authority-data: aGVsbG8td29ybGQ=
+    server: https://FF1DE699AA64BDA14ED2F1570FB48502.sk1.eks-cluster.us-east-1.api.aws
+  name: cluster-name
+users:
+- name: user-name
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - eks
+      - get-token
+      - --cluster-name
+      - compute-us-east-1-test-ebadeaux
+      command: aws
+      env: null
+)yaml";
+    std::vector<std::string> lines = absl::StrSplit(yaml, '\n');
+    auto result = PodIdentityClientTest::ExtractKubeconfigFields(lines);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->server, "https://FF1DE699AA64BDA14ED2F1570FB48502.sk1.eks-cluster.us-east-1.api.aws");
+    EXPECT_EQ(result->ca_cert_pem, "hello-world");
+    EXPECT_EQ(result->exec_command, "aws");
+    EXPECT_EQ(result->exec_args,
+              (std::vector<std::string>{"eks", "get-token", "--cluster-name", "compute-us-east-1-test-ebadeaux"}));
+}
+
+TEST(PodIdentityClient, ExtractKubeconfigFieldsMissingServerFails)
+{
+    std::string yaml = R"yaml(
+clusters:
+- cluster:
+    certificate-authority-data: aGVsbG8td29ybGQ=
+  name: cluster-name
+users:
+- name: user-name
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - eks
+      - get-token
+      - --cluster-name
+      - compute-us-east-1-test-ebadeaux
+      command: aws
+      env: null
+)yaml";
+    std::vector<std::string> lines = absl::StrSplit(yaml, '\n');
+    auto result = PodIdentityClientTest::ExtractKubeconfigFields(lines);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(PodIdentityClient, ExtractKubeconfigFieldsBadBase64Fails)
+{
+    std::string yaml = R"yaml(
+clusters:
+- cluster:
+    certificate-authority-data: not-valid-base64!!!
+    server: https://FF1DE699AA64BDA14ED2F1570FB48502.sk1.eks-cluster.us-east-1.api.aws
+  name: cluster-name
+users:
+- name: user-name
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - eks
+      - get-token
+      - --cluster-name
+      - compute-us-east-1-test-ebadeaux
+      command: aws
+      env: null
+)yaml";
+    std::vector<std::string> lines = absl::StrSplit(yaml, '\n');
+    auto result = PodIdentityClientTest::ExtractKubeconfigFields(lines);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(PodIdentityClient, ParseExecCredentialTokenWellFormed)
+{
+    auto json = R"json({"kind":"ExecCredential","status":{"token":"k8s-aws-v1.abc","expirationTimestamp":"2026-08-18T19:34:02Z"}})json";
+    auto result = PodIdentityClientTest::ParseExecCredentialToken(json);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, "k8s-aws-v1.abc");
+}
+
+TEST(PodIdentityClient, ParseExecCredentialTokenMalformedJsonFails)
+{
+    EXPECT_FALSE(PodIdentityClientTest::ParseExecCredentialToken("not json{{{").has_value());
+}
+
+TEST(PodIdentityClient, ParseExecCredentialTokenMissingStatusFails)
+{
+    EXPECT_FALSE(PodIdentityClientTest::ParseExecCredentialToken("{}").has_value());
+}
+
+TEST(PodIdentityClient, ParseExecCredentialTokenMissingTokenFails)
+{
+    EXPECT_FALSE(PodIdentityClientTest::ParseExecCredentialToken(R"json({"status":{}})json").has_value());
+}
+
+TEST(PodIdentityClient, BuildExecCommandLineQuotesArgs)
+{
+    auto result = PodIdentityClientTest::BuildExecCommandLine("aws", {"eks", "get-token", "--cluster-name", "my-cluster"});
+    EXPECT_EQ(result, "'aws' 'eks' 'get-token' '--cluster-name' 'my-cluster'");
+}
+
+TEST(PodIdentityClient, BuildExecCommandLineEscapesEmbeddedSingleQuote)
+{
+    auto result = PodIdentityClientTest::BuildExecCommandLine("aws", {"o'brien"});
+    // Tracing ShellQuoteSingleArg("o'brien"): opening quote, 'o', then the embedded quote is
+    // replaced by close-quote + backslash-escaped-quote + reopen-quote ('\''), then "brien",
+    // then the closing quote -- i.e. 'o'\''brien'.
+    EXPECT_EQ(result, "'aws' 'o'\\''brien'");
+}
+
+TEST(PodIdentityClient, BuildApiServerUrlAppendsPodsPath)
+{
+    auto result = PodIdentityClientTest::BuildApiServerUrl("https://example.com", "i-002f70ede9e03494f");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, "https://example.com/api/v1/pods?fieldSelector=spec.nodeName=i-002f70ede9e03494f");
+}
+
+TEST(PodIdentityClient, BuildApiServerUrlStripsTrailingSlash)
+{
+    auto result = PodIdentityClientTest::BuildApiServerUrl("https://example.com/", "i-002f70ede9e03494f");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, "https://example.com/api/v1/pods?fieldSelector=spec.nodeName=i-002f70ede9e03494f");
+}
+
+TEST(PodIdentityClient, BuildApiServerUrlEmptyInputsFail)
+{
+    EXPECT_FALSE(PodIdentityClientTest::BuildApiServerUrl("", "i-002f70ede9e03494f").has_value());
+    EXPECT_FALSE(PodIdentityClientTest::BuildApiServerUrl("https://example.com", "").has_value());
 }
 
 }  // namespace

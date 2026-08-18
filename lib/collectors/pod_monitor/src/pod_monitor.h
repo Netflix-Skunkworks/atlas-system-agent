@@ -29,8 +29,10 @@ using PodInfoMap = absl::flat_hash_map<std::string, PodInfo>;
 class PodMonitor
 {
    public:
-    explicit PodMonitor(Registry* registry, std::string path_prefix = "/sys/fs/cgroup") noexcept
-        : registry_(registry), path_prefix_(std::move(path_prefix)), identity_client_(registry)
+    explicit PodMonitor(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
+                         std::string kubeconfig_path = PodIdentityClientConstants::KubeconfigPath) noexcept
+        : registry_(registry), path_prefix_(std::move(path_prefix)),
+          identity_client_(registry, std::move(kubeconfig_path))
     {
     }
 
