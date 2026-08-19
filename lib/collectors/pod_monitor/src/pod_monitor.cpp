@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <system_error>
+#include <unistd.h>
 #include <utility>
 
 namespace atlasagent
@@ -172,6 +173,109 @@ PodInfoMap PodMonitor::FindAllActivePods2() const noexcept
     auto cgroup_pods = FindAllActivePods();
     auto identities = identity_client_.FetchPodIdentities();
     return JoinCgroupAndIdentity(cgroup_pods, identities);
+}
+
+std::unordered_map<std::string, std::string> PodMonitor::BuildPodTags(const PodInfo& info) noexcept
+{
+    return {
+        {"nf.node", info.name},
+        {"nf.platform", "k8s"},
+        {"k8s.namespace.name", info.pod_namespace},
+    };
+}
+
+double PodMonitor::ResolveCpuCountForPod(const CGroup& cgroup) noexcept
+{
+    if (auto quota = cgroup.QuotaCpuCount(); quota.has_value())
+    {
+        return *quota;
+    }
+    return static_cast<double>(sysconf(_SC_NPROCESSORS_ONLN));
+}
+
+void PodMonitor::RefreshTrackedPods() noexcept
+{
+    auto discovered = FindAllActivePods2();
+
+    // Pass 1: evict every tracked pod no longer discovered. Erasing the map entry destroys its
+    // TrackedPod, which destroys its owned CGroup, freeing every one of its delta-tracking
+    // baselines in one step -- there is no separate "reset". Unlike std::unordered_map,
+    // absl::flat_hash_map's single-iterator erase() returns void (not the next iterator), so
+    // the iterator must be advanced with post-increment before the (now invalidated) copy is
+    // erased -- see raw_hash_set.h's own erase() doc comment for this exact idiom.
+    for (auto it = tracked_pods_.begin(); it != tracked_pods_.end();)
+    {
+        if (discovered.find(it->first) == discovered.end())
+        {
+            tracked_pods_.erase(it++);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    // Pass 2 (fully separate from pass 1): absl::flat_hash_map gives no iterator/reference
+    // stability across insertion/erasure, so every try_emplace iterator below is only used
+    // within the same loop iteration it was returned in.
+    for (const auto& [uid, info] : discovered)
+    {
+        auto [it, inserted] =
+            tracked_pods_.try_emplace(uid, registry_, info.cgroup_path.string(), info.name, info.pod_namespace);
+        if (inserted)
+        {
+            it->second.cgroup.SetExtraTags(BuildPodTags(info));
+        }
+        // `info.name`/`info.pod_namespace` are only ever both populated together, from a
+        // successful identity lookup for this exact uid (see JoinCgroupAndIdentity) -- a
+        // nullopt/omitted identity this cycle collapses both to "". Treat that blank pair as
+        // "identity unknown this cycle", not as "this pod's identity became blank": self-heal
+        // only when the fresh info actually carries a resolved identity, so a transient
+        // apiserver/exec-credential failure (FetchPodIdentities() returning nullopt, or simply
+        // omitting this uid) never wipes out an already-correctly-tagged pod's name/namespace.
+        else if (!info.name.empty() && !info.pod_namespace.empty() &&
+                 (it->second.name != info.name || it->second.pod_namespace != info.pod_namespace))
+        {
+            it->second.name = info.name;
+            it->second.pod_namespace = info.pod_namespace;
+            it->second.cgroup.SetExtraTags(BuildPodTags(info));
+        }
+
+        // Re-resolve every refresh cycle (not only at first insertion): a pod's cgroup
+        // directory can appear slightly before kubelet/the CPU manager writes its real cpu.max
+        // quota (cpu.max still reads "max" at that instant), and an in-place vertical resize can
+        // change an already-tracked pod's quota later in its lifetime. Recomputing here means
+        // both cases converge to the correct value on the next refresh instead of sticking with
+        // whatever was resolved (possibly the whole node's CPU count) the first time this pod
+        // was seen.
+        it->second.cgroup.SetCpuCountOverride(ResolveCpuCountForPod(it->second.cgroup));
+    }
+}
+
+void PodMonitor::CollectCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept
+{
+    for (auto& entry : tracked_pods_)
+    {
+        entry.second.cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+    }
+}
+
+void PodMonitor::CollectIOStats() noexcept
+{
+    for (auto& entry : tracked_pods_)
+    {
+        entry.second.cgroup.IOStats();
+    }
+}
+
+void PodMonitor::CollectMemoryStats() noexcept
+{
+    RefreshTrackedPods();
+    for (auto& entry : tracked_pods_)
+    {
+        entry.second.cgroup.MemoryStatsV2();
+        entry.second.cgroup.MemoryStatsStdV2();
+    }
 }
 
 }  // namespace atlasagent

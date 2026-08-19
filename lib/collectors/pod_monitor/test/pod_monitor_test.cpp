@@ -2,11 +2,13 @@
 #include <lib/collectors/pod_monitor/src/pod_identity_client.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
+#include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
 #include <absl/strings/str_split.h>
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
@@ -27,6 +29,8 @@ class PodMonitorTest : public atlasagent::PodMonitor
     using PodMonitor::NormalizePodUid;
     using PodMonitor::ScanPodSliceDirectory;
     using PodMonitor::JoinCgroupAndIdentity;
+    using PodMonitor::RefreshTrackedPods;
+    using PodMonitor::TrackedPods;
 };
 
 class PodIdentityClientTest : public atlasagent::PodIdentityClient
@@ -164,6 +168,122 @@ TEST(PodMonitor, FindAllActivePodsMissingRoot)
     auto pods = podMonitor.FindAllActivePods();
 
     EXPECT_TRUE(pods.empty());
+}
+
+TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    // Uses the identity-client's default kubeconfig path, which points at a nonexistent file
+    // (see PodMonitorTest's default above), so FindAllActivePods2()'s identity lookup always
+    // fails closed and no real apiserver/network call is ever made -- this test is hermetic.
+    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
+
+    podMonitor.RefreshTrackedPods();
+    ASSERT_EQ(podMonitor.TrackedPods().size(), 3);
+    EXPECT_TRUE(podMonitor.TrackedPods().contains("11111111-1111-1111-1111-111111111111"));
+    EXPECT_TRUE(podMonitor.TrackedPods().contains("22222222-2222-2222-2222-222222222222"));
+    EXPECT_TRUE(podMonitor.TrackedPods().contains("33333333-3333-3333-3333-333333333333"));
+
+    // "systemd_partial" reuses UID 11111111... (already tracked above) and introduces a
+    // brand-new UID 77777777...; UIDs 22222222... and 33333333... are no longer discovered.
+    podMonitor.SetPrefix("lib/collectors/pod_monitor/test/resources/systemd_partial");
+    podMonitor.RefreshTrackedPods();
+
+    const auto& tracked = podMonitor.TrackedPods();
+    ASSERT_EQ(tracked.size(), 2);
+    EXPECT_TRUE(tracked.contains("11111111-1111-1111-1111-111111111111"));
+    EXPECT_TRUE(tracked.contains("77777777-7777-7777-7777-777777777777"));
+    EXPECT_FALSE(tracked.contains("22222222-2222-2222-2222-222222222222"));
+    EXPECT_FALSE(tracked.contains("33333333-3333-3333-3333-333333333333"));
+}
+
+// Regression coverage for ResolveCpuCountForPod()/SetCpuCountOverride() actually being wired up
+// to CGroup::QuotaCpuCount() through RefreshTrackedPods(), against a fixture pod directory that
+// has a concrete numeric cpu.max quota ("50000 100000" -> 0.5 CPUs) -- prior to this test, every
+// pod_monitor test fixture pod directory had no cpu.max at all, so ResolveCpuCountForPod() was
+// only ever exercised via its sysconf(_SC_NPROCESSORS_ONLN) fallback branch, never its
+// quota-derived branch.
+TEST(PodMonitor, RefreshTrackedPodsAppliesQuotaDerivedCpuCountOverride)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd_single_pod_with_quota"};
+
+    podMonitor.RefreshTrackedPods();
+    ASSERT_EQ(podMonitor.TrackedPods().size(), 1);
+    ASSERT_TRUE(podMonitor.TrackedPods().contains("11111111-1111-1111-1111-111111111111"));
+
+    // CGroup::PodCpuStats()'s very first call fixes capacity_last_updated_ to (now - interval),
+    // so CpuProcessingCapacity's delta_t comes out to exactly the requested 5s interval
+    // regardless of real wall-clock time -- making cgroup.cpu.processingCapacity's value
+    // deterministic: 5s * cpuCount. If ResolveCpuCountForPod() had fallen back to
+    // sysconf(_SC_NPROCESSORS_ONLN) instead of picking up the fixture's 0.5-CPU quota (e.g. a
+    // regression reintroducing the "max" == 0 parsing pitfall, or SetCpuCountOverride() no
+    // longer being called), this would come out as 5 * (the node's logical CPU count) instead.
+    podMonitor.CollectCpuStats(/*fiveSecondMetricsEnabled=*/true, /*sixtySecondMetricsEnabled=*/false);
+
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+
+    auto it = std::find_if(messages.begin(), messages.end(), [](const std::string& msg) {
+        return msg.find("cgroup.cpu.processingCapacity") != std::string::npos;
+    });
+    ASSERT_NE(it, messages.end());
+    EXPECT_EQ(*it, "c:cgroup.cpu.processingCapacity:2.500000\n");
+}
+
+// Regression test proving MemoryStatsStdV2's per-pod tagged output actually flows through
+// PodMonitor::CollectMemoryStats() end-to-end -- the exact defect this fix addresses (before it,
+// MemoryStatsStdV2()'s CreateGauge calls took no tag argument at all, so no pod's tag could ever
+// have reached these mem.* gauges no matter what CollectMemoryStats() did). Reuses the
+// systemd_single_pod_with_quota fixture from RefreshTrackedPodsAppliesQuotaDerivedCpuCountOverride
+// above, which now also carries memory.max/memory.current/memory.swap.max/memory.swap.current/
+// memory.stat placeholder files (added alongside its existing cpu.max) so MemoryStatsStdV2() has
+// something to read.
+//
+// This PodMonitorTest points at a nonexistent kubeconfig (see PodMonitorTest's default above), so
+// FetchPodIdentities() always returns nullopt and BuildPodTags() ends up with an unresolved
+// (empty-string) nf.node/k8s.namespace.name for this pod. The registry strips tags whose value is
+// empty before they ever reach the wire -- see the tag-less "c:cgroup.cpu.processingCapacity:
+// 2.500000\n" assertion just above, despite BuildPodTags() always running on first insertion --
+// so a literal "nf.node=<name>" substring can't honestly be asserted from this fixture. Instead
+// this asserts on "nf.platform=k8s", the one BuildPodTags tag that is never identity-dependent and
+// therefore never empty: seeing it on a mem.totalReal line is proof this pod's extra_tags_
+// (applied via SetExtraTags() inside RefreshTrackedPods()) actually reached MemoryStatsStdV2()'s
+// gauges through the MergeTags({}) fix.
+TEST(PodMonitor, CollectMemoryStatsEmitsMemoryStatsStdV2WithPodTag)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd_single_pod_with_quota"};
+
+    podMonitor.CollectMemoryStats();
+
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+
+    auto memIt = std::find_if(messages.begin(), messages.end(), [](const std::string& msg) {
+        return msg.find("mem.totalReal") != std::string::npos;
+    });
+    ASSERT_NE(memIt, messages.end());
+    EXPECT_NE(memIt->find("nf.platform=k8s"), std::string::npos) << "message missing pod tag: " << *memIt;
+}
+
+TEST(PodMonitor, RefreshTrackedPodsEvictsAllWhenRootDisappears)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
+
+    podMonitor.RefreshTrackedPods();
+    ASSERT_EQ(podMonitor.TrackedPods().size(), 3);
+
+    // Point at a nonexistent root, so FindAllActivePods2() discovers nothing.
+    podMonitor.SetPrefix("lib/collectors/pod_monitor/test/resources/does_not_exist");
+    podMonitor.RefreshTrackedPods();
+
+    EXPECT_TRUE(podMonitor.TrackedPods().empty());
 }
 
 TEST(PodIdentityClient, ParsePodListWellFormed)

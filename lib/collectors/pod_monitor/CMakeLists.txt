@@ -11,6 +11,7 @@ target_include_directories(pod_monitor
 
 target_link_libraries(pod_monitor
     abseil::abseil
+    cgroup
     fmt::fmt
     spectator-registry
     HttpClient
@@ -55,6 +56,20 @@ add_executable(find-active-pods2
 )
 
 target_link_libraries(find-active-pods2
+    pod_monitor
+    fmt::fmt
+    spectator-registry
+)
+
+# Standalone debug tool: a trimmed copy of AtlasAgent/src/k8s-agent.cpp's polling loop that
+# constructs only PodMonitor and stops after two 60-second cadence intervals, for exercising
+# PodMonitor's real cadence wiring by hand without the rest of k8s-agent.cpp's collectors; not
+# part of the atlas_system_agent binary and not run by ctest.
+add_executable(mock-agent
+    bin/mock-agent.cpp
+)
+
+target_link_libraries(mock-agent
     pod_monitor
     fmt::fmt
     spectator-registry
