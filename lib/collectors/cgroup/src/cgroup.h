@@ -91,7 +91,10 @@ class CGroup
 
     // Folded in from the old file-scope free function of the same name so it can use
     // registry_ and io_previous_stats_ directly instead of taking a Registry* parameter.
-    void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, const std::unordered_map<std::string, IOThrottle>& ioThrottles);
+    // IOStats must be qualified here: unqualified, it would resolve to the sibling member
+    // method IOStats() below (a class member hides an outer-namespace name of the same
+    // identifier, even across different entity kinds), not the atlasagent::IOStats struct.
+    void UpdateIOMetrics(const std::unordered_map<std::string, atlasagent::IOStats>& ioStats, const std::unordered_map<std::string, IOThrottle>& ioThrottles);
 
     // Returns local_tags unchanged when extra_tags_ is empty; otherwise the union of
     // extra_tags_ and local_tags, with local_tags winning on key collision.
@@ -116,7 +119,7 @@ class CGroup
     absl::Time peak_last_updated_;               // CpuPeakUtilizationV2 (default == UnixEpoch())
     int64_t peak_prev_system_time_ = -1;         // CpuPeakUtilizationV2
     int64_t peak_prev_user_time_ = -1;           // CpuPeakUtilizationV2
-    std::unordered_map<std::string, IOStats> io_previous_stats_;  // UpdateIOMetrics
+    std::unordered_map<std::string, atlasagent::IOStats> io_previous_stats_;  // UpdateIOMetrics
 
     std::unordered_map<std::string, std::string> extra_tags_;
     std::optional<double> cpu_count_override_;

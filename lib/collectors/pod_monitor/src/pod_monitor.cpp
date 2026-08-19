@@ -1,5 +1,7 @@
 #include "pod_monitor.h"
 
+#include <lib/logger/src/logger.h>
+
 #include <fmt/format.h>
 
 #include <cctype>
@@ -256,6 +258,7 @@ void PodMonitor::CollectCpuStats(const bool fiveSecondMetricsEnabled, const bool
 {
     for (auto& entry : tracked_pods_)
     {
+        atlasagent::Logger()->debug("Collecting CPU stats for pod {}/{} (uid={})", entry.second.pod_namespace, entry.second.name, entry.first);
         entry.second.cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
     }
 }
@@ -264,6 +267,7 @@ void PodMonitor::CollectIOStats() noexcept
 {
     for (auto& entry : tracked_pods_)
     {
+        atlasagent::Logger()->debug("Collecting IO stats for pod {}/{} (uid={})", entry.second.pod_namespace, entry.second.name, entry.first);
         entry.second.cgroup.IOStats();
     }
 }
@@ -273,6 +277,7 @@ void PodMonitor::CollectMemoryStats() noexcept
     RefreshTrackedPods();
     for (auto& entry : tracked_pods_)
     {
+        atlasagent::Logger()->debug("Collecting memory stats for pod {}/{} (uid={})", entry.second.pod_namespace, entry.second.name, entry.first);
         entry.second.cgroup.MemoryStatsV2();
         entry.second.cgroup.MemoryStatsStdV2();
     }

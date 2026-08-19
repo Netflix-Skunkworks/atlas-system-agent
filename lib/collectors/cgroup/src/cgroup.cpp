@@ -601,7 +601,7 @@ catch (const std::exception& ex)
     return {};
 }
 
-void CGroup::UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, const std::unordered_map<std::string, IOThrottle>& ioThrottles)
+void CGroup::UpdateIOMetrics(const std::unordered_map<std::string, atlasagent::IOStats>& ioStats, const std::unordered_map<std::string, IOThrottle>& ioThrottles)
 {
     constexpr double INTERVAL_SECONDS = 5.0;
     constexpr double PERCENT_MULTIPLIER = 100.0;

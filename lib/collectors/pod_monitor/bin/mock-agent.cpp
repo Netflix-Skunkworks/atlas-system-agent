@@ -10,6 +10,7 @@
 // tool doesn't link against.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
+#include <lib/logger/src/logger.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
@@ -17,6 +18,7 @@
 #include <fmt/format.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 
 namespace
@@ -37,6 +39,14 @@ void PrintAndClearMessages(MemoryWriter* writer, int intervalNumber)
 
 int main(int argc, char** argv)
 {
+    // Matches AtlasAgent/src/atlas-agent.cpp's VERBOSE_AGENT convention -- set it to see the
+    // Logger()->debug(...) lines PodMonitor emits per pod (e.g. "Collecting IO stats for pod
+    // ..."), which are otherwise suppressed at spdlog's default info level.
+    if (std::getenv("VERBOSE_AGENT") != nullptr)
+    {
+        atlasagent::Logger()->set_level(spdlog::level::debug);
+    }
+
     std::string path_prefix = argc > 1 ? argv[1] : "/sys/fs/cgroup";
 
     auto config = Config(WriterConfig(WriterTypes::Memory));
