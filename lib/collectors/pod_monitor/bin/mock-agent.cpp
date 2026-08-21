@@ -88,7 +88,7 @@ int main(int argc, char** argv)
         {
             podMonitor.CollectMemoryStats();
             ++sixtySecondIntervalsCompleted;
-            PrintAndClearMessages(memoryWriter, sixtySecondIntervalsCompleted);
+            //PrintAndClearMessages(memoryWriter, sixtySecondIntervalsCompleted);
             next_sixty_second_run += std::chrono::seconds(60);
         }
 

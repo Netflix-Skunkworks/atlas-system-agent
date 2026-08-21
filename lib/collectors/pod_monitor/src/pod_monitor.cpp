@@ -180,9 +180,9 @@ PodInfoMap PodMonitor::FindAllActivePods2() const noexcept
 std::unordered_map<std::string, std::string> PodMonitor::BuildPodTags(const PodInfo& info) noexcept
 {
     return {
-        {"nf.node", info.name},
-        {"nf.platform", "k8s"},
-        {"k8s.namespace.name", info.pod_namespace},
+        {"sample.nf.node", info.name},
+        {"sample.nf.platform", "k8s"},
+        {"sample.k8s.namespace.name", info.pod_namespace},
     };
 }
 
