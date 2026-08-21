@@ -24,16 +24,16 @@
 namespace
 {
 
-void PrintAndClearMessages(MemoryWriter* writer, int intervalNumber)
-{
-    auto messages = writer->GetMessages();
-    fmt::print("=== 60s interval {}/2 complete: {} message(s) emitted ===\n", intervalNumber, messages.size());
-    for (const auto& message : messages)
-    {
-        fmt::print("{}", message);
-    }
-    writer->Clear();
-}
+// void PrintAndClearMessages(MemoryWriter* writer, int intervalNumber)
+// {
+//     auto messages = writer->GetMessages();
+//     fmt::print("=== 60s interval {}/2 complete: {} message(s) emitted ===\n", intervalNumber, messages.size());
+//     for (const auto& message : messages)
+//     {
+//         fmt::print("{}", message);
+//     }
+//     writer->Clear();
+// }
 
 }  // namespace
 
@@ -53,7 +53,7 @@ int main(int argc, char** argv)
     auto registry = Registry(config);
     atlasagent::PodMonitor podMonitor{&registry, path_prefix};
 
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    // auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 
     // Both cadence flags below are false on the very first loop tick, so without this call the
     // tracked-pod set would stay empty for up to 60 seconds after process startup -- mirrors
