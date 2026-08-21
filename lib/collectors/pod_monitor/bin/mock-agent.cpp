@@ -49,7 +49,7 @@ int main(int argc, char** argv)
 
     std::string path_prefix = argc > 1 ? argv[1] : "/sys/fs/cgroup";
 
-    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto config = Config(WriterConfig(WriterTypes::UDP));
     auto registry = Registry(config);
     atlasagent::PodMonitor podMonitor{&registry, path_prefix};
 
@@ -98,7 +98,7 @@ int main(int argc, char** argv)
         {
             std::this_thread::sleep_for(time_to_sleep);
         }
-    } while (sixtySecondIntervalsCompleted < 2);
+    } while (sixtySecondIntervalsCompleted < 60);
 
     fmt::print("mock-agent: completed {} 60-second interval(s), exiting.\n", sixtySecondIntervalsCompleted);
     return 0;
