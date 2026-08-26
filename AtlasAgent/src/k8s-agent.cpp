@@ -5,10 +5,8 @@
 
 #include "atlas-agent.h"
 
-#include <lib/collectors/amd_smi/gpumetrics.h>
 #include <lib/collectors/aws/src/aws.h>
 #include <lib/collectors/cpu_freq/src/cpu_freq.h>
-#include <lib/collectors/dcgm/src/dcgm_stats.h>
 #include <lib/collectors/disk/src/disk.h>
 #include <lib/collectors/ebs/src/ebs.h>
 #include <lib/collectors/ethtool/src/ethtool.h>
@@ -17,7 +15,6 @@
 #include <lib/collectors/perfspect/src/perfspect.h>
 #include <lib/collectors/pressure_stall/src/pressure_stall.h>
 #include <lib/collectors/proc/src/proc.h>
-#include <lib/collectors/service_monitor/src/service_monitor.h>
 #include <lib/util/src/util.h>
 
 #include <fmt/chrono.h>
