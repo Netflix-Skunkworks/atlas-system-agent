@@ -44,9 +44,7 @@ static void handle_signal(int signal)
 
 static void init_signals()
 {
-    struct sigaction sa
-    {
-    };
+    struct sigaction sa{};
     sa.sa_handler = &handle_signal;
     sa.sa_flags = SA_RESETHAND;  // remove the handler after the first signal
     sigfillset(&sa.sa_mask);
@@ -184,6 +182,11 @@ int main(int argc, char* const argv[])
     {
         common_tags["titus.host"] = titus_host;
     }
+#elif defined(AGENT_FLAVOR_K8S)
+    for (auto& [tag, value] : atlasagent::get_common_tags())
+    {
+        common_tags[tag] = std::move(value);
+    }
 #endif
 
     auto logger = Logger();
@@ -195,7 +198,11 @@ int main(int argc, char* const argv[])
 
     atlasagent::HttpClient::GlobalInit();
 
+#if defined(AGENT_FLAVOR_K8S)
+    Config config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"), common_tags);
+#else
     Config config(WriterConfig(WriterTypes::Unix), common_tags);
+#endif
     Registry registry(config);
 #if defined(AGENT_FLAVOR_TITUS)
     Logger()->info("Start gathering Titus system metrics");

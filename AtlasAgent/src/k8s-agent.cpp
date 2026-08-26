@@ -1,61 +1,63 @@
-// Kubernetes-agent metric collection. Compiled only when AGENT_FLAVOR=k8s
-// (AGENT_FLAVOR_K8S is defined; see the top-level CMakeLists.txt). The titus-agent
-// and system-agent equivalents live in titus-agent.cpp / system-agent.cpp; shared
+// K8s-agent metric collection. Compiled only when AGENT_FLAVOR=k8s
+// (AGENT_FLAVOR_K8S is defined; see AtlasAgent/CMakeLists.txt). The system-agent
+// and titus-agent equivalents live in system-agent.cpp / titus-agent.cpp; shared
 // helpers are declared in atlas-agent.h.
-//
-// The k8s flavor currently mirrors the Titus (container) collector set: both are
-// cgroup-v2 container-scoped agents. It uses dedicated k8s collection methods
-// (Proc::CollectK8s, Disk::k8s_disk_stats) that currently duplicate the Titus
-// logic, giving k8s its own place to diverge as its resource semantics differ
-// from Atlas/Titus.
 
 #include "atlas-agent.h"
 
 #include <lib/collectors/aws/src/aws.h>
-#include <lib/collectors/cgroup/src/cgroup.h>
+#include <lib/collectors/cpu_freq/src/cpu_freq.h>
 #include <lib/collectors/disk/src/disk.h>
+#include <lib/collectors/ebs/src/ebs.h>
+#include <lib/collectors/ethtool/src/ethtool.h>
+#include <lib/collectors/ntp/src/ntp.h>
 #include <lib/collectors/perf_metrics/src/perf_metrics.h>
+#include <lib/collectors/perfspect/src/perfspect.h>
+#include <lib/collectors/pressure_stall/src/pressure_stall.h>
 #include <lib/collectors/proc/src/proc.h>
-#include <lib/collectors/service_monitor/src/service_monitor.h>
+#include <lib/util/src/util.h>
 
 #include <fmt/chrono.h>
 
 #include <optional>
 #include <regex>
+#include <unordered_set>
 #include <vector>
 
-using Aws = atlasagent::Aws;
-using CGroup = atlasagent::CGroup;
-using Disk = atlasagent::Disk;
-using PerfMetrics = atlasagent::PerfMetrics;
-using Proc = atlasagent::Proc;
-
-static void gather_peak_k8s_metrics(CGroup* cGroup, const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
+static void gather_peak_system_metrics(atlasagent::Proc* proc, const bool fiveSecondMetricsEnabled,
+                                       const bool sixtySecondMetricsEnabled)
 {
-    cGroup->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+    proc->CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 }
 
-static void gather_slow_k8s_metrics(CGroup* cGroup, Proc* proc, Disk* disk, Aws* aws)
+static void gather_scaling_metrics(atlasagent::CpuFreq* cpufreq) { cpufreq->Stats(); }
+
+static void gather_slow_system_metrics(atlasagent::Proc* proc, atlasagent::Disk* disk, atlasagent::Ethtool* ethtool,
+                                       atlasagent::Ntp<>* ntp, atlasagent::PressureStall* pressureStall,
+                                       atlasagent::Aws* aws)
 {
     aws->collect();
-    cGroup->MemoryStatsV2();
-    cGroup->MemoryStatsStdV2();
-    cGroup->NetworkStats();
-    disk->k8s_disk_stats();
-    proc->CollectK8s();
+    disk->disk_stats();
+    ethtool->collect();
+    ntp->collect();
+    pressureStall->collect();
+    proc->CollectSystem();
 }
 
 void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                          const int& max_monitored_services)
 {
-    Aws aws{registry};
-    CGroup cGroup{registry};
-    Disk disk{registry, ""};
-    PerfMetrics perf_metrics{registry, ""};
-    Proc proc{registry, std::move(net_tags)};
+    atlasagent::Aws aws{registry};
+    atlasagent::CpuFreq cpufreq{registry};
+    atlasagent::Disk disk{registry, ""};
+    atlasagent::Ethtool ethtool{registry, net_tags};
+    atlasagent::Ntp<> ntp{registry};
+    atlasagent::PerfMetrics perf_metrics{registry, ""};
+    atlasagent::PressureStall pressureStall{registry};
+    atlasagent::Proc proc{registry, net_tags};
 
-    auto gpu = GpuMetrics::Create(registry);
-    auto serviceMetrics = ServiceMonitor::Create(registry, max_monitored_services);
+    auto perfspectMetrics = Perfspect::Create(registry);
+    auto ebsMetrics = EBSCollector::Create(registry);
 
     // Initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
@@ -67,8 +69,8 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
 
     // The first call to this gather function takes ~100ms, so it must be
     // done before we start calculating times to wait for peak metrics
-    gather_slow_k8s_metrics(&cGroup, &proc, &disk, &aws);
-    Logger()->info("Published slow Kubernetes metrics (first iteration)");
+    gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
+    Logger()->info("Published slow system metrics (first iteration)");
 
     auto now = std::chrono::system_clock::now();
     auto next_run = now;
@@ -82,29 +84,31 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
 
-        // 1 second, 5 second, and 60 second CPU metrics are gathered here because they read from
-        // the same /proc/stat file
-        gather_peak_k8s_metrics(&cGroup, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+        // Gather one second metrics
+        // Proc has been modified to optionally gather 5 second and 60 second metrics during this call
+        // This prevents having to read proc/stat multiple times if both 5 and 60 second metrics are enabled
+        gather_peak_system_metrics(&proc, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+        gather_scaling_metrics(&cpufreq);
 
-        // If its time to gather 5 second metrics, update the next run time
-        // Currently we only have CPU metrics that run every 5 seconds, but if we add more in the future
-        // we can gather them here
+        // If it's time to gather the 5 second metrics
         if (fiveSecondMetricsEnabled == true)
         {
-            cGroup.IOStats();
+            Logger()->debug("Gathering 5 second metrics");
+            Perfspect::Collect(perfspectMetrics);
             next_five_second_run += std::chrono::seconds(5);
         }
 
-        // If its time to gather 60 second metrics, gather the metrics and update the next run time
+        // If it's time to gather the 60 second metrics
         if (sixtySecondMetricsEnabled == true)
         {
-            gather_slow_k8s_metrics(&cGroup, &proc, &disk, &aws);
+            Logger()->debug("Gathering 60 second metrics");
+            gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
             perf_metrics.collect();
-            GpuMetrics::Collect(gpu);
-            ServiceMonitor::Collect(serviceMetrics);
+            EBSCollector::Collect(ebsMetrics);
+
             auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start);
-            Logger()->info("Published Kubernetes metrics (delay={})", elapsed);
+            Logger()->debug("Published system metrics (delay={})", elapsed);
             next_sixty_second_run += std::chrono::seconds(60);
         }
 
