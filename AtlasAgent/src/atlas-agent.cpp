@@ -198,7 +198,11 @@ int main(int argc, char* const argv[])
 
     atlasagent::HttpClient::GlobalInit();
 
+#if defined(AGENT_FLAVOR_K8S)
+    Config config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"), common_tags);
+#else
     Config config(WriterConfig(WriterTypes::Unix), common_tags);
+#endif
     Registry registry(config);
 #if defined(AGENT_FLAVOR_TITUS)
     Logger()->info("Start gathering Titus system metrics");

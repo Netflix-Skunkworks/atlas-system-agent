@@ -57,16 +57,11 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     atlasagent::Ethtool ethtool{registry, net_tags};
     atlasagent::Ntp<> ntp{registry};
     atlasagent::PerfMetrics perf_metrics{registry, ""};
-    atlasagent::PodMonitor podMonitor{registry};
     atlasagent::PressureStall pressureStall{registry};
     atlasagent::Proc proc{registry, net_tags};
 
-    auto gpu = GpuMetrics::Create(registry);
-    auto gpuDCGM = GpuMetricsDCGM::Create(registry);
-    auto serviceMetrics = ServiceMonitor::Create(registry, max_monitored_services);
     auto perfspectMetrics = Perfspect::Create(registry);
     auto ebsMetrics = EBSCollector::Create(registry);
-    auto gpuAMD = atlasagent::GpuMetricsAMD::Create(registry);
 
     // Initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
@@ -80,10 +75,6 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     // done before we start calculating times to wait for peak metrics
     gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
     Logger()->info("Published slow system metrics (first iteration)");
-
-    // Both cadence flags below are false on the very first loop tick, so without this call the
-    // tracked-pod set would stay empty for up to 60 seconds after process startup.
-    podMonitor.CollectMemoryStats();
 
     auto now = std::chrono::system_clock::now();
     auto next_run = now;
@@ -102,14 +93,12 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
         // This prevents having to read proc/stat multiple times if both 5 and 60 second metrics are enabled
         gather_peak_system_metrics(&proc, fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
         gather_scaling_metrics(&cpufreq);
-        podMonitor.CollectCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 
         // If it's time to gather the 5 second metrics
         if (fiveSecondMetricsEnabled == true)
         {
             Logger()->debug("Gathering 5 second metrics");
             Perfspect::Collect(perfspectMetrics);
-            podMonitor.CollectIOStats();
             next_five_second_run += std::chrono::seconds(5);
         }
 
@@ -120,7 +109,6 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
             gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
             perf_metrics.collect();
             EBSCollector::Collect(ebsMetrics);
-            podMonitor.CollectMemoryStats();
 
             auto elapsed =
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start);
