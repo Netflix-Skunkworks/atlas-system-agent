@@ -51,7 +51,6 @@ class Disk
         : registry_(registry), path_prefix_(std::move(path_prefix))
     {
     }
-    void titus_disk_stats() noexcept;
     void k8s_disk_stats() noexcept;
     void disk_stats() noexcept;
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
