@@ -15,7 +15,6 @@
 #include <lib/collectors/ntp/src/ntp.h>
 #include <lib/collectors/perf_metrics/src/perf_metrics.h>
 #include <lib/collectors/perfspect/src/perfspect.h>
-#include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/collectors/pressure_stall/src/pressure_stall.h>
 #include <lib/collectors/proc/src/proc.h>
 #include <lib/collectors/service_monitor/src/service_monitor.h>
