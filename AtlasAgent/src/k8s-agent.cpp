@@ -5,10 +5,8 @@
 
 #include "atlas-agent.h"
 
-#include <lib/collectors/amd_smi/gpumetrics.h>
 #include <lib/collectors/aws/src/aws.h>
 #include <lib/collectors/cpu_freq/src/cpu_freq.h>
-#include <lib/collectors/dcgm/src/dcgm_stats.h>
 #include <lib/collectors/disk/src/disk.h>
 #include <lib/collectors/ebs/src/ebs.h>
 #include <lib/collectors/ethtool/src/ethtool.h>
@@ -18,7 +16,6 @@
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/collectors/pressure_stall/src/pressure_stall.h>
 #include <lib/collectors/proc/src/proc.h>
-#include <lib/collectors/service_monitor/src/service_monitor.h>
 #include <lib/util/src/util.h>
 
 #include <fmt/chrono.h>
@@ -61,12 +58,8 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     atlasagent::PressureStall pressureStall{registry};
     atlasagent::Proc proc{registry, net_tags};
 
-    auto gpu = GpuMetrics::Create(registry);
-    auto gpuDCGM = GpuMetricsDCGM::Create(registry);
-    auto serviceMetrics = ServiceMonitor::Create(registry, max_monitored_services);
     auto perfspectMetrics = Perfspect::Create(registry);
     auto ebsMetrics = EBSCollector::Create(registry);
-    auto gpuAMD = atlasagent::GpuMetricsAMD::Create(registry);
 
     // Initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();

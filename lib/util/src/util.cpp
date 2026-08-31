@@ -1,9 +1,14 @@
 #include "util.h"
 #include <lib/logger/src/logger.h>
 #include <absl/strings/str_split.h>
+#include <algorithm>
+#include <cctype>
 #include <cinttypes>
 #include <filesystem>
+#include <ranges>
+#include <span>
 #include <sstream>
+#include <string_view>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -282,6 +287,88 @@ std::unordered_map<std::string, std::string> parse_tags(const char* s)
             }
         }
     }
+    return tags;
+}
+
+static std::string safe_getenv(const char* name)
+{
+    const char* v = std::getenv(name);
+    return v != nullptr ? std::string{v} : std::string{};
+}
+
+static std::string trim(std::string s)
+{
+    auto not_space = [](unsigned char c) { return !std::isspace(c); };
+    auto first = std::ranges::find_if(s, not_space);
+    auto last = std::ranges::find_if(s | std::views::reverse, not_space).base();
+    return std::string(first, last);
+}
+
+// Titus System Services see un-processed `nimble_`-prefixed values for these three variables
+// until the nflx-environment scripts have run.
+static std::string strip_nimble_prefix(std::string_view env_var, std::string value)
+{
+    static constexpr std::string_view kPrefix = "nimble_";
+    static constexpr std::string_view kNimbleVars[] = {"NETFLIX_APP", "NETFLIX_AUTO_SCALE_GROUP", "NETFLIX_CLUSTER"};
+
+    if (std::ranges::contains(kNimbleVars, env_var) && value.starts_with(kPrefix))
+    {
+        value.erase(0, kPrefix.size());
+    }
+    return value;
+}
+
+static std::string first_non_empty(std::span<const char* const> env_vars)
+{
+    for (const char* env_var : env_vars)
+    {
+        if (auto value = safe_getenv(env_var); !value.empty())
+        {
+            return trim(strip_nimble_prefix(env_var, std::move(value)));
+        }
+    }
+    return {};
+}
+
+struct TagMapping
+{
+    std::string_view tag;
+    std::span<const char* const> env_vars;
+};
+
+std::unordered_map<std::string, std::string> get_common_tags()
+{
+    static constexpr const char* kAccount[] = {"NETFLIX_ACCOUNT_ID", "EC2_OWNER_ID"};
+    static constexpr const char* kApp[] = {"NETFLIX_APP"};
+    static constexpr const char* kAsg[] = {"NETFLIX_AUTO_SCALE_GROUP"};
+    static constexpr const char* kCluster[] = {"NETFLIX_CLUSTER"};
+    static constexpr const char* kContainer[] = {"TITUS_CONTAINER_NAME"};
+    static constexpr const char* kNode[] = {"NETFLIX_INSTANCE_ID", "TITUS_TASK_INSTANCE_ID", "EC2_INSTANCE_ID"};
+    static constexpr const char* kProcess[] = {"NETFLIX_PROCESS_NAME"};
+    static constexpr const char* kRegion[] = {"NETFLIX_REGION", "EC2_REGION"};
+    static constexpr const char* kShard1[] = {"NETFLIX_SHARD1"};
+    static constexpr const char* kShard2[] = {"NETFLIX_SHARD2"};
+    static constexpr const char* kStack[] = {"NETFLIX_STACK"};
+    static constexpr const char* kVmtype[] = {"EC2_INSTANCE_TYPE"};
+    static constexpr const char* kZone[] = {"EC2_AVAILABILITY_ZONE"};
+
+    static constexpr TagMapping kMappings[] = {
+        {"nf.account", kAccount},     {"nf.app", kApp},         {"nf.asg", kAsg},
+        {"nf.cluster", kCluster},     {"nf.container", kContainer}, {"nf.node", kNode},
+        {"nf.process", kProcess},     {"nf.region", kRegion},   {"nf.shard1", kShard1},
+        {"nf.shard2", kShard2},       {"nf.stack", kStack},     {"nf.vmtype", kVmtype},
+        {"nf.zone", kZone},
+    };
+
+    std::unordered_map<std::string, std::string> tags;
+    for (const auto& mapping : kMappings)
+    {
+        if (auto value = first_non_empty(mapping.env_vars); !value.empty())
+        {
+            tags.emplace(mapping.tag, std::move(value));
+        }
+    }
+
     return tags;
 }
 
