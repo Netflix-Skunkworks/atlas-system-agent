@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace atlasagent
@@ -17,6 +18,10 @@ struct PodIdentity
 {
     std::string name;
     std::string pod_namespace;  // "namespace" is a reserved C++ keyword, cannot be a field name
+    // Container id (bare hex, scheme prefix like "containerd://" stripped) -> container name,
+    // from status.containerStatuses[]. Empty when the pod has no containerStatuses yet (e.g. not
+    // started) rather than treated as a parse failure.
+    std::unordered_map<std::string, std::string> containers;
 };
 
 // Pod UID (apiserver's canonical dashed form) -> that pod's identity.

@@ -1,16 +1,61 @@
 #include "pod_monitor.h"
 
 #include <lib/logger/src/logger.h>
+#include <lib/util/src/util.h>
 
 #include <fmt/format.h>
 
 #include <cctype>
+#include <cstdlib>
 #include <system_error>
 #include <unistd.h>
 #include <utility>
 
 namespace atlasagent
 {
+
+namespace
+{
+
+// The literal environment-variable-shaped key names read out of each container's own environ,
+// per the "Tag scheme"/"Gating" sections of the per-container plan increment. Intermediate
+// values only -- never emitted as tags themselves.
+constexpr std::string_view kNetflixApp = "netflix.app";
+constexpr std::string_view kNetflixStack = "netflix.stack";
+constexpr std::string_view kNetflixDetail = "netflix.detail";
+constexpr std::string_view kLabelAppName = "k8s.label.app.name";
+constexpr std::string_view kLabelK8sApp = "k8s.label.k8s-app";
+constexpr std::string_view kLabelApp = "k8s.label.app";
+constexpr std::string_view kLabelAppInstance = "k8s.label.app.instance";
+constexpr std::string_view kPodNameKey = "k8s.pod.name";
+constexpr std::string_view kContainerNameKey = "k8s.container.name";
+
+// A key present in `environ` with a non-empty value; nullopt otherwise (missing, or present but
+// empty -- both treated as "not set" per the plan's fallback-chain wording).
+std::optional<std::string> NonEmptyEnv(const std::unordered_map<std::string, std::string>& environ,
+                                        std::string_view key) noexcept
+{
+    auto it = environ.find(std::string(key));
+    if (it != environ.end() && !it->second.empty())
+    {
+        return it->second;
+    }
+    return std::nullopt;
+}
+
+std::string ResolveK8sClusterEnv() noexcept
+{
+    const auto* value = std::getenv("K8S_CLUSTER");
+    return value != nullptr ? std::string(value) : std::string();
+}
+
+}  // namespace
+
+PodMonitor::PodMonitor(Registry* registry, std::string path_prefix, std::string kubeconfig_path) noexcept
+    : registry_(registry), path_prefix_(std::move(path_prefix)),
+      identity_client_(registry, std::move(kubeconfig_path)), k8s_cluster_(ResolveK8sClusterEnv())
+{
+}
 
 std::optional<std::string_view> PodMonitor::MatchPodSliceName(std::string_view name, std::string_view name_prefix,
                                                                 std::string_view name_suffix) noexcept
@@ -148,6 +193,48 @@ PodCgroupMap PodMonitor::FindAllActivePods() const noexcept
     return pods;
 }
 
+ContainerCgroupMap PodMonitor::FindContainersInPod(const std::filesystem::path& pod_cgroup_dir) noexcept
+{
+    ContainerCgroupMap containers;
+
+    // Lighter validation than NormalizePodUid's strict UUID check -- a runtime-assigned
+    // container id is an arbitrary hex string, not a UUID, so just require a plausible
+    // non-trivial length rather than an exact one.
+    constexpr size_t kMinContainerIdLength = 12;
+
+    std::error_code ec;
+    std::filesystem::directory_iterator it{pod_cgroup_dir, ec};
+    if (ec)
+    {
+        return containers;
+    }
+
+    const std::filesystem::directory_iterator end{};
+    while (it != end)
+    {
+        const auto& entry = *it;
+
+        std::error_code is_dir_ec;
+        if (entry.is_directory(is_dir_ec) && !is_dir_ec)
+        {
+            auto name = entry.path().filename().string();
+            if (auto matched = MatchPodSliceName(name, "cri-containerd-", ".scope");
+                matched && !matched->empty() && matched->size() >= kMinContainerIdLength)
+            {
+                containers.emplace(std::string(*matched), entry.path());
+            }
+        }
+
+        it.increment(ec);
+        if (ec)
+        {
+            break;
+        }
+    }
+
+    return containers;
+}
+
 PodInfoMap PodMonitor::JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
                                               const std::optional<PodIdentityMap>& identities) noexcept
 {
@@ -155,7 +242,7 @@ PodInfoMap PodMonitor::JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
     result.reserve(cgroup_pods.size());
     for (const auto& [uid, cgroup_path] : cgroup_pods)
     {
-        PodInfo info{uid, cgroup_path, "", ""};
+        PodInfo info{uid, cgroup_path, "", "", {}};
         if (identities.has_value())
         {
             auto it = identities->find(uid);
@@ -163,6 +250,7 @@ PodInfoMap PodMonitor::JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
             {
                 info.name = it->second.name;
                 info.pod_namespace = it->second.pod_namespace;
+                info.containers = it->second.containers;
             }
         }
         result.emplace(uid, std::move(info));
@@ -177,13 +265,92 @@ PodInfoMap PodMonitor::FindAllActivePods2() const noexcept
     return JoinCgroupAndIdentity(cgroup_pods, identities);
 }
 
-std::unordered_map<std::string, std::string> PodMonitor::BuildPodTags(const PodInfo& info) noexcept
+std::optional<std::unordered_map<std::string, std::string>> PodMonitor::ResolveContainerTags(
+    const std::unordered_map<std::string, std::string>& environ, const std::string& k8s_cluster) noexcept
 {
-    return {
-        {"sample.nf.node", info.name},
-        {"sample.nf.platform", "k8s"},
-        {"sample.k8s.namespace.name", info.pod_namespace},
-    };
+    auto primary_app = NonEmptyEnv(environ, kNetflixApp);
+    auto primary_stack = NonEmptyEnv(environ, kNetflixStack);
+    auto detail = NonEmptyEnv(environ, kNetflixDetail);
+
+    auto nf_app = primary_app;
+    if (!nf_app.has_value())
+    {
+        for (auto key : {kLabelAppName, kLabelK8sApp, kLabelApp})
+        {
+            if (auto value = NonEmptyEnv(environ, key); value.has_value())
+            {
+                nf_app = std::move(value);
+                break;
+            }
+        }
+    }
+
+    auto nf_stack = primary_stack;
+    if (!nf_stack.has_value())
+    {
+        nf_stack = NonEmptyEnv(environ, kLabelAppInstance);
+    }
+
+    auto nf_node = NonEmptyEnv(environ, kPodNameKey);
+    auto nf_process = NonEmptyEnv(environ, kContainerNameKey);
+
+    if (!nf_app.has_value() && !nf_stack.has_value() && !nf_node.has_value() && !nf_process.has_value())
+    {
+        // Gating: none of the eight possible source keys resolved -- no metrics for this
+        // container at all, not even a bare nf.node/nf.process with the rest omitted.
+        return std::nullopt;
+    }
+
+    // nf.cluster is gated on the *primary* netflix.app value specifically -- NOT on whatever
+    // nf_app ended up resolving to. A container whose nf.app only resolved via a k8s.label.*
+    // fallback must not get an nf.cluster tag; this mirrors the pasted OTel logic's own
+    // `where resource.attributes["netflix.app"] != nil` guards, which all key off the primary
+    // attribute, not the transform's own output.
+    std::optional<std::string> nf_cluster;
+    if (primary_app.has_value())
+    {
+        std::string cluster = *primary_app;
+        if (primary_stack.has_value())
+        {
+            cluster += "-";
+            cluster += *primary_stack;
+        }
+        if (detail.has_value())
+        {
+            cluster += "-";
+            cluster += *detail;
+        }
+        nf_cluster = std::move(cluster);
+    }
+
+    std::unordered_map<std::string, std::string> tags;
+    if (nf_app.has_value())
+    {
+        tags.emplace("nf.app", *nf_app);
+    }
+    if (nf_stack.has_value())
+    {
+        tags.emplace("nf.stack", *nf_stack);
+    }
+    if (nf_node.has_value())
+    {
+        tags.emplace("nf.node", *nf_node);
+    }
+    if (nf_process.has_value())
+    {
+        tags.emplace("nf.process", *nf_process);
+    }
+    if (nf_cluster.has_value())
+    {
+        tags.emplace("nf.cluster", *nf_cluster);
+    }
+    if (!k8s_cluster.empty())
+    {
+        tags.emplace("k8s.cluster.name", k8s_cluster);
+    }
+    tags.emplace("nf.platform", "k8s");
+
+    return tags;
 }
 
 double PodMonitor::ResolveCpuCountForPod(const CGroup& cgroup) noexcept
@@ -200,11 +367,12 @@ void PodMonitor::RefreshTrackedPods() noexcept
     auto discovered = FindAllActivePods2();
 
     // Pass 1: evict every tracked pod no longer discovered. Erasing the map entry destroys its
-    // TrackedPod, which destroys its owned CGroup, freeing every one of its delta-tracking
-    // baselines in one step -- there is no separate "reset". Unlike std::unordered_map,
-    // absl::flat_hash_map's single-iterator erase() returns void (not the next iterator), so
-    // the iterator must be advanced with post-increment before the (now invalidated) copy is
-    // erased -- see raw_hash_set.h's own erase() doc comment for this exact idiom.
+    // TrackedPod, which destroys every one of its still-tracked containers' owned CGroups,
+    // freeing every one of their delta-tracking baselines in one step -- there is no separate
+    // "reset". Unlike std::unordered_map, absl::flat_hash_map's single-iterator erase() returns
+    // void (not the next iterator), so the iterator must be advanced with post-increment before
+    // the (now invalidated) copy is erased -- see raw_hash_set.h's own erase() doc comment for
+    // this exact idiom.
     for (auto it = tracked_pods_.begin(); it != tracked_pods_.end();)
     {
         if (discovered.find(it->first) == discovered.end())
@@ -222,64 +390,158 @@ void PodMonitor::RefreshTrackedPods() noexcept
     // within the same loop iteration it was returned in.
     for (const auto& [uid, info] : discovered)
     {
-        auto [it, inserted] =
-            tracked_pods_.try_emplace(uid, registry_, info.cgroup_path.string(), info.name, info.pod_namespace);
-        if (inserted)
-        {
-            it->second.cgroup.SetExtraTags(BuildPodTags(info));
-        }
+        auto [it, inserted] = tracked_pods_.try_emplace(uid, info.name, info.pod_namespace);
         // `info.name`/`info.pod_namespace` are only ever both populated together, from a
         // successful identity lookup for this exact uid (see JoinCgroupAndIdentity) -- a
         // nullopt/omitted identity this cycle collapses both to "". Treat that blank pair as
         // "identity unknown this cycle", not as "this pod's identity became blank": self-heal
         // only when the fresh info actually carries a resolved identity, so a transient
         // apiserver/exec-credential failure (FetchPodIdentities() returning nullopt, or simply
-        // omitting this uid) never wipes out an already-correctly-tagged pod's name/namespace.
-        else if (!info.name.empty() && !info.pod_namespace.empty() &&
-                 (it->second.name != info.name || it->second.pod_namespace != info.pod_namespace))
+        // omitting this uid) never wipes out an already-correctly-tracked pod's name/namespace.
+        if (!inserted && !info.name.empty() && !info.pod_namespace.empty() &&
+            (it->second.name != info.name || it->second.pod_namespace != info.pod_namespace))
         {
             it->second.name = info.name;
             it->second.pod_namespace = info.pod_namespace;
-            it->second.cgroup.SetExtraTags(BuildPodTags(info));
         }
 
-        // Re-resolve every refresh cycle (not only at first insertion): a pod's cgroup
-        // directory can appear slightly before kubelet/the CPU manager writes its real cpu.max
-        // quota (cpu.max still reads "max" at that instant), and an in-place vertical resize can
-        // change an already-tracked pod's quota later in its lifetime. Recomputing here means
-        // both cases converge to the correct value on the next refresh instead of sticking with
-        // whatever was resolved (possibly the whole node's CPU count) the first time this pod
-        // was seen.
-        it->second.cgroup.SetCpuCountOverride(ResolveCpuCountForPod(it->second.cgroup));
+        TrackedPod& pod = it->second;
+
+        // Nested container reconciliation for this pod, one level under the pod-level passes
+        // above -- itself split into two fully separate sequential sub-passes, mirroring pass
+        // 1/2's own shape exactly, never interleaved with each other.
+        auto discovered_containers = FindContainersInPod(info.cgroup_path);
+
+        // Container sub-pass 1: evict any tracked container whose scope directory disappeared
+        // entirely (container id no longer in the discovered set for this pod) -- same
+        // "disappeared" eviction as pass 1 above, just one level deeper.
+        for (auto cit = pod.containers.begin(); cit != pod.containers.end();)
+        {
+            if (discovered_containers.find(cit->first) == discovered_containers.end())
+            {
+                pod.containers.erase(cit++);
+            }
+            else
+            {
+                ++cit;
+            }
+        }
+
+        // Container sub-pass 2: for every currently discovered container, resolve PID -> environ
+        // -> the tag fallback chain, and track/update/gate-out accordingly. Iterates
+        // discovered_containers (a fresh, separate map), so mutating pod.containers by key on
+        // each iteration is safe -- no iterator into pod.containers itself is ever held across
+        // iterations here, exactly like pass 2's try_emplace pattern above.
+        for (const auto& [container_id, container_cgroup_path] : discovered_containers)
+        {
+            auto pid_lines = read_file((container_cgroup_path / "cgroup.procs").string());
+            if (!pid_lines.has_value() || pid_lines->empty())
+            {
+                // Not ready yet -- expected transient race: a container's scope directory can
+                // appear slightly before the runtime places its init process into it. Skip this
+                // cycle without evicting it if it was already tracked.
+                continue;
+            }
+
+            auto pid = static_cast<pid_t>(std::strtol(pid_lines->front().c_str(), nullptr, 10));
+            // Named container_environ, not environ -- POSIX/glibc's own global `environ` (this
+            // agent's own environment, declared via <unistd.h>) is a different thing entirely
+            // from the monitored container's environment read here.
+            auto container_environ = read_process_environ(pid);
+            auto resolved_tags = ResolveContainerTags(
+                container_environ.value_or(std::unordered_map<std::string, std::string>{}), k8s_cluster_);
+
+            if (!resolved_tags.has_value())
+            {
+                // Gating: nothing in the fallback chain resolved -- don't track this container,
+                // and evict it if it was previously tracked (a container can lose every one of
+                // its resolved tags across a restart, e.g. a new image dropping an env var).
+                pod.containers.erase(container_id);
+                continue;
+            }
+
+            auto container_name_it = info.containers.find(container_id);
+            std::string container_name =
+                container_name_it != info.containers.end() ? container_name_it->second : std::string();
+
+            // Structural fallback/cross-check: the environ-sourced tags above take priority (per
+            // the plan's explicit correction), but nf.node/nf.process/k8s.namespace.name are also
+            // knowable structurally (pod name and container name from the apiserver, pod
+            // namespace from PodInfo) and fill in what the container's own environ didn't
+            // define. This is applied only after Gating already passed on the environ-only
+            // signals above -- it never lets a container qualify that didn't already have at
+            // least one real environ hit.
+            if (!resolved_tags->contains("nf.node") && !pod.name.empty())
+            {
+                (*resolved_tags)["nf.node"] = pod.name;
+            }
+            if (!resolved_tags->contains("nf.process") && !container_name.empty())
+            {
+                (*resolved_tags)["nf.process"] = container_name;
+            }
+            if (!pod.pod_namespace.empty())
+            {
+                (*resolved_tags)["k8s.namespace.name"] = pod.pod_namespace;
+            }
+
+            auto [cit, container_inserted] =
+                pod.containers.try_emplace(container_id, registry_, container_cgroup_path.string(), container_id, container_name);
+            if (!container_inserted)
+            {
+                cit->second.container_name = container_name;
+            }
+            cit->second.cgroup.SetExtraTags(*resolved_tags);
+
+            // Re-resolve every refresh cycle (not only at first insertion) -- see the
+            // equivalent pod-level comment this replaces: a container's cgroup directory can
+            // appear slightly before cpu.max is set to its real quota, and an in-place resize
+            // can change it later.
+            cit->second.cgroup.SetCpuCountOverride(ResolveCpuCountForPod(cit->second.cgroup));
+        }
     }
 }
 
 void PodMonitor::CollectCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept
 {
-    for (auto& entry : tracked_pods_)
+    for (auto& pod_entry : tracked_pods_)
     {
-        atlasagent::Logger()->debug("Collecting CPU stats for pod {}/{} (uid={})", entry.second.pod_namespace, entry.second.name, entry.first);
-        entry.second.cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+        for (auto& container_entry : pod_entry.second.containers)
+        {
+            atlasagent::Logger()->debug("Collecting CPU stats for pod {}/{} (uid={}) container {} ({})",
+                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
+                                         container_entry.first, container_entry.second.container_name);
+            container_entry.second.cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+        }
     }
 }
 
 void PodMonitor::CollectIOStats() noexcept
 {
-    for (auto& entry : tracked_pods_)
+    for (auto& pod_entry : tracked_pods_)
     {
-        atlasagent::Logger()->debug("Collecting IO stats for pod {}/{} (uid={})", entry.second.pod_namespace, entry.second.name, entry.first);
-        entry.second.cgroup.IOStats();
+        for (auto& container_entry : pod_entry.second.containers)
+        {
+            atlasagent::Logger()->debug("Collecting IO stats for pod {}/{} (uid={}) container {} ({})",
+                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
+                                         container_entry.first, container_entry.second.container_name);
+            container_entry.second.cgroup.IOStats();
+        }
     }
 }
 
 void PodMonitor::CollectMemoryStats() noexcept
 {
     RefreshTrackedPods();
-    for (auto& entry : tracked_pods_)
+    for (auto& pod_entry : tracked_pods_)
     {
-        atlasagent::Logger()->debug("Collecting memory stats for pod {}/{} (uid={})", entry.second.pod_namespace, entry.second.name, entry.first);
-        entry.second.cgroup.MemoryStatsV2();
-        entry.second.cgroup.MemoryStatsStdV2();
+        for (auto& container_entry : pod_entry.second.containers)
+        {
+            atlasagent::Logger()->debug("Collecting memory stats for pod {}/{} (uid={}) container {} ({})",
+                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
+                                         container_entry.first, container_entry.second.container_name);
+            container_entry.second.cgroup.MemoryStatsV2();
+            container_entry.second.cgroup.MemoryStatsStdV2();
+        }
     }
 }
 

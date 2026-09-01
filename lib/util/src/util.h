@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <optional>
 #include <vector>
+#include <unistd.h>
 #include <lib/files/src/files.h>
 
 struct UtilConstants
@@ -62,5 +63,9 @@ std::optional<std::string> read_file_to_string(const std::string& filePath);
 // any existing file. Returns false (never throws) if the parent directory could not be
 // created or the file could not be opened/written.
 bool write_string_to_file(const std::string& filePath, const std::string& contents);
+
+// Reads /proc/<pid>/environ (NUL-separated KEY=VALUE entries) into a map. nullopt if the file
+// can't be opened -- e.g. the process exited between PID resolution and this call.
+std::optional<std::unordered_map<std::string, std::string>> read_process_environ(pid_t pid);
 
 }  // namespace atlasagent

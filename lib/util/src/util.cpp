@@ -465,4 +465,37 @@ catch (const std::exception& e)
     return false;
 }
 
+std::optional<std::unordered_map<std::string, std::string>> read_process_environ(pid_t pid)
+try
+{
+    auto path = fmt::format("/proc/{}/environ", pid);
+    std::ifstream file(path);
+    if (file.is_open() == false)
+    {
+        return std::nullopt;
+    }
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    std::string contents = buffer.str();
+
+    // /proc/<pid>/environ entries are NUL-separated KEY=VALUE pairs, not newline-separated --
+    // unlike read_file_to_string(), no CR/LF trimming applies here.
+    std::unordered_map<std::string, std::string> result;
+    std::vector<std::string> entries = absl::StrSplit(contents, '\0', absl::SkipEmpty());
+    for (const auto& entry : entries)
+    {
+        auto pos = entry.find('=');
+        if (pos != std::string::npos)
+        {
+            result.emplace(entry.substr(0, pos), entry.substr(pos + 1));
+        }
+    }
+    return result;
+}
+catch (const std::exception& e)
+{
+    atlasagent::Logger()->error("Exception thrown in read_process_environ: {}", e.what());
+    return std::nullopt;
+}
+
 }  // namespace atlasagent

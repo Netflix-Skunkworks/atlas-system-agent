@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <unistd.h>
 
 namespace
 {
@@ -119,5 +120,21 @@ TEST(Util, WriteStringToFileCreatesParentDirectory)
     EXPECT_EQ(*contents, "hello world");
 
     std::filesystem::remove_all(nested_dir);
+}
+
+// getpid() names this repo's own running test process -- its /proc/<pid>/environ is always
+// readable, so this is hermetic. A specific key like PATH isn't asserted to avoid flakiness
+// against however the test runner's own environment happens to be populated.
+TEST(Util, ReadProcessEnvironCurrentProcess)
+{
+    auto result = atlasagent::read_process_environ(getpid());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->empty());
+}
+
+TEST(Util, ReadProcessEnvironNonexistentPidReturnsNullopt)
+{
+    auto result = atlasagent::read_process_environ(999999);
+    EXPECT_FALSE(result.has_value());
 }
 }  // namespace

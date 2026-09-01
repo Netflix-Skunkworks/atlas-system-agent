@@ -1,5 +1,6 @@
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/collectors/pod_monitor/src/pod_identity_client.h>
+#include <lib/util/src/util.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
@@ -8,9 +9,15 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
+#include <csignal>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -29,6 +36,8 @@ class PodMonitorTest : public atlasagent::PodMonitor
     using PodMonitor::NormalizePodUid;
     using PodMonitor::ScanPodSliceDirectory;
     using PodMonitor::JoinCgroupAndIdentity;
+    using PodMonitor::FindContainersInPod;
+    using PodMonitor::ResolveContainerTags;
     using PodMonitor::RefreshTrackedPods;
     using PodMonitor::TrackedPods;
 };
@@ -53,6 +62,85 @@ class PodIdentityClientTest : public atlasagent::PodIdentityClient
 
 namespace
 {
+
+// Spawns a short-lived child (execve of /bin/sleep with a caller-supplied envp) so its real
+// /proc/<pid>/environ genuinely contains the given variables. This test binary's own environ
+// cannot be used for a positive-path test: proc(5) is explicit that the kernel does NOT update
+// /proc/<pid>/environ after execve, so a setenv() call from within a running test would never be
+// visible there -- only a process actually exec'd with the desired environment shows it. Polls
+// briefly after fork() before returning, since the child's /proc/<pid>/environ still reflects the
+// pre-exec (inherited) state during the narrow fork-to-exec window. Returns -1 if the child never
+// became ready in time; caller must call KillAndReapChild() exactly once, regardless of outcome.
+pid_t SpawnChildWithEnviron(const std::vector<std::string>& env_entries)
+{
+    std::vector<char*> envp;
+    for (const auto& entry : env_entries)
+    {
+        envp.push_back(const_cast<char*>(entry.c_str()));
+    }
+    envp.push_back(nullptr);
+
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+        char* argv[] = {const_cast<char*>("/bin/sleep"), const_cast<char*>("30"), nullptr};
+        execve("/bin/sleep", argv, envp.data());
+        _exit(127);  // execve itself failed
+    }
+    if (pid < 0)
+    {
+        return -1;
+    }
+
+    // Readiness means the child's environ actually contains what was requested -- NOT merely
+    // non-empty, since the pre-exec (just-forked) child's environ is a copy of this test binary's
+    // own environ and is already non-empty (PATH, HOME, etc. are essentially always present), so
+    // an emptiness check alone would report "ready" before execve() has even run.
+    std::unordered_map<std::string, std::string> expected;
+    for (const auto& entry : env_entries)
+    {
+        auto eq = entry.find('=');
+        if (eq != std::string::npos)
+        {
+            expected.emplace(entry.substr(0, eq), entry.substr(eq + 1));
+        }
+    }
+
+    constexpr int kMaxPollAttempts = 100;
+    for (int attempt = 0; attempt < kMaxPollAttempts; ++attempt)
+    {
+        auto environ_now = atlasagent::read_process_environ(pid);
+        if (environ_now.has_value())
+        {
+            bool all_match = true;
+            for (const auto& [key, value] : expected)
+            {
+                auto it = environ_now->find(key);
+                if (it == environ_now->end() || it->second != value)
+                {
+                    all_match = false;
+                    break;
+                }
+            }
+            if (all_match)
+            {
+                return pid;
+            }
+        }
+        usleep(10000);  // 10ms
+    }
+    return -1;
+}
+
+void KillAndReapChild(pid_t pid)
+{
+    if (pid > 0)
+    {
+        kill(pid, SIGKILL);
+        int status;
+        waitpid(pid, &status, 0);
+    }
+}
 
 TEST(PodMonitor, NormalizePodUidUnderscoresToDash)
 {
@@ -198,76 +286,252 @@ TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
     EXPECT_FALSE(tracked.contains("33333333-3333-3333-3333-333333333333"));
 }
 
-// Regression coverage for ResolveCpuCountForPod()/SetCpuCountOverride() actually being wired up
-// to CGroup::QuotaCpuCount() through RefreshTrackedPods(), against a fixture pod directory that
-// has a concrete numeric cpu.max quota ("50000 100000" -> 0.5 CPUs) -- prior to this test, every
-// pod_monitor test fixture pod directory had no cpu.max at all, so ResolveCpuCountForPod() was
-// only ever exercised via its sysconf(_SC_NPROCESSORS_ONLN) fallback branch, never its
-// quota-derived branch.
-TEST(PodMonitor, RefreshTrackedPodsAppliesQuotaDerivedCpuCountOverride)
+// NOTE: the two tests this comment replaces (RefreshTrackedPodsAppliesQuotaDerivedCpuCountOverride
+// and CollectMemoryStatsEmitsMemoryStatsStdV2WithPodTag) asserted on pod-level aggregate CGroup
+// emission (a pod-level cpu.max/memory.* fixture, tagged via the now-removed BuildPodTags()).
+// Per the "Per-container cgroup metrics" plan increment, pod-level aggregate CGroup emission is
+// gone entirely -- TrackedPod no longer owns a CGroup, so there is nothing left for those
+// assertions to observe; they are removed rather than salvaged. Container-level equivalents of
+// ResolveCpuCountForPod()/SetCpuCountOverride() wiring and tag emission are exercised indirectly
+// by RefreshTrackedPodsContainerGatedOutWhenEnvironLacksAnyTagKey below (the discovery/PID/environ
+// plumbing) plus ResolveContainerTags's own direct unit tests (the tag-resolution logic).
+// RefreshTrackedPodsContainerTracksWhenEnvironHasNetflixApp (further below) is the true end-to-end
+// positive-path counterpart: a container whose real environ genuinely satisfies the primary tier
+// (via a real exec'd child process, since this test binary's own environ can't be mutated
+// retroactively -- see SpawnChildWithEnviron's own comment) is confirmed to actually get tracked.
+
+TEST(PodMonitor, RefreshTrackedPodsContainerTracksWhenEnvironHasNetflixApp)
 {
+    pid_t child = SpawnChildWithEnviron({"netflix.app=test-tracked-app"});
+    ASSERT_GT(child, 0) << "child process never became ready with the expected environ in time";
+
+    auto tmp_root = std::filesystem::path(::testing::TempDir()) / "pod_monitor_container_tracking_test";
+    std::filesystem::remove_all(tmp_root);
+
+    auto pod_dir = tmp_root / "kubepods.slice/kubepods-pod11111111_1111_1111_1111_111111111111.slice";
+    auto container_dir =
+        pod_dir / "cri-containerd-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.scope";
+    std::filesystem::create_directories(container_dir);
+    {
+        std::ofstream procs(container_dir / "cgroup.procs");
+        procs << child << "\n";
+    }
+
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd_single_pod_with_quota"};
+    PodMonitorTest podMonitor{&r, tmp_root.string()};
 
     podMonitor.RefreshTrackedPods();
-    ASSERT_EQ(podMonitor.TrackedPods().size(), 1);
+
+    KillAndReapChild(child);
+    std::filesystem::remove_all(tmp_root);
+
     ASSERT_TRUE(podMonitor.TrackedPods().contains("11111111-1111-1111-1111-111111111111"));
-
-    // CGroup::PodCpuStats()'s very first call fixes capacity_last_updated_ to (now - interval),
-    // so CpuProcessingCapacity's delta_t comes out to exactly the requested 5s interval
-    // regardless of real wall-clock time -- making cgroup.cpu.processingCapacity's value
-    // deterministic: 5s * cpuCount. If ResolveCpuCountForPod() had fallen back to
-    // sysconf(_SC_NPROCESSORS_ONLN) instead of picking up the fixture's 0.5-CPU quota (e.g. a
-    // regression reintroducing the "max" == 0 parsing pitfall, or SetCpuCountOverride() no
-    // longer being called), this would come out as 5 * (the node's logical CPU count) instead.
-    podMonitor.CollectCpuStats(/*fiveSecondMetricsEnabled=*/true, /*sixtySecondMetricsEnabled=*/false);
-
-    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-    auto messages = memoryWriter->GetMessages();
-
-    auto it = std::find_if(messages.begin(), messages.end(), [](const std::string& msg) {
-        return msg.find("cgroup.cpu.processingCapacity") != std::string::npos;
-    });
-    ASSERT_NE(it, messages.end());
-    EXPECT_EQ(*it, "c:cgroup.cpu.processingCapacity:2.500000\n");
+    const auto& containers = podMonitor.TrackedPods().at("11111111-1111-1111-1111-111111111111").containers;
+    EXPECT_TRUE(containers.contains("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"));
 }
 
-// Regression test proving MemoryStatsStdV2's per-pod tagged output actually flows through
-// PodMonitor::CollectMemoryStats() end-to-end -- the exact defect this fix addresses (before it,
-// MemoryStatsStdV2()'s CreateGauge calls took no tag argument at all, so no pod's tag could ever
-// have reached these mem.* gauges no matter what CollectMemoryStats() did). Reuses the
-// systemd_single_pod_with_quota fixture from RefreshTrackedPodsAppliesQuotaDerivedCpuCountOverride
-// above, which now also carries memory.max/memory.current/memory.swap.max/memory.swap.current/
-// memory.stat placeholder files (added alongside its existing cpu.max) so MemoryStatsStdV2() has
-// something to read.
-//
-// This PodMonitorTest points at a nonexistent kubeconfig (see PodMonitorTest's default above), so
-// FetchPodIdentities() always returns nullopt and BuildPodTags() ends up with an unresolved
-// (empty-string) nf.node/k8s.namespace.name for this pod. The registry strips tags whose value is
-// empty before they ever reach the wire -- see the tag-less "c:cgroup.cpu.processingCapacity:
-// 2.500000\n" assertion just above, despite BuildPodTags() always running on first insertion --
-// so a literal "nf.node=<name>" substring can't honestly be asserted from this fixture. Instead
-// this asserts on "nf.platform=k8s", the one BuildPodTags tag that is never identity-dependent and
-// therefore never empty: seeing it on a mem.totalReal line is proof this pod's extra_tags_
-// (applied via SetExtraTags() inside RefreshTrackedPods()) actually reached MemoryStatsStdV2()'s
-// gauges through the MergeTags({}) fix.
-TEST(PodMonitor, CollectMemoryStatsEmitsMemoryStatsStdV2WithPodTag)
+// FindContainersInPod tests (parallel to the ScanPodSliceDirectory/MatchPodSliceName coverage
+// above -- structural directory-name matching only, no PID/environ I/O involved).
+TEST(PodMonitor, FindContainersInPodMatchesCriContainerdScopes)
 {
+    auto containers = PodMonitorTest::FindContainersInPod(
+        "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
+        "kubepods-pod11111111_1111_1111_1111_111111111111.slice");
+
+    ASSERT_EQ(containers.size(), 1);
+    EXPECT_TRUE(containers.contains("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+    EXPECT_EQ(containers.at("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+              std::filesystem::path(
+                  "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
+                  "kubepods-pod11111111_1111_1111_1111_111111111111.slice/"
+                  "cri-containerd-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.scope"));
+}
+
+TEST(PodMonitor, FindContainersInPodIgnoresNonMatchingEntries)
+{
+    // The fixture directory also contains a plain file (cgroup.procs) and a subdirectory that
+    // doesn't carry the cri-containerd-*.scope shape -- neither should be picked up.
+    auto containers = PodMonitorTest::FindContainersInPod(
+        "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
+        "kubepods-pod11111111_1111_1111_1111_111111111111.slice");
+
+    EXPECT_FALSE(containers.contains("cgroup.procs"));
+    for (const auto& [id, path] : containers)
+    {
+        EXPECT_EQ(id, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    }
+}
+
+TEST(PodMonitor, FindContainersInPodMissingDirReturnsEmpty)
+{
+    auto containers =
+        PodMonitorTest::FindContainersInPod("lib/collectors/pod_monitor/test/resources/does_not_exist");
+    EXPECT_TRUE(containers.empty());
+}
+
+// ResolveContainerTags: the pure fallback-chain tag resolution, covering the primary tier, the
+// k8s.label.* fallback tier, nf.cluster's asymmetric primary-only gate, the all-absent Gating
+// case, and a lone-structural-field case.
+TEST(PodMonitor, ResolveContainerTagsPrimaryTierOnly)
+{
+    std::unordered_map<std::string, std::string> environ{
+        {"netflix.app", "myapp"},
+        {"netflix.stack", "mystack"},
+        {"netflix.detail", "mydetail"},
+    };
+
+    auto result = PodMonitorTest::ResolveContainerTags(environ, "");
+    ASSERT_TRUE(result.has_value());
+
+    EXPECT_EQ(result->at("nf.app"), "myapp");
+    EXPECT_EQ(result->at("nf.stack"), "mystack");
+    EXPECT_EQ(result->at("nf.cluster"), "myapp-mystack-mydetail");
+    EXPECT_EQ(result->at("nf.platform"), "k8s");
+    EXPECT_FALSE(result->contains("k8s.cluster.name"));
+    EXPECT_FALSE(result->contains("nf.node"));
+    EXPECT_FALSE(result->contains("nf.process"));
+}
+
+TEST(PodMonitor, ResolveContainerTagsPrimaryAppOnlyClusterHasNoStackOrDetailSuffix)
+{
+    std::unordered_map<std::string, std::string> environ{{"netflix.app", "myapp"}};
+
+    auto result = PodMonitorTest::ResolveContainerTags(environ, "");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->at("nf.cluster"), "myapp");
+    EXPECT_FALSE(result->contains("nf.stack"));
+}
+
+TEST(PodMonitor, ResolveContainerTagsLabelFallbackTierOnly)
+{
+    std::unordered_map<std::string, std::string> environ{
+        {"k8s.label.app.name", "labelapp"},
+        {"k8s.label.app.instance", "labelstack"},
+    };
+
+    auto result = PodMonitorTest::ResolveContainerTags(environ, "");
+    ASSERT_TRUE(result.has_value());
+
+    EXPECT_EQ(result->at("nf.app"), "labelapp");
+    EXPECT_EQ(result->at("nf.stack"), "labelstack");
+    EXPECT_EQ(result->at("nf.platform"), "k8s");
+    // Asymmetric gate: nf.app resolved (via the label fallback tier, not netflix.app), so
+    // nf.cluster must NOT be set even though nf.app is.
+    EXPECT_FALSE(result->contains("nf.cluster"));
+}
+
+TEST(PodMonitor, ResolveContainerTagsLabelFallbackOrderPrefersAppNameOverK8sAppOverApp)
+{
+    std::unordered_map<std::string, std::string> environ{
+        {"k8s.label.app", "third"},
+        {"k8s.label.k8s-app", "second"},
+        {"k8s.label.app.name", "first"},
+    };
+
+    auto result = PodMonitorTest::ResolveContainerTags(environ, "");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->at("nf.app"), "first");
+}
+
+TEST(PodMonitor, ResolveContainerTagsEmptyNetflixAppFallsThroughToLabelTier)
+{
+    // netflix.app present but empty must be treated as unset, per "present and non-empty".
+    std::unordered_map<std::string, std::string> environ{
+        {"netflix.app", ""},
+        {"k8s.label.k8s-app", "fallback-app"},
+    };
+
+    auto result = PodMonitorTest::ResolveContainerTags(environ, "");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->at("nf.app"), "fallback-app");
+    // netflix.app was present-but-empty, not absent -- but primary_app is still unset per the
+    // "present and non-empty" rule, so nf.cluster (primary-only) must stay unset too.
+    EXPECT_FALSE(result->contains("nf.cluster"));
+}
+
+TEST(PodMonitor, ResolveContainerTagsAllAbsentReturnsNullopt)
+{
+    std::unordered_map<std::string, std::string> environ{};
+    EXPECT_FALSE(PodMonitorTest::ResolveContainerTags(environ, "").has_value());
+    EXPECT_FALSE(PodMonitorTest::ResolveContainerTags(environ, "some-cluster").has_value());
+}
+
+TEST(PodMonitor, ResolveContainerTagsOnlyPodNameSetStillPassesGating)
+{
+    std::unordered_map<std::string, std::string> environ{{"k8s.pod.name", "my-pod-abc123"}};
+
+    auto result = PodMonitorTest::ResolveContainerTags(environ, "");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->at("nf.node"), "my-pod-abc123");
+    EXPECT_EQ(result->at("nf.platform"), "k8s");
+    EXPECT_FALSE(result->contains("nf.app"));
+    EXPECT_FALSE(result->contains("nf.stack"));
+    EXPECT_FALSE(result->contains("nf.process"));
+    EXPECT_FALSE(result->contains("nf.cluster"));
+}
+
+TEST(PodMonitor, ResolveContainerTagsContainerNameOnlyStillPassesGating)
+{
+    std::unordered_map<std::string, std::string> environ{{"k8s.container.name", "sidecar"}};
+
+    auto result = PodMonitorTest::ResolveContainerTags(environ, "");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->at("nf.process"), "sidecar");
+}
+
+TEST(PodMonitor, ResolveContainerTagsSetsK8sClusterNameOnlyWhenNonEmpty)
+{
+    std::unordered_map<std::string, std::string> environ{{"netflix.app", "myapp"}};
+
+    auto withCluster = PodMonitorTest::ResolveContainerTags(environ, "my-cluster");
+    ASSERT_TRUE(withCluster.has_value());
+    EXPECT_EQ(withCluster->at("k8s.cluster.name"), "my-cluster");
+
+    auto withoutCluster = PodMonitorTest::ResolveContainerTags(environ, "");
+    ASSERT_TRUE(withoutCluster.has_value());
+    EXPECT_FALSE(withoutCluster->contains("k8s.cluster.name"));
+}
+
+// End-to-end wiring test through RefreshTrackedPods(): a container scope directory is discovered
+// structurally, its cgroup.procs resolves to a real PID (this test process's own, via getpid()),
+// but that PID's real /proc/<pid>/environ -- a plain gtest binary's inherited environment -- is
+// asserted-by-construction not to define any of ResolveContainerTags' literal dotted-namespaced
+// keys (netflix.app, k8s.pod.name, etc.), so Gating must drop it: the container is discovered but
+// never tracked. A second container scope directory has an empty cgroup.procs (no PID at all yet)
+// to exercise the separate "not ready this cycle" path in the same run. Neither path can leave
+// anything in pod.containers.
+TEST(PodMonitor, RefreshTrackedPodsContainerGatedOutWhenEnvironLacksAnyTagKey)
+{
+    auto tmp_root = std::filesystem::path(::testing::TempDir()) / "pod_monitor_container_gating_test";
+    std::filesystem::remove_all(tmp_root);
+
+    auto pod_dir = tmp_root /
+        "kubepods.slice/kubepods-pod11111111_1111_1111_1111_111111111111.slice";
+    auto gated_container_dir =
+        pod_dir / "cri-containerd-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.scope";
+    auto not_ready_container_dir =
+        pod_dir / "cri-containerd-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.scope";
+    std::filesystem::create_directories(gated_container_dir);
+    std::filesystem::create_directories(not_ready_container_dir);
+
+    {
+        std::ofstream procs(gated_container_dir / "cgroup.procs");
+        procs << getpid() << "\n";
+    }
+    { std::ofstream procs(not_ready_container_dir / "cgroup.procs"); }  // deliberately empty
+
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd_single_pod_with_quota"};
+    PodMonitorTest podMonitor{&r, tmp_root.string()};
 
-    podMonitor.CollectMemoryStats();
+    podMonitor.RefreshTrackedPods();
 
-    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-    auto messages = memoryWriter->GetMessages();
+    ASSERT_EQ(podMonitor.TrackedPods().size(), 1);
+    ASSERT_TRUE(podMonitor.TrackedPods().contains("11111111-1111-1111-1111-111111111111"));
+    EXPECT_TRUE(podMonitor.TrackedPods().at("11111111-1111-1111-1111-111111111111").containers.empty());
 
-    auto memIt = std::find_if(messages.begin(), messages.end(), [](const std::string& msg) {
-        return msg.find("mem.totalReal") != std::string::npos;
-    });
-    ASSERT_NE(memIt, messages.end());
-    EXPECT_NE(memIt->find("nf.platform=k8s"), std::string::npos) << "message missing pod tag: " << *memIt;
+    std::filesystem::remove_all(tmp_root);
 }
 
 TEST(PodMonitor, RefreshTrackedPodsEvictsAllWhenRootDisappears)

@@ -15,6 +15,19 @@ namespace atlasagent
 namespace
 {
 
+// containerID is shaped like "containerd://<64-hex-id>" (scheme varies by runtime); strip
+// everything up to and including the first "://" to match the bare hex id the cgroup scope
+// directory name itself carries. Returns the input unchanged if there's no "://" to strip.
+std::string StripContainerIdScheme(const std::string& container_id) noexcept
+{
+    auto pos = container_id.find("://");
+    if (pos == std::string::npos)
+    {
+        return container_id;
+    }
+    return container_id.substr(pos + 3);
+}
+
 std::string_view TrimAsciiWhitespace(std::string_view s) noexcept
 {
     size_t begin = 0;
@@ -158,8 +171,30 @@ std::optional<PodIdentityMap> PodIdentityClient::ParsePodList(const std::string&
             continue;
         }
 
-        result.emplace(metadata["uid"].GetString(),
-                        PodIdentity{metadata["name"].GetString(), metadata["namespace"].GetString()});
+        PodIdentity identity{metadata["name"].GetString(), metadata["namespace"].GetString(), {}};
+
+        // status.containerStatuses is absent for a pod that hasn't started any containers yet --
+        // leave `containers` empty for it rather than failing the whole pod's parse.
+        if (entry.HasMember("status") && entry["status"].IsObject())
+        {
+            const auto& status = entry["status"];
+            if (status.HasMember("containerStatuses") && status["containerStatuses"].IsArray())
+            {
+                for (const auto& container : status["containerStatuses"].GetArray())
+                {
+                    if (!container.IsObject() || !container.HasMember("name") || !container["name"].IsString() ||
+                        !container.HasMember("containerID") || !container["containerID"].IsString())
+                    {
+                        Logger()->debug("Skipping containerStatuses entry with incomplete name/containerID");
+                        continue;
+                    }
+                    auto container_id = StripContainerIdScheme(container["containerID"].GetString());
+                    identity.containers.emplace(std::move(container_id), container["name"].GetString());
+                }
+            }
+        }
+
+        result.emplace(metadata["uid"].GetString(), std::move(identity));
     }
 
     return result;
