@@ -12,15 +12,25 @@
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/logger/src/logger.h>
+#include <lib/util/src/util.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
+#include <filesystem>
+#include <optional>
+#include <string>
 #include <thread>
+#include <unistd.h>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -35,7 +45,23 @@ class PodMonitorIntrospect : public atlasagent::PodMonitor
     using PodMonitor::PodMonitor;
     using PodMonitor::RefreshTrackedPods;
     using PodMonitor::TrackedPods;
+    using PodMonitor::FindContainersInPod;
 };
+
+// Reads a container's environment the same way PodMonitor::RefreshTrackedPods() does internally
+// (cgroup.procs -> first PID -> /proc/<pid>/environ), purely for printing here -- this tool never
+// feeds the result into ResolveContainerTags/Gating, it just shows what's actually there.
+std::optional<std::unordered_map<std::string, std::string>> ReadContainerEnviron(
+    const std::filesystem::path& container_cgroup_path)
+{
+    auto pid_lines = atlasagent::read_file((container_cgroup_path / "cgroup.procs").string());
+    if (!pid_lines.has_value() || pid_lines->empty())
+    {
+        return std::nullopt;
+    }
+    auto pid = static_cast<pid_t>(std::strtol(pid_lines->front().c_str(), nullptr, 10));
+    return atlasagent::read_process_environ(pid);
+}
 
 void PrintSnapshot(const atlasagent::PodInfoMap& discovered, const atlasagent::PodTrackedMap& tracked,
                     int intervalNumber)
@@ -69,6 +95,30 @@ void PrintSnapshot(const atlasagent::PodInfoMap& discovered, const atlasagent::P
         {
             fmt::print("      {} (container_id={}, container_name={})\n", container_id,
                         tracked_container.container_id, tracked_container.container_name);
+        }
+
+        // Every cgroup-discovered container, tracked or not -- this is what actually feeds
+        // Gating, so it's shown regardless of whether the container above gated in.
+        auto containers_in_pod = PodMonitorIntrospect::FindContainersInPod(info.cgroup_path);
+        fmt::print("    Container environments ({} cgroup-discovered):\n", containers_in_pod.size());
+        for (const auto& [container_id, container_cgroup_path] : containers_in_pod)
+        {
+            auto environ_now = ReadContainerEnviron(container_cgroup_path);
+            if (!environ_now.has_value())
+            {
+                fmt::print("      {}: environ unreadable (no PID in cgroup.procs yet, or process exited)\n",
+                            container_id);
+                continue;
+            }
+
+            std::vector<std::pair<std::string, std::string>> sorted_entries(environ_now->begin(), environ_now->end());
+            std::sort(sorted_entries.begin(), sorted_entries.end());
+
+            fmt::print("      {} ({} env var(s)):\n", container_id, sorted_entries.size());
+            for (const auto& [key, value] : sorted_entries)
+            {
+                fmt::print("        {}={}\n", key, value);
+            }
         }
     }
 
