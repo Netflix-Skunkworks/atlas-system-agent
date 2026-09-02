@@ -199,7 +199,7 @@ int main(int argc, char* const argv[])
     atlasagent::HttpClient::GlobalInit();
 
 #if defined(AGENT_FLAVOR_K8S)
-    Config config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"), common_tags);
+    Config config(WriterConfig(K8sAgentConstants::SpectatordSocket), common_tags);
 #else
     Config config(WriterConfig(WriterTypes::Unix), common_tags);
 #endif

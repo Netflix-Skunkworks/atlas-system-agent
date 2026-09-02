@@ -11,7 +11,6 @@
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/logger/src/logger.h>
-#include <lib/util/src/util.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
@@ -22,8 +21,6 @@
 #include <cstdlib>
 #include <string>
 #include <thread>
-#include <unordered_map>
-#include <utility>
 
 namespace
 {
@@ -53,19 +50,14 @@ int main(int argc, char** argv)
 
     std::string path_prefix = argc > 1 ? argv[1] : "/sys/fs/cgroup";
 
-    // Same Config the real k8s-agent uses (AtlasAgent/src/atlas-agent.cpp's AGENT_FLAVOR_K8S
-    // branch): the "-notags" spectatord socket variant, which -- unlike the plain Unix socket
-    // the other agent flavors use -- doesn't get common tags injected by spectatord itself, so
-    // this agent must supply them via Config's own common_tags, exactly like atlas-agent.cpp
-    // does. xatlas.process is set to "mock-agent" rather than "atlas-k8s-agent" so this tool's
-    // real metrics stay distinguishable from the real agent's on any dashboard, in case both run
-    // on the same node.
-    std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", "mock-agent"}};
-    for (auto& [tag, value] : atlasagent::get_common_tags())
-    {
-        common_tags[tag] = std::move(value);
-    }
-    auto config = Config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"), common_tags);
+    // Same socket real PodMonitor instances publish through when built with AGENT_FLAVOR_K8S
+    // (AtlasAgent/src/atlas-agent.h's K8sAgentConstants::SpectatordSocket) -- kept as a literal
+    // here since this standalone tool's CMake target doesn't link against AtlasAgent at all, so
+    // it can't reference that constant directly. No common_tags, mirroring
+    // AtlasAgent/src/k8s-agent.cpp's own dedicated PodMonitor Registry: PodMonitor tags every
+    // metric itself, per pod/container, from that pod's own annotations (see ResolvePodTags in
+    // pod_monitor.cpp), so this node's own identity must never be merged onto them.
+    auto config = Config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"));
     auto registry = Registry(config);
     atlasagent::PodMonitor podMonitor{&registry, path_prefix};
 

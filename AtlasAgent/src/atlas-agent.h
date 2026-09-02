@@ -62,6 +62,14 @@ long initial_polling_delay();
 void collect_titus_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                            const int& max_monitored_services);
 #elif defined(AGENT_FLAVOR_K8S)
+// Both atlas-agent.cpp's shared Registry (common_tags supplied explicitly, see main()) and
+// PodMonitor's own dedicated Registry (deliberately no common_tags -- see k8s-agent.cpp) point
+// at this same spectatord socket variant; named once here so neither copy can drift.
+struct K8sAgentConstants
+{
+    static constexpr auto SpectatordSocket = "unix:///run/spectatord-notags/spectatord.unix";
+};
+
 void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                          const int& max_monitored_services);
 #else

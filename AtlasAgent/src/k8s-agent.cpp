@@ -54,7 +54,21 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     atlasagent::Ethtool ethtool{registry, net_tags};
     atlasagent::Ntp<> ntp{registry};
     atlasagent::PerfMetrics perf_metrics{registry, ""};
-    atlasagent::PodMonitor podMonitor{registry};
+
+    // PodMonitor gets its own Registry, deliberately NOT the shared `registry` above. PodMonitor
+    // tags every metric itself, per pod/container, from that pod's own annotations (see
+    // ResolvePodTags in pod_monitor.cpp) -- this node's own common_tags (this node's identity,
+    // from get_common_tags() in atlas-agent.cpp's main()) must never be merged onto them, or
+    // every pod's metrics would also carry this node's own nf.app/nf.node/etc., unrelated to
+    // (and colliding with) the per-pod identity PodMonitor exists to attach instead. Same
+    // spectatord socket as the shared registry above, so metrics from both still land in the
+    // same place -- just no common_tags. Declared here (not threaded down from main()) since
+    // PodMonitor is the only collector that needs this; every other collector here legitimately
+    // wants this node's own identity on its metrics.
+    Config pod_monitor_config(WriterConfig(K8sAgentConstants::SpectatordSocket));
+    Registry pod_monitor_registry(pod_monitor_config);
+    atlasagent::PodMonitor podMonitor{&pod_monitor_registry};
+
     atlasagent::PressureStall pressureStall{registry};
     atlasagent::Proc proc{registry, net_tags};
 
