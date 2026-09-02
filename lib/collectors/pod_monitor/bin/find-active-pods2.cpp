@@ -10,8 +10,8 @@
 // node. If that port isn't reachable (e.g. disabled by cluster hardening), every pod
 // still appears (from the cgroup walk) but with empty name/namespace/annotations/labels.
 //
-// Usage: find-active-pods2 [cgroup_path_prefix] [filtered]
-// Pass "filtered" as the second argument to see the same PASS/FAIL decision
+// Usage: find-active-pods2 [cgroup_path_prefix] [filtered]  (either order; both optional)
+// Pass "filtered" as one of the arguments to see the same PASS/FAIL decision
 // RefreshTrackedPods() makes for every pod and container, always with a reason:
 //   - Pod-level Gating (PodMonitor::ResolvePodTags): if none of nf.app/nf.stack/nf.detail
 //     resolve (from either the primary netflix.com/{app,stack,detail} annotations or their
@@ -190,8 +190,22 @@ void PrintClassifiedContainers(const ContainerClassification& classification,
 
 int main(int argc, char** argv)
 {
-    std::string path_prefix = argc > 1 ? argv[1] : "/sys/fs/cgroup";
-    bool filtered = argc > 2 && std::string(argv[2]) == "filtered";
+    // Scanned rather than fixed-positional, so "filtered" is recognized wherever it appears
+    // (including as the only argument, defaulting path_prefix) instead of being misread as a
+    // literal cgroup path override.
+    std::string path_prefix = "/sys/fs/cgroup";
+    bool filtered = false;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::string(argv[i]) == "filtered")
+        {
+            filtered = true;
+        }
+        else
+        {
+            path_prefix = argv[i];
+        }
+    }
 
     // Read the same way PodMonitor's own constructor does (ResolveK8sClusterEnv in
     // pod_monitor.cpp), purely for the filtered-mode ResolvePodTags call below -- this tool
