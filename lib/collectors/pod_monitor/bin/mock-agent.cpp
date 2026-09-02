@@ -57,7 +57,8 @@ int main(int argc, char** argv)
     // AtlasAgent/src/k8s-agent.cpp's own dedicated PodMonitor Registry: PodMonitor tags every
     // metric itself, per pod/container, from that pod's own annotations (see ResolvePodTags in
     // pod_monitor.cpp), so this node's own identity must never be merged onto them.
-    auto config = Config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"));
+    std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", "mock-agent"}};
+    auto config = Config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"), common_tags);
     auto registry = Registry(config);
     atlasagent::PodMonitor podMonitor{&registry, path_prefix};
 

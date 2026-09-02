@@ -336,18 +336,20 @@ std::optional<std::unordered_map<std::string, std::string>> PodMonitor::ResolveP
     {
         tags.emplace("nf.stack", *nf_stack);
     }
-    if (nf_detail.has_value())
-    {
-        tags.emplace("nf.detail", *nf_detail);
-    }
+    // todo uncomment later
+    // if (nf_detail.has_value())
+    // {
+    //     tags.emplace("nf.detail", *nf_detail);
+    // }
     if (nf_cluster.has_value())
     {
         tags.emplace("nf.cluster", *nf_cluster);
     }
-    if (!pod_name.empty())
-    {
-        tags.emplace("nf.node", pod_name);
-    }
+    // todo uncomment later
+    // if (!pod_name.empty())
+    // {
+    //     tags.emplace("nf.node", pod_name);
+    // }
     if (!k8s_cluster.empty())
     {
         tags.emplace("k8s.cluster.name", k8s_cluster);
