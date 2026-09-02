@@ -1,9 +1,6 @@
 #include <lib/util/src/util.h>
 #include <gtest/gtest.h>
 
-#include <filesystem>
-#include <unistd.h>
-
 namespace
 {
 
@@ -97,44 +94,4 @@ TEST(Utils, ParseTagsEmpty)
     EXPECT_EQ(some_invalid.at("key"), "val");
 }
 
-TEST(Util, WriteStringToFileRoundTrip)
-{
-    auto path = ::testing::TempDir() + "/write_string_to_file_round_trip.txt";
-    EXPECT_TRUE(atlasagent::write_string_to_file(path, "hello world"));
-
-    auto contents = atlasagent::read_file_to_string(path);
-    ASSERT_TRUE(contents.has_value());
-    EXPECT_EQ(*contents, "hello world");
-
-    std::filesystem::remove(path);
-}
-
-TEST(Util, WriteStringToFileCreatesParentDirectory)
-{
-    auto nested_dir = ::testing::TempDir() + "/nested";
-    auto path = nested_dir + "/dir/file.txt";
-    EXPECT_TRUE(atlasagent::write_string_to_file(path, "hello world"));
-
-    auto contents = atlasagent::read_file_to_string(path);
-    ASSERT_TRUE(contents.has_value());
-    EXPECT_EQ(*contents, "hello world");
-
-    std::filesystem::remove_all(nested_dir);
-}
-
-// getpid() names this repo's own running test process -- its /proc/<pid>/environ is always
-// readable, so this is hermetic. A specific key like PATH isn't asserted to avoid flakiness
-// against however the test runner's own environment happens to be populated.
-TEST(Util, ReadProcessEnvironCurrentProcess)
-{
-    auto result = atlasagent::read_process_environ(getpid());
-    ASSERT_TRUE(result.has_value());
-    EXPECT_FALSE(result->empty());
-}
-
-TEST(Util, ReadProcessEnvironNonexistentPidReturnsNullopt)
-{
-    auto result = atlasagent::read_process_environ(999999);
-    EXPECT_FALSE(result.has_value());
-}
 }  // namespace

@@ -1,7 +1,7 @@
 // Standalone debug tool: a sibling of mock-agent.cpp that runs no collectors at all. Every 60
 // seconds it refreshes PodMonitor's discovery/tracking state and prints, for every pod, its
-// PodInfo (everything the apiserver knows: name/namespace/uid plus every container it reports,
-// regardless of whether that container passed the env-var Gating rule) side by side with its
+// PodInfo (everything kubelet's local API knows: name/namespace/uid, annotations, labels, and
+// every container it reports) side by side with the ResolvePodTags decision for that pod and its
 // TrackedPod/TrackedContainer state (only the containers that actually gated in and are being
 // emitted for). Useful for inspecting Gating behavior on a real node without touching spectatord
 // at all. Not part of the atlas_system_agent binary and not run by ctest.
@@ -12,7 +12,6 @@
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/logger/src/logger.h>
-#include <lib/util/src/util.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
@@ -21,13 +20,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
-#include <cstring>
 #include <ctime>
-#include <filesystem>
-#include <optional>
 #include <string>
 #include <thread>
-#include <unistd.h>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -35,10 +30,10 @@
 namespace
 {
 
-// PodMonitor keeps RefreshTrackedPods()/TrackedPods() protected -- this repo's own convention for
-// exposing them to a standalone caller outside the class (see pod_monitor_test.cpp's
-// PodMonitorTest) is a thin subclass with `using` declarations, not new public API on PodMonitor
-// itself just for a debug tool.
+// PodMonitor keeps RefreshTrackedPods()/TrackedPods()/ResolvePodTags() protected -- this repo's
+// own convention for exposing them to a standalone caller outside the class (see
+// pod_monitor_test.cpp's PodMonitorTest) is a thin subclass with `using` declarations, not new
+// public API on PodMonitor itself just for a debug tool.
 class PodMonitorIntrospect : public atlasagent::PodMonitor
 {
    public:
@@ -46,25 +41,21 @@ class PodMonitorIntrospect : public atlasagent::PodMonitor
     using PodMonitor::RefreshTrackedPods;
     using PodMonitor::TrackedPods;
     using PodMonitor::FindContainersInPod;
+    using PodMonitor::ResolvePodTags;
 };
 
-// Reads a container's environment the same way PodMonitor::RefreshTrackedPods() does internally
-// (cgroup.procs -> first PID -> /proc/<pid>/environ), purely for printing here -- this tool never
-// feeds the result into ResolveContainerTags/Gating, it just shows what's actually there.
-std::optional<std::unordered_map<std::string, std::string>> ReadContainerEnviron(
-    const std::filesystem::path& container_cgroup_path)
+void PrintSortedMap(const std::unordered_map<std::string, std::string>& values, const char* indent)
 {
-    auto pid_lines = atlasagent::read_file((container_cgroup_path / "cgroup.procs").string());
-    if (!pid_lines.has_value() || pid_lines->empty())
+    std::vector<std::pair<std::string, std::string>> sorted_entries(values.begin(), values.end());
+    std::sort(sorted_entries.begin(), sorted_entries.end());
+    for (const auto& [key, value] : sorted_entries)
     {
-        return std::nullopt;
+        fmt::print("{}{}={}\n", indent, key, value);
     }
-    auto pid = static_cast<pid_t>(std::strtol(pid_lines->front().c_str(), nullptr, 10));
-    return atlasagent::read_process_environ(pid);
 }
 
 void PrintSnapshot(const atlasagent::PodInfoMap& discovered, const atlasagent::PodTrackedMap& tracked,
-                    int intervalNumber)
+                    const std::string& k8s_cluster, int intervalNumber)
 {
     auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     fmt::print("=== interval {} -- {} pod(s) discovered, {} tracked -- {}", intervalNumber, discovered.size(),
@@ -75,10 +66,33 @@ void PrintSnapshot(const atlasagent::PodInfoMap& discovered, const atlasagent::P
         fmt::print("  pod {} (name={}, namespace={}, cgroup_path={})\n", uid, info.name, info.pod_namespace,
                     info.cgroup_path.string());
 
-        fmt::print("    PodInfo.containers (apiserver-known, {} total):\n", info.containers.size());
+        fmt::print("    PodInfo.containers (kubelet-known, {} total):\n", info.containers.size());
         for (const auto& [container_id, container_name] : info.containers)
         {
             fmt::print("      {} -> {}\n", container_id, container_name);
+        }
+
+        fmt::print("    Pod annotations ({} total):\n", info.annotations.size());
+        PrintSortedMap(info.annotations, "      ");
+
+        fmt::print("    Pod labels ({} total):\n", info.labels.size());
+        PrintSortedMap(info.labels, "      ");
+
+        // This is the exact call RefreshTrackedPods() makes internally -- shown here purely for
+        // display, never fed back into anything.
+        auto pod_tags = PodMonitorIntrospect::ResolvePodTags(info.annotations, info.labels, info.name, k8s_cluster);
+        if (!pod_tags.has_value())
+        {
+            fmt::print(
+                "    ResolvePodTags: GATED OUT -- none of netflix.com/app, netflix.com/stack, "
+                "netflix.com/detail annotation, or app.kubernetes.io/name, k8s-app, app, "
+                "app.kubernetes.io/instance, app.kubernetes.io/component label resolved. No metrics "
+                "for any container in this pod.\n");
+        }
+        else
+        {
+            fmt::print("    ResolvePodTags (applies to every container in this pod, nf.process added per-container):\n");
+            PrintSortedMap(*pod_tags, "      ");
         }
 
         auto tracked_it = tracked.find(uid);
@@ -97,28 +111,15 @@ void PrintSnapshot(const atlasagent::PodInfoMap& discovered, const atlasagent::P
                         tracked_container.container_id, tracked_container.container_name);
         }
 
-        // Every cgroup-discovered container, tracked or not -- this is what actually feeds
-        // Gating, so it's shown regardless of whether the container above gated in.
+        // Every cgroup-discovered container, tracked or not -- lets you see a container that's
+        // been discovered on disk but isn't in PodInfo.containers yet (kubelet racing the cgroup
+        // appearing), which is why it wouldn't show up as tracked above even when the pod itself
+        // resolved tags.
         auto containers_in_pod = PodMonitorIntrospect::FindContainersInPod(info.cgroup_path);
-        fmt::print("    Container environments ({} cgroup-discovered):\n", containers_in_pod.size());
+        fmt::print("    Container cgroup scopes discovered ({} total, tracked or not):\n", containers_in_pod.size());
         for (const auto& [container_id, container_cgroup_path] : containers_in_pod)
         {
-            auto environ_now = ReadContainerEnviron(container_cgroup_path);
-            if (!environ_now.has_value())
-            {
-                fmt::print("      {}: environ unreadable (no PID in cgroup.procs yet, or process exited)\n",
-                            container_id);
-                continue;
-            }
-
-            std::vector<std::pair<std::string, std::string>> sorted_entries(environ_now->begin(), environ_now->end());
-            std::sort(sorted_entries.begin(), sorted_entries.end());
-
-            fmt::print("      {} ({} env var(s)):\n", container_id, sorted_entries.size());
-            for (const auto& [key, value] : sorted_entries)
-            {
-                fmt::print("        {}={}\n", key, value);
-            }
+            fmt::print("      {} -> {}\n", container_id, container_cgroup_path.string());
         }
     }
 
@@ -139,6 +140,12 @@ int main(int argc, char** argv)
 
     std::string path_prefix = argc > 1 ? argv[1] : "/sys/fs/cgroup";
 
+    // Read the same way PodMonitor's own constructor does (ResolveK8sClusterEnv in
+    // pod_monitor.cpp), purely for display here -- this tool doesn't have access to the private
+    // k8s_cluster_ member PodMonitor resolved internally.
+    const auto* k8s_cluster_env = std::getenv("K8S_CLUSTER");
+    std::string k8s_cluster = k8s_cluster_env != nullptr ? std::string(k8s_cluster_env) : std::string();
+
     // No collector ever runs here, so no metric is ever emitted -- Memory is the simplest writer
     // that needs no real spectatord socket/UDP listener to construct successfully.
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -150,7 +157,7 @@ int main(int argc, char** argv)
     {
         podMonitor.RefreshTrackedPods();
         auto discovered = podMonitor.FindAllActivePods2();
-        PrintSnapshot(discovered, podMonitor.TrackedPods(), interval);
+        PrintSnapshot(discovered, podMonitor.TrackedPods(), k8s_cluster, interval);
 
         if (interval < kTotalIntervals)
         {

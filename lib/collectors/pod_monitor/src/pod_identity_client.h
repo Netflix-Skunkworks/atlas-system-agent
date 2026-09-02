@@ -3,17 +3,15 @@
 #include <lib/http_client/src/http_client.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <absl/container/flat_hash_map.h>
-#include <absl/time/time.h>
 
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 namespace atlasagent
 {
 
-// What the apiserver knows about a pod; nothing about cgroups.
+// What the kubelet's local API knows about a pod; nothing about cgroups.
 struct PodIdentity
 {
     std::string name;
@@ -22,66 +20,42 @@ struct PodIdentity
     // from status.containerStatuses[]. Empty when the pod has no containerStatuses yet (e.g. not
     // started) rather than treated as a parse failure.
     std::unordered_map<std::string, std::string> containers;
+    // Pod annotations from metadata.annotations. Empty if the pod has none (not a parse failure).
+    std::unordered_map<std::string, std::string> annotations;
+    // Pod labels from metadata.labels. Empty if the pod has none (not a parse failure).
+    std::unordered_map<std::string, std::string> labels;
 };
 
-// Pod UID (apiserver's canonical dashed form) -> that pod's identity.
+// Pod UID (kubelet's canonical dashed form) -> that pod's identity.
 using PodIdentityMap = absl::flat_hash_map<std::string, PodIdentity>;
-
-// The handful of exec-credential-plugin + cluster-connection fields needed out of
-// /run/kubernetes/config. NOT a general YAML parser -- Netflix's kubelet provisioning always
-// writes this file in this exact shape (one cluster, one user, one exec block calling
-// "aws eks get-token"). A file with multiple clusters/users/contexts would silently produce the
-// wrong result: scalar fields (server, certificate-authority-data, command) keep the LAST match
-// in file order, and a second "args:" block would append its items onto the first rather than
-// either block winning outright.
-struct KubeconfigInfo
-{
-    std::string server;
-    std::string ca_cert_pem;
-    std::string exec_command;
-    std::vector<std::string> exec_args;
-};
 
 struct PodIdentityClientConstants
 {
-    static constexpr auto KubeconfigPath = "/run/kubernetes/config";
-    static constexpr auto CaCertWritePath = "/run/atlas-system-agent/apiserver-ca.crt";
-    static constexpr auto InstanceIdEnvVar = "NETFLIX_INSTANCE_ID";
-    static constexpr int ExecCredentialTimeoutMillis = 2000;
+    // Kubelet's own local, unauthenticated read-only API -- returns a v1.PodList of every pod
+    // currently assigned to this node. Kubelet has no visibility into any other node's pods, so
+    // (unlike the apiserver-based mechanism this replaced) no fieldSelector/node-name lookup is
+    // needed to scope the response.
+    static constexpr auto KubeletUrl = "http://localhost:10255";
 };
 
 class PodIdentityClient
 {
    public:
-    // Reads and parses /run/kubernetes/config ONCE (the cluster URL, CA bundle, and exec
-    // command+args are static for this process's lifetime) and writes the decoded CA bundle to
-    // CaCertWritePath once. If the kubeconfig is missing/unparseable, the client is
-    // permanently disabled: every FetchPodIdentities() call thereafter returns nullopt
-    // immediately (logged once here at construction, not spammed per call).
+    // Nothing here can fail: no file is read, no certificate is decoded/written, no subprocess
+    // is run -- construction just stores the URL and builds an HttpClient.
     explicit PodIdentityClient(Registry* registry,
-                                std::string kubeconfig_path = PodIdentityClientConstants::KubeconfigPath) noexcept;
+                                std::string kubelet_url = PodIdentityClientConstants::KubeletUrl) noexcept;
 
-    // One synchronous, uncached apiserver call: re-runs the kubeconfig's exec-credential
-    // plugin fresh (tokens are short-lived, ~15 minutes observed) for a bearer token, re-reads
-    // NETFLIX_INSTANCE_ID fresh from the environment, and issues one GET to
-    // {kubeconfig server}/api/v1/pods?fieldSelector=spec.nodeName=<instance-id>. Returns
-    // nullopt if construction failed, the exec plugin couldn't be run/parsed,
-    // NETFLIX_INSTANCE_ID is unset, or the HTTP call failed outright -- never throws.
+    // One synchronous, uncached GET to kubelet's local /pods endpoint. Returns nullopt if the
+    // HTTP call failed outright or the response didn't parse as a pod list -- never throws.
     [[nodiscard]] std::optional<PodIdentityMap> FetchPodIdentities() const noexcept;
 
    protected:  // exposed to tests via a PodIdentityClientTest subclass
     static std::optional<PodIdentityMap> ParsePodList(const std::string& json) noexcept;
-    static std::optional<KubeconfigInfo> ExtractKubeconfigFields(const std::vector<std::string>& lines) noexcept;
-    static std::optional<std::string> ParseExecCredentialToken(const std::string& json) noexcept;
-    static std::string BuildExecCommandLine(const std::string& command, const std::vector<std::string>& args) noexcept;
-    static std::optional<std::string> BuildApiServerUrl(const std::string& server, const std::string& node_name) noexcept;
 
    private:
-    Registry* registry_;
+    std::string kubelet_url_;
     HttpClient http_client_;
-    bool initialized_;
-    std::string apiserver_server_;
-    std::string exec_command_line_;
 };
 
 }  // namespace atlasagent

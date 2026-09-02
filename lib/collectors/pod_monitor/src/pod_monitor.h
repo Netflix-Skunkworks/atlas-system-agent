@@ -23,17 +23,22 @@ using PodCgroupMap = absl::flat_hash_map<std::string, std::filesystem::path>;
 // directory, one level below its pod's own cgroup directory.
 using ContainerCgroupMap = absl::flat_hash_map<std::string, std::filesystem::path>;
 
-// Pod UID (canonical dashed form) -> cgroup path plus identity resolved from the apiserver.
+// Pod UID (canonical dashed form) -> cgroup path plus identity resolved from kubelet's local API.
 struct PodInfo
 {
     std::string uid;
     std::filesystem::path cgroup_path;
     std::string name;
     std::string pod_namespace;
-    // Container id (bare hex) -> container name, from the apiserver's
+    // Container id (bare hex) -> container name, from kubelet's
     // status.containerStatuses[] (see PodIdentity::containers). Empty when identity resolution
     // didn't resolve this uid this cycle, or the pod has no containers reported yet.
     std::unordered_map<std::string, std::string> containers;
+    // Pod annotations/labels, from kubelet's metadata.annotations/metadata.labels (see
+    // PodIdentity::annotations/labels). Empty when identity resolution didn't resolve this uid
+    // this cycle, or the pod genuinely has none. Feeds ResolvePodTags's fallback chain.
+    std::unordered_map<std::string, std::string> annotations;
+    std::unordered_map<std::string, std::string> labels;
 };
 using PodInfoMap = absl::flat_hash_map<std::string, PodInfo>;
 
@@ -59,10 +64,12 @@ using ContainerTrackedMap = absl::flat_hash_map<std::string, TrackedContainer>;
 
 // One tracked pod. Unlike the pod-level design this superseded, TrackedPod no longer owns a
 // CGroup of its own -- per-container is now the only granularity cgroup metrics are emitted at,
-// since the nf.* tags that make them useful only exist in each container's own environment, not
-// the pod's. `name`/`pod_namespace` are kept purely for log-line identity; `containers` holds
-// every container currently qualifying for metrics under the env-var-gated tag scheme (see
-// ResolveContainerTags).
+// since only a container's own cgroup gives independent CPU/IO/memory delta-tracking baselines
+// (the nf.app/nf.stack/nf.detail/nf.cluster tags themselves are pod-level -- see ResolvePodTags
+// -- shared by every container in a gated-in pod; only nf.process varies per container).
+// `name`/`pod_namespace` are kept purely for log-line identity; `containers` holds every
+// container currently qualifying for metrics under the annotation/label-gated tag scheme (see
+// ResolvePodTags).
 struct TrackedPod
 {
     std::string name;
@@ -81,7 +88,7 @@ class PodMonitor
 {
    public:
     explicit PodMonitor(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
-                         std::string kubeconfig_path = PodIdentityClientConstants::KubeconfigPath) noexcept;
+                         std::string kubelet_url = PodIdentityClientConstants::KubeletUrl) noexcept;
 
     // Discovers every pod-level cgroup directory on this node, keyed by pod UID in
     // canonical (dashed) form. Detects the cgroup v2 driver (systemd vs cgroupfs) fresh
@@ -89,10 +96,10 @@ class PodMonitor
     // cgroups, never per-container leaves.
     [[nodiscard]] PodCgroupMap FindAllActivePods() const noexcept;
 
-    // Same as FindAllActivePods(), but also resolves each pod's Name and Namespace (and each of
-    // its containers' id -> name mapping) via a live apiserver call. Slower and
-    // network-dependent; FindAllActivePods() alone is sufficient when only cgroup paths are
-    // needed.
+    // Same as FindAllActivePods(), but also resolves each pod's Name, Namespace, annotations,
+    // labels, and each of its containers' id -> name mapping via a live call to kubelet's local
+    // API. Slower and network-dependent; FindAllActivePods() alone is sufficient when only
+    // cgroup paths are needed.
     [[nodiscard]] PodInfoMap FindAllActivePods2() const noexcept;
 
     void SetPrefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
@@ -112,9 +119,9 @@ class PodMonitor
     // (mem.cached/mem.shared/mem.availReal/mem.freeReal/mem.totalReal/mem.availSwap/
     // mem.totalSwap/mem.totalFree -- NOT cgroup.mem.* names, despite reading the same per-cgroup
     // files) for every now-current tracked container, each disambiguated by the nf.*/k8s.* tags
-    // ResolveContainerTags resolved for it -- so a newly-discovered container is sampled the
-    // same cycle it's discovered, and an evicted container's already-destroyed CGroup is never
-    // touched.
+    // ResolvePodTags resolved for its pod (plus its own nf.process) -- so a newly-discovered
+    // container is sampled the same cycle it's discovered, and an evicted container's
+    // already-destroyed CGroup is never touched.
     void CollectMemoryStats() noexcept;
 
    protected:
@@ -134,21 +141,30 @@ class PodMonitor
     // filesystem error, exactly like ScanPodSliceDirectory.
     [[nodiscard]] static ContainerCgroupMap FindContainersInPod(const std::filesystem::path& pod_cgroup_dir) noexcept;
 
-    // Pure fallback-chain resolution of one container's tags from its own already-resolved
-    // environ map (see read_process_environ, lib/util/src/util.h) plus this agent's own
-    // K8S_CLUSTER value (may be empty). No I/O -- easily unit-testable with canned input maps.
-    // Mirrors the OTel transform-processor logic in the "Tag scheme" plan section exactly:
-    // primary netflix.app/netflix.stack/netflix.detail tier, then (only when still unset) a
-    // k8s.label.* fallback tier for nf.app/nf.stack, then structural k8s.pod.name/
-    // k8s.container.name for nf.node/nf.process. nf.cluster is gated on the *primary* netflix.app
-    // value specifically, never on a label-fallback-resolved nf.app (a deliberate asymmetry --
-    // see the plan's own where-clauses). Returns nullopt if NONE of nf.app/nf.stack/nf.node/
-    // nf.process resolved -- Gating: no metrics at all for a container in that state. Otherwise
-    // the returned map holds only the tags that resolved among nf.app/nf.stack/nf.node/
-    // nf.process/nf.cluster, plus (unconditionally) nf.platform="k8s" and, if k8s_cluster is
-    // non-empty, k8s.cluster.name.
-    [[nodiscard]] static std::optional<std::unordered_map<std::string, std::string>> ResolveContainerTags(
-        const std::unordered_map<std::string, std::string>& environ, const std::string& k8s_cluster) noexcept;
+    // Pure fallback-chain resolution of one pod's tags from its own already-resolved annotations
+    // and labels (PodIdentity::annotations/labels, populated from kubelet's local /pods endpoint
+    // -- see pod_identity_client.{h,cpp}) plus this agent's own K8S_CLUSTER value (may be
+    // empty). No I/O -- easily unit-testable with canned input maps. Mirrors the Netflix
+    // K8s-native observability design (a mutating admission webhook stamps netflix.com/app,
+    // netflix.com/stack, netflix.com/detail annotations onto every pod as the tagging source of
+    // truth): primary annotation tier, then (only when still unset) a label fallback tier --
+    // app.kubernetes.io/name -> k8s-app -> app for nf.app, app.kubernetes.io/instance for
+    // nf.stack, app.kubernetes.io/component for nf.detail -- covering pods that webhook hasn't
+    // (yet) annotated. nf.cluster is gated on the *primary* netflix.com/app annotation
+    // specifically, never on a label-fallback-resolved nf.app (a deliberate asymmetry). Returns
+    // nullopt if NONE of nf.app/nf.stack/nf.detail resolved -- Gating: no metrics for any
+    // container in this pod. nf.node/nf.process are deliberately excluded from the Gating
+    // decision -- they're always structurally available once a pod's identity resolves at all
+    // (nf.node from pod_name here; nf.process from the caller, per-container -- see
+    // RefreshTrackedPods), so including them would make Gating vacuous. Otherwise the returned
+    // map holds nf.app/nf.stack/nf.detail/nf.cluster (whichever resolved), nf.node=pod_name if
+    // pod_name is non-empty, nf.platform="k8s" (unconditionally), and, if k8s_cluster is
+    // non-empty, k8s.cluster.name. nf.process is NOT set here -- it's per-container, applied by
+    // the caller.
+    [[nodiscard]] static std::optional<std::unordered_map<std::string, std::string>> ResolvePodTags(
+        const std::unordered_map<std::string, std::string>& annotations,
+        const std::unordered_map<std::string, std::string>& labels, const std::string& pod_name,
+        const std::string& k8s_cluster) noexcept;
 
     // Discovers the current pod set (FindAllActivePods2()) and reconciles tracked_pods_ against
     // it in two fully separate passes -- never interleaved, since absl::flat_hash_map gives no
@@ -158,14 +174,17 @@ class PodMonitor
     //      containers' owned CGroups, freeing all of their delta-tracking baselines in one step.
     //   2. For each discovered pod: self-heal its name/pod_namespace if a fresh, non-blank
     //      identity differs from what's stored (a blank identity this cycle is never treated as
-    //      authoritative -- see the note in the .cpp). Then, nested one level under this same
-    //      per-pod pass, reconcile that pod's own containers against FindContainersInPod() --
-    //      again as two fully separate sequential sub-passes (evict-by-disappearance, then
-    //      resolve-and-track-or-gate-out), never interleaved with each other or with the outer
-    //      per-pod passes. A container that gates in via ResolveContainerTags() then has its
-    //      nf.node/nf.process/k8s.namespace.name filled in from structural sources (pod name,
-    //      apiserver container name, pod namespace) wherever its own environ didn't already
-    //      define them -- Gating itself only ever looks at the environ-only signals.
+    //      authoritative -- see the note in the .cpp). Resolve that pod's tags ONCE via
+    //      ResolvePodTags() -- annotations/labels are pod-level, not per-container, so every
+    //      container in a gated-in pod shares the same nf.app/nf.stack/nf.detail/nf.cluster.
+    //      Then, nested one level under this same per-pod pass, reconcile that pod's own
+    //      containers against FindContainersInPod() -- again as two fully separate sequential
+    //      sub-passes (evict-by-disappearance, then track-or-gate-out), never interleaved with
+    //      each other or with the outer per-pod passes. If the pod's tags didn't resolve
+    //      (Gating), every one of its containers is evicted/skipped this cycle -- there is no
+    //      per-container fallback. A container that does get tracked has nf.process filled in
+    //      from its own name (kubelet's containerStatuses, via PodInfo::containers) and
+    //      k8s.namespace.name from the pod's namespace.
     void RefreshTrackedPods() noexcept;
 
     // Read-only view of tracked_pods_, for test assertions only.

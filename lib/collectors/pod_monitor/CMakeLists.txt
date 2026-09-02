@@ -49,8 +49,8 @@ target_link_libraries(find-active-pods
 )
 
 # Standalone debug tool for manually exercising FindAllActivePods2() (cgroup discovery
-# plus live apiserver identity resolution) on a real node; not part of the
-# atlas_system_agent binary and not run by ctest.
+# plus a live call to kubelet's own local API for identity resolution) on a real node;
+# not part of the atlas_system_agent binary and not run by ctest.
 add_executable(find-active-pods2
     bin/find-active-pods2.cpp
 )
@@ -76,10 +76,10 @@ target_link_libraries(mock-agent
 )
 
 # Standalone debug tool: like mock-agent, but runs no collectors at all -- every 60 seconds it
-# refreshes PodMonitor's discovery/tracking state and prints each pod's PodInfo (everything the
-# apiserver reports) alongside its TrackedPod/TrackedContainer state (only what actually gated in),
-# for inspecting Gating behavior on a real node without touching spectatord. Not part of the
-# atlas_system_agent binary and not run by ctest.
+# refreshes PodMonitor's discovery/tracking state and prints each pod's PodInfo (everything
+# kubelet's local API reports) alongside its TrackedPod/TrackedContainer state (only what
+# actually gated in), for inspecting Gating behavior on a real node without touching
+# spectatord. Not part of the atlas_system_agent binary and not run by ctest.
 add_executable(mock-agent-2
     bin/mock-agent-2.cpp
 )
