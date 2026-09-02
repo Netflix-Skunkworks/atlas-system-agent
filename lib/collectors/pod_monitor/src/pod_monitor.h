@@ -141,6 +141,25 @@ class PodMonitor
     // filesystem error, exactly like ScanPodSliceDirectory.
     [[nodiscard]] static ContainerCgroupMap FindContainersInPod(const std::filesystem::path& pod_cgroup_dir) noexcept;
 
+    // Annotation/label key names ResolvePodTags() checks below, per the Netflix K8s-native
+    // observability design (a mutating admission webhook stamps netflix.com/{app,stack,detail}
+    // pod annotations as the tagging source of truth; the app.kubernetes.io/*/k8s-app/app labels
+    // are this agent's own fallback tier for pods that webhook hasn't (yet) annotated). Public
+    // (not local to the .cpp) so debug tooling -- find-active-pods2's "filtered" mode -- can
+    // explain a Gating failure by naming the exact keys it checked, without duplicating this
+    // list into a second file.
+    struct PodTagKeys
+    {
+        static constexpr std::string_view kAnnotationApp = "netflix.com/app";
+        static constexpr std::string_view kAnnotationStack = "netflix.com/stack";
+        static constexpr std::string_view kAnnotationDetail = "netflix.com/detail";
+        static constexpr std::string_view kLabelAppName = "app.kubernetes.io/name";
+        static constexpr std::string_view kLabelK8sApp = "k8s-app";
+        static constexpr std::string_view kLabelApp = "app";
+        static constexpr std::string_view kLabelAppInstance = "app.kubernetes.io/instance";
+        static constexpr std::string_view kLabelAppComponent = "app.kubernetes.io/component";
+    };
+
     // Pure fallback-chain resolution of one pod's tags from its own already-resolved annotations
     // and labels (PodIdentity::annotations/labels, populated from kubelet's local /pods endpoint
     // -- see pod_identity_client.{h,cpp}) plus this agent's own K8S_CLUSTER value (may be
@@ -167,30 +186,56 @@ class PodMonitor
         const std::string& k8s_cluster) noexcept;
 
     // Discovers the current pod set (FindAllActivePods2()) and reconciles tracked_pods_ against
-    // it in two fully separate passes -- never interleaved, since absl::flat_hash_map gives no
-    // iterator/reference stability across insertion/erasure:
-    //   1. Evict every tracked_pods_ entry whose UID is no longer discovered. Erasing the map
-    //      entry destroys its TrackedPod, which destroys every one of its still-tracked
-    //      containers' owned CGroups, freeing all of their delta-tracking baselines in one step.
-    //   2. For each discovered pod: self-heal its name/pod_namespace if a fresh, non-blank
-    //      identity differs from what's stored (a blank identity this cycle is never treated as
-    //      authoritative -- see the note in the .cpp). Resolve that pod's tags ONCE via
-    //      ResolvePodTags() -- annotations/labels are pod-level, not per-container, so every
-    //      container in a gated-in pod shares the same nf.app/nf.stack/nf.detail/nf.cluster.
-    //      Then, nested one level under this same per-pod pass, reconcile that pod's own
-    //      containers against FindContainersInPod() -- again as two fully separate sequential
-    //      sub-passes (evict-by-disappearance, then track-or-gate-out), never interleaved with
-    //      each other or with the outer per-pod passes. If the pod's tags didn't resolve
-    //      (Gating), every one of its containers is evicted/skipped this cycle -- there is no
-    //      per-container fallback. A container that does get tracked has nf.process filled in
-    //      from its own name (kubelet's containerStatuses, via PodInfo::containers) and
-    //      k8s.namespace.name from the pod's namespace.
+    // it: evict pods no longer discovered (EvictUntrackedPods), then for each discovered pod,
+    // upsert its identity (UpsertPodIdentity), resolve its tags once (ResolvePodTags -- also the
+    // Gating decision for every one of its containers), and reconcile its own containers
+    // (EvictUntrackedContainers, then ReconcileContainers) -- see each helper's own doc comment
+    // for the detail of that step.
     void RefreshTrackedPods() noexcept;
 
     // Read-only view of tracked_pods_, for test assertions only.
     [[nodiscard]] const PodTrackedMap& TrackedPods() const noexcept { return tracked_pods_; }
 
    private:
+    // RefreshTrackedPods() step 1: evict every tracked_pods_ entry whose UID is no longer in
+    // discovered. Erasing the map entry destroys its TrackedPod, which destroys every one of its
+    // still-tracked containers' owned CGroups, freeing all of their delta-tracking baselines in
+    // one step -- there is no separate "reset". Unlike std::unordered_map,
+    // absl::flat_hash_map's single-iterator erase() returns void (not the next iterator), so the
+    // iterator must be advanced with post-increment before the (now invalidated) copy is erased.
+    void EvictUntrackedPods(const PodInfoMap& discovered) noexcept;
+
+    // RefreshTrackedPods() step 2: try_emplace this uid into tracked_pods_ (inserting a fresh
+    // TrackedPod from info.name/info.pod_namespace if not already tracked), self-healing an
+    // already-tracked pod's name/pod_namespace in place if the fresh info carries a different,
+    // non-blank identity. `info.name`/`info.pod_namespace` are only ever both populated together,
+    // from a successful identity lookup for this exact uid (see JoinCgroupAndIdentity) -- a
+    // nullopt/omitted identity this cycle collapses both to "". Treat that blank pair as "identity
+    // unknown this cycle", not as "this pod's identity became blank": self-heal only when the
+    // fresh info actually carries a resolved identity, so a transient kubelet HTTP call failure
+    // never wipes out an already-correctly-tracked pod's name/namespace. Returns a reference into
+    // tracked_pods_, valid only within the same loop iteration it was returned in --
+    // absl::flat_hash_map gives no iterator/reference stability across insertion/erasure.
+    [[nodiscard]] TrackedPod& UpsertPodIdentity(const std::string& uid, const PodInfo& info) noexcept;
+
+    // RefreshTrackedPods() step 3 (container sub-pass 1 of 2): evict any of pod's tracked
+    // containers whose scope directory disappeared entirely (container id no longer in
+    // discovered_containers) -- same "disappeared" eviction as EvictUntrackedPods, just one level
+    // deeper.
+    void EvictUntrackedContainers(TrackedPod& pod, const ContainerCgroupMap& discovered_containers) noexcept;
+
+    // RefreshTrackedPods() step 4 (container sub-pass 2 of 2), only reached once pod_tags has
+    // resolved (Gating passed): for every currently discovered container, apply pod_tags plus its
+    // own name for nf.process, and track/update it accordingly. pod_tags is pod-level and already
+    // includes k8s.namespace.name -- every container below shares it verbatim aside from
+    // nf.process. Skips (without evicting) a container not yet in info.containers -- an expected
+    // transient race where a container's cgroup scope can appear slightly before kubelet reports
+    // it in containerStatuses, or vice versa. Re-resolves SetCpuCountOverride every cycle (not
+    // only at first insertion) since a container's cgroup directory can appear slightly before
+    // cpu.max is set to its real quota, and an in-place resize can change it later.
+    void ReconcileContainers(TrackedPod& pod, const PodInfo& info, const ContainerCgroupMap& discovered_containers,
+                              const std::unordered_map<std::string, std::string>& pod_tags) noexcept;
+
     // The CPU count to configure on a container's CGroup: its own cgroup quota (cpu.max) when
     // set, otherwise the node's total logical CPU count (a container with no quota can burst
     // across every core on the node).

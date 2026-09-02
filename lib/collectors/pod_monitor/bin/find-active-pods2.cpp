@@ -11,11 +11,18 @@
 // still appears (from the cgroup walk) but with empty name/namespace/annotations/labels.
 //
 // Usage: find-active-pods2 [cgroup_path_prefix] [filtered]
-// Pass "filtered" as the second argument to only print pods whose tags actually resolve
-// via PodMonitor::ResolvePodTags -- i.e. pods that would really get metrics emitted for
-// them, the same Gating decision RefreshTrackedPods() makes. Gating is pod-level: every
-// container in a gated-in pod shares that pod's resolved tags (plus its own nf.process),
-// so there's no separate per-container filter once the pod itself passes.
+// Pass "filtered" as the second argument to see the same PASS/FAIL decision
+// RefreshTrackedPods() makes for every pod and container, always with a reason:
+//   - Pod-level Gating (PodMonitor::ResolvePodTags): if none of nf.app/nf.stack/nf.detail
+//     resolve (from either the primary netflix.com/{app,stack,detail} annotations or their
+//     label fallbacks), the whole pod is GATED OUT -- printed with exactly which
+//     annotation/label keys were checked and found missing, and every one of its
+//     containers listed as excluded for that reason.
+//   - Container-level mismatch (PodMonitor::ReconcileContainers's real matching): even in a
+//     PASSED pod, a container only gets tracked if its cgroup-discovered id
+//     (FindContainersInPod) is also present in kubelet's reported container list, and vice
+//     versa -- a container visible on only one side is excluded independently of Gating,
+//     printed with that reason.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 
@@ -26,6 +33,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -33,14 +41,17 @@
 namespace
 {
 
-// PodMonitor keeps ResolvePodTags() protected -- this repo's own convention for exposing it to
-// a standalone caller outside the class (see pod_monitor_test.cpp's PodMonitorTest,
-// mock-agent-2.cpp's PodMonitorIntrospect) is a thin subclass with a `using` declaration, not
-// new public API on PodMonitor itself just for a debug tool.
+// PodMonitor keeps ResolvePodTags()/FindContainersInPod()/PodTagKeys protected -- this repo's
+// own convention for exposing them to a standalone caller outside the class (see
+// pod_monitor_test.cpp's PodMonitorTest, mock-agent-2.cpp's PodMonitorIntrospect) is a thin
+// subclass with `using` declarations, not new public API on PodMonitor itself just for a debug
+// tool.
 class PodMonitorIntrospect : public atlasagent::PodMonitor
 {
    public:
     using PodMonitor::PodMonitor;
+    using PodMonitor::FindContainersInPod;
+    using PodMonitor::PodTagKeys;
     using PodMonitor::ResolvePodTags;
 };
 
@@ -51,6 +62,127 @@ void PrintSortedMap(const std::unordered_map<std::string, std::string>& values, 
     for (const auto& [key, value] : sorted_entries)
     {
         fmt::print("{}{}={}\n", indent, key, value);
+    }
+}
+
+// Mirrors ResolvePodTags's own per-tag fallback check (primary annotation, else the first
+// non-empty fallback label, in the exact order ResolvePodTags checks them) against the same
+// PodTagKeys constants it uses, so this can never name a key ResolvePodTags doesn't actually
+// check. Returns a one-line explanation of which key resolved this tag, or every key that was
+// checked and found missing.
+std::string DescribeTagResolution(const std::unordered_map<std::string, std::string>& annotations,
+                                   const std::unordered_map<std::string, std::string>& labels, const char* tag_name,
+                                   std::string_view annotation_key,
+                                   std::initializer_list<std::string_view> fallback_label_keys)
+{
+    auto has_value = [](const std::unordered_map<std::string, std::string>& values, std::string_view key) {
+        auto it = values.find(std::string(key));
+        return it != values.end() && !it->second.empty();
+    };
+
+    if (has_value(annotations, annotation_key))
+    {
+        return fmt::format("{}: resolved from annotation {}", tag_name, annotation_key);
+    }
+    for (auto key : fallback_label_keys)
+    {
+        if (has_value(labels, key))
+        {
+            return fmt::format("{}: resolved from label {} (fallback)", tag_name, key);
+        }
+    }
+    std::string checked = fmt::format("annotation {}", annotation_key);
+    for (auto key : fallback_label_keys)
+    {
+        checked += fmt::format(", label {}", key);
+    }
+    return fmt::format("{}: UNRESOLVED (checked {})", tag_name, checked);
+}
+
+// The three outcomes PodMonitor::ReconcileContainers's real loop produces when it iterates
+// cgroup-discovered containers and looks each one up by id in kubelet's reported container
+// list: matched (both sides agree -- this is what actually gets tracked), cgroup_only (a cgroup
+// scope exists but kubelet hasn't reported that id -- ReconcileContainers skips it this cycle),
+// and kubelet_only (kubelet reports an id with no matching cgroup scope -- ReconcileContainers
+// never even visits it, since its loop is driven by the cgroup-discovered set). Sorted for
+// deterministic output.
+struct ContainerClassification
+{
+    std::vector<std::string> matched;
+    std::vector<std::string> cgroup_only;
+    std::vector<std::string> kubelet_only;
+};
+
+ContainerClassification ClassifyContainers(const atlasagent::ContainerCgroupMap& discovered_containers,
+                                            const std::unordered_map<std::string, std::string>& kubelet_containers)
+{
+    ContainerClassification result;
+    for (const auto& entry : discovered_containers)
+    {
+        const std::string& container_id = entry.first;
+        if (kubelet_containers.find(container_id) != kubelet_containers.end())
+        {
+            result.matched.push_back(container_id);
+        }
+        else
+        {
+            result.cgroup_only.push_back(container_id);
+        }
+    }
+    for (const auto& entry : kubelet_containers)
+    {
+        const std::string& container_id = entry.first;
+        if (discovered_containers.find(container_id) == discovered_containers.end())
+        {
+            result.kubelet_only.push_back(container_id);
+        }
+    }
+    std::sort(result.matched.begin(), result.matched.end());
+    std::sort(result.cgroup_only.begin(), result.cgroup_only.end());
+    std::sort(result.kubelet_only.begin(), result.kubelet_only.end());
+    return result;
+}
+
+// Used only for a GATED OUT pod, where every container is excluded for the same pod-level
+// reason regardless of which ContainerClassification bucket it's in.
+void PrintAllExcluded(const ContainerClassification& classification,
+                       const std::unordered_map<std::string, std::string>& kubelet_containers, const char* reason)
+{
+    std::vector<std::string> ids;
+    ids.insert(ids.end(), classification.matched.begin(), classification.matched.end());
+    ids.insert(ids.end(), classification.cgroup_only.begin(), classification.cgroup_only.end());
+    ids.insert(ids.end(), classification.kubelet_only.begin(), classification.kubelet_only.end());
+    std::sort(ids.begin(), ids.end());
+    for (const auto& id : ids)
+    {
+        auto name_it = kubelet_containers.find(id);
+        std::string name = name_it != kubelet_containers.end() ? name_it->second : "(name unknown)";
+        fmt::print("    {} -> {} (excluded: {})\n", id, name, reason);
+    }
+}
+
+// Used for a PASSED pod: matched containers are genuinely tracked; cgroup_only/kubelet_only are
+// excluded independently of Gating, for the container-level mismatch reason.
+void PrintClassifiedContainers(const ContainerClassification& classification,
+                                const std::unordered_map<std::string, std::string>& kubelet_containers)
+{
+    for (const auto& id : classification.matched)
+    {
+        fmt::print("    {} -> {} (tracked)\n", id, kubelet_containers.at(id));
+    }
+    for (const auto& id : classification.cgroup_only)
+    {
+        fmt::print(
+            "    {} -> (name unknown -- cgroup scope found, kubelet hasn't reported this container id yet) "
+            "(excluded: container-level mismatch)\n",
+            id);
+    }
+    for (const auto& id : classification.kubelet_only)
+    {
+        fmt::print(
+            "    {} -> {} (kubelet reports this container, but no matching cgroup scope was found under this "
+            "pod) (excluded: container-level mismatch)\n",
+            id, kubelet_containers.at(id));
     }
 }
 
@@ -77,9 +209,8 @@ int main(int argc, char** argv)
     if (filtered)
     {
         fmt::print(
-            "Filtering: only printing pods whose tags resolve via ResolvePodTags (i.e. pods that\n"
-            "would actually get metrics emitted -- the same Gating decision RefreshTrackedPods()\n"
-            "makes). {} pod(s) discovered in total; shown below are only the ones that pass.\n",
+            "Filtering: showing the PASS/FAIL decision RefreshTrackedPods() makes for every pod and\n"
+            "container, always with a reason. {} pod(s) discovered in total.\n",
             pods.size());
     }
     else
@@ -87,20 +218,10 @@ int main(int argc, char** argv)
         fmt::print("Found {} pod(s):\n", pods.size());
     }
 
-    int shown = 0;
+    int passed = 0;
+    int gated_out = 0;
     for (const auto& [uid, info] : pods)
     {
-        std::optional<std::unordered_map<std::string, std::string>> pod_tags;
-        if (filtered)
-        {
-            pod_tags = PodMonitorIntrospect::ResolvePodTags(info.annotations, info.labels, info.name, k8s_cluster);
-            if (!pod_tags.has_value())
-            {
-                continue;  // Gated out -- no metrics for this pod or any of its containers.
-            }
-        }
-        ++shown;
-
         fmt::print("Pod {}\n", uid);
         fmt::print("  uid:           {}\n", info.uid);
         fmt::print("  cgroup_path:   {}\n", info.cgroup_path.string());
@@ -113,20 +234,49 @@ int main(int argc, char** argv)
 
         if (filtered)
         {
-            fmt::print("  resolved tags (every container below would carry these, plus its own nf.process):\n");
-            PrintSortedMap(*pod_tags, "    ");
-        }
+            auto pod_tags = PodMonitorIntrospect::ResolvePodTags(info.annotations, info.labels, info.name, k8s_cluster);
+            auto discovered_containers = PodMonitorIntrospect::FindContainersInPod(info.cgroup_path);
+            auto classification = ClassifyContainers(discovered_containers, info.containers);
 
-        fmt::print("  containers (kubelet-known, {} total):\n", info.containers.size());
-        for (const auto& [container_id, container_name] : info.containers)
+            if (pod_tags.has_value())
+            {
+                ++passed;
+                fmt::print("  PASSED -- resolved tags (every tracked container below carries these, plus its own nf.process):\n");
+                PrintSortedMap(*pod_tags, "    ");
+                fmt::print("  containers:\n");
+                PrintClassifiedContainers(classification, info.containers);
+            }
+            else
+            {
+                ++gated_out;
+                fmt::print("  GATED OUT -- none of nf.app/nf.stack/nf.detail resolved:\n");
+                fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.app", PodMonitorIntrospect::PodTagKeys::kAnnotationApp,
+                                                               {PodMonitorIntrospect::PodTagKeys::kLabelAppName,
+                                                                PodMonitorIntrospect::PodTagKeys::kLabelK8sApp,
+                                                                PodMonitorIntrospect::PodTagKeys::kLabelApp}));
+                fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.stack",
+                                                               PodMonitorIntrospect::PodTagKeys::kAnnotationStack,
+                                                               {PodMonitorIntrospect::PodTagKeys::kLabelAppInstance}));
+                fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.detail",
+                                                               PodMonitorIntrospect::PodTagKeys::kAnnotationDetail,
+                                                               {PodMonitorIntrospect::PodTagKeys::kLabelAppComponent}));
+                fmt::print("  containers (all excluded -- pod gated out):\n");
+                PrintAllExcluded(classification, info.containers, "pod gated out");
+            }
+        }
+        else
         {
-            fmt::print("    {} -> {}\n", container_id, container_name);
+            fmt::print("  containers (kubelet-known, {} total):\n", info.containers.size());
+            for (const auto& [container_id, container_name] : info.containers)
+            {
+                fmt::print("    {} -> {}\n", container_id, container_name);
+            }
         }
     }
 
     if (filtered)
     {
-        fmt::print("Shown {} of {} discovered pod(s) after filtering.\n", shown, pods.size());
+        fmt::print("Passed {}, gated out {}, of {} discovered pod(s).\n", passed, gated_out, pods.size());
     }
 
     return 0;
