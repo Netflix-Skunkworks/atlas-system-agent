@@ -345,16 +345,17 @@ std::optional<std::unordered_map<std::string, std::string>> PodMonitor::ResolveP
     {
         tags.emplace("nf.cluster", *nf_cluster);
     }
-    // todo uncomment later
-    // if (!pod_name.empty())
-    // {
-    //     tags.emplace("nf.node", pod_name);
-    // }
+    
+    if (!pod_name.empty())
+    {
+        tags.emplace("nf.node", pod_name);
+    }
     if (!k8s_cluster.empty())
     {
         tags.emplace("k8s.cluster.name", k8s_cluster);
     }
-    tags.emplace("nf.platform", "k8s");
+    // todo uncomment later
+    //tags.emplace("nf.platform", "k8s");
 
     return tags;
 }
