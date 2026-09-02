@@ -1,4 +1,4 @@
-// Standalone debug tool: runs PodMonitor::FindAllActivePods2() against a real (or
+// Standalone debug tool: runs PodMonitor::FindActivePodInfo() against a real (or
 // overridden) cgroup root, plus a live call to kubelet's own local API for pod
 // Name/Namespace/annotations/labels, and prints what it discovers, so behavior can be
 // checked by hand against `kubectl get pods` on a live node. Not part of the
@@ -10,7 +10,7 @@
 // node. If that port isn't reachable (e.g. disabled by cluster hardening), every pod
 // still appears (from the cgroup walk) but with empty name/namespace/annotations/labels.
 //
-// Usage: find-active-pods2 [cgroup_path_prefix] [filtered]  (either order; both optional)
+// Usage: find-activepods [cgroup_path_prefix] [filtered]  (either order; both optional)
 // Pass "filtered" as one of the arguments to see the same PASS/FAIL decision
 // RefreshTrackedPods() makes for every pod and container, always with a reason:
 //   - Pod-level Gating (PodMonitor::ResolvePodTags): if none of nf.app/nf.stack/nf.detail
@@ -217,7 +217,7 @@ int main(int argc, char** argv)
     auto registry = Registry(config);
     PodMonitorIntrospect podMonitor{&registry, path_prefix};
 
-    auto pods = podMonitor.FindAllActivePods2();
+    auto pods = podMonitor.FindActivePodInfo();
 
     fmt::print("Scanned cgroup root: {}\n", path_prefix);
     if (filtered)

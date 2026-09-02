@@ -104,13 +104,13 @@ TEST(PodMonitor, MatchPodSliceNameTooShortFails)
     EXPECT_FALSE(result.has_value());
 }
 
-TEST(PodMonitor, FindAllActivePodsSystemd)
+TEST(PodMonitor, FindActivePodCgroupsSystemd)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
 
-    auto pods = podMonitor.FindAllActivePods();
+    auto pods = podMonitor.FindActivePodCgroups();
 
     ASSERT_EQ(pods.size(), 3);
 
@@ -130,13 +130,13 @@ TEST(PodMonitor, FindAllActivePodsSystemd)
                   "kubepods-besteffort-pod33333333_3333_3333_3333_333333333333.slice"));
 }
 
-TEST(PodMonitor, FindAllActivePodsCgroupfs)
+TEST(PodMonitor, FindActivePodCgroupsCgroupfs)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/cgroupfs"};
 
-    auto pods = podMonitor.FindAllActivePods();
+    auto pods = podMonitor.FindActivePodCgroups();
 
     ASSERT_EQ(pods.size(), 3);
 
@@ -156,13 +156,13 @@ TEST(PodMonitor, FindAllActivePodsCgroupfs)
                   "pod66666666-6666-6666-6666-666666666666"));
 }
 
-TEST(PodMonitor, FindAllActivePodsMissingRoot)
+TEST(PodMonitor, FindActivePodCgroupsMissingRoot)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/does_not_exist"};
 
-    auto pods = podMonitor.FindAllActivePods();
+    auto pods = podMonitor.FindActivePodCgroups();
 
     EXPECT_TRUE(pods.empty());
 }
@@ -172,7 +172,7 @@ TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     // Uses the identity-client's default kubelet URL, which points at nothing listening (see
-    // PodMonitorTest's default above), so FindAllActivePods2()'s identity lookup always fails
+    // PodMonitorTest's default above), so FindActivePodInfo()'s identity lookup always fails
     // closed and no real network call is ever made -- this test is hermetic.
     PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
 
@@ -360,7 +360,7 @@ TEST(PodMonitor, ResolvePodTagsSetsK8sClusterNameOnlyWhenNonEmpty)
 
 // End-to-end wiring test through RefreshTrackedPods(): a pod with a real, discoverable container
 // (systemd_pod_with_containers, the same fixture FindContainersInPod's own tests use) is
-// discovered structurally, but this test's hermetic setup means FindAllActivePods2()'s identity
+// discovered structurally, but this test's hermetic setup means FindActivePodInfo()'s identity
 // lookup always fails closed -- so info.annotations/info.labels are always empty and
 // ResolvePodTags always returns nullopt. Confirms Gating drops every container in that pod, not
 // just skips tagging it -- see the NOTE above this test group for why the successful path can't
@@ -386,7 +386,7 @@ TEST(PodMonitor, RefreshTrackedPodsEvictsAllWhenRootDisappears)
     podMonitor.RefreshTrackedPods();
     ASSERT_EQ(podMonitor.TrackedPods().size(), 3);
 
-    // Point at a nonexistent root, so FindAllActivePods2() discovers nothing.
+    // Point at a nonexistent root, so FindActivePodInfo() discovers nothing.
     podMonitor.SetPrefix("lib/collectors/pod_monitor/test/resources/does_not_exist");
     podMonitor.RefreshTrackedPods();
 
@@ -652,13 +652,13 @@ TEST(PodMonitor, JoinCgroupAndIdentityDropsIdentityWithoutCgroup)
     EXPECT_EQ(result.find("99999999-9999-9999-9999-999999999999"), result.end());
 }
 
-TEST(PodMonitor, FindAllActivePods2WithoutKubeletIsHermetic)
+TEST(PodMonitor, FindActivePodInfoWithoutKubeletIsHermetic)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
 
-    auto pods = podMonitor.FindAllActivePods2();
+    auto pods = podMonitor.FindActivePodInfo();
 
     ASSERT_EQ(pods.size(), 3);
 

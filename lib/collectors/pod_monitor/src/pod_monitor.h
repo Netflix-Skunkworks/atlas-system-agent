@@ -94,13 +94,13 @@ class PodMonitor
     // canonical (dashed) form. Detects the cgroup v2 driver (systemd vs cgroupfs) fresh
     // on each call, and walks at most two levels deep, so it only ever finds pod-aggregate
     // cgroups, never per-container leaves.
-    [[nodiscard]] PodCgroupMap FindAllActivePods() const noexcept;
+    [[nodiscard]] PodCgroupMap FindActivePodCgroups() const noexcept;
 
-    // Same as FindAllActivePods(), but also resolves each pod's Name, Namespace, annotations,
+    // Same as FindActivePodCgroups(), but also resolves each pod's Name, Namespace, annotations,
     // labels, and each of its containers' id -> name mapping via a live call to kubelet's local
-    // API. Slower and network-dependent; FindAllActivePods() alone is sufficient when only
+    // API. Slower and network-dependent; FindActivePodCgroups() alone is sufficient when only
     // cgroup paths are needed.
-    [[nodiscard]] PodInfoMap FindAllActivePods2() const noexcept;
+    [[nodiscard]] PodInfoMap FindActivePodInfo() const noexcept;
 
     void SetPrefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
@@ -134,7 +134,7 @@ class PodMonitor
     [[nodiscard]] static PodInfoMap JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
                                                            const std::optional<PodIdentityMap>& identities) noexcept;
 
-    // Container discovery: the level below pod discovery that FindAllActivePods()'s own doc
+    // Container discovery: the level below pod discovery that FindActivePodCgroups()'s own doc
     // comment already anticipates. Lists pod_cgroup_dir's immediate subdirectories and matches
     // container scope names shaped "cri-containerd-<64-hex-id>.scope" (containerd/CRI
     // convention), keyed by the stripped id. Never throws; returns an empty map on any
@@ -145,7 +145,7 @@ class PodMonitor
     // observability design (a mutating admission webhook stamps netflix.com/{app,stack,detail}
     // pod annotations as the tagging source of truth; the app.kubernetes.io/*/k8s-app/app labels
     // are this agent's own fallback tier for pods that webhook hasn't (yet) annotated). Public
-    // (not local to the .cpp) so debug tooling -- find-active-pods2's "filtered" mode -- can
+    // (not local to the .cpp) so debug tooling -- find-activepods's "filtered" mode -- can
     // explain a Gating failure by naming the exact keys it checked, without duplicating this
     // list into a second file.
     struct PodTagKeys
@@ -185,7 +185,7 @@ class PodMonitor
         const std::unordered_map<std::string, std::string>& labels, const std::string& pod_name,
         const std::string& k8s_cluster) noexcept;
 
-    // Discovers the current pod set (FindAllActivePods2()) and reconciles tracked_pods_ against
+    // Discovers the current pod set (FindActivePodInfo()) and reconciles tracked_pods_ against
     // it: evict pods no longer discovered (EvictUntrackedPods), then for each discovered pod,
     // upsert its identity (UpsertPodIdentity), resolve its tags once (ResolvePodTags -- also the
     // Gating decision for every one of its containers), and reconcile its own containers

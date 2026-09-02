@@ -36,26 +36,14 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-# Standalone debug tool for manually exercising FindAllActivePods() on a real node;
-# not part of the atlas_system_agent binary and not run by ctest.
-add_executable(find-active-pods
-    bin/find-active-pods.cpp
-)
-
-target_link_libraries(find-active-pods
-    pod_monitor
-    fmt::fmt
-    spectator-registry
-)
-
-# Standalone debug tool for manually exercising FindAllActivePods2() (cgroup discovery
+# Standalone debug tool for manually exercising FindActivePodInfo() (cgroup discovery
 # plus a live call to kubelet's own local API for identity resolution) on a real node;
 # not part of the atlas_system_agent binary and not run by ctest.
-add_executable(find-active-pods2
-    bin/find-active-pods2.cpp
+add_executable(find-activepods
+    bin/find-activepods.cpp
 )
 
-target_link_libraries(find-active-pods2
+target_link_libraries(find-activepods
     pod_monitor
     fmt::fmt
     spectator-registry

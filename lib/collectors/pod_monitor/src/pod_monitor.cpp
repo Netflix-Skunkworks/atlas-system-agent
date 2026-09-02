@@ -19,7 +19,7 @@ namespace
 // A key present in `values` with a non-empty value; nullopt otherwise (missing, or present but
 // empty -- both treated as "not set" per the fallback-chain wording).
 std::optional<std::string> NonEmptyValue(const std::unordered_map<std::string, std::string>& values,
-                                          std::string_view key) noexcept
+                                         std::string_view key) noexcept
 {
     auto it = values.find(std::string(key));
     if (it != values.end() && !it->second.empty())
@@ -35,16 +35,61 @@ std::string ResolveK8sClusterEnv() noexcept
     return value != nullptr ? std::string(value) : std::string();
 }
 
+// The first non-empty value among `keys`, in order; nullopt if none of them are set. The
+// label-fallback half of ResolvePodTags's primary-annotation-else-label-fallback pattern, shared
+// across nf.app (3 candidate keys)/nf.stack/nf.detail (1 each).
+std::optional<std::string> FirstNonEmptyValue(const std::unordered_map<std::string, std::string>& values,
+                                               std::initializer_list<std::string_view> keys) noexcept
+{
+    for (auto key : keys)
+    {
+        if (auto value = NonEmptyValue(values, key); value.has_value())
+        {
+            return value;
+        }
+    }
+    return std::nullopt;
+}
+
+// nf.cluster is gated on the *primary* netflix.com/app annotation specifically -- NOT on
+// whatever nf_app ended up resolving to. A pod whose nf.app only resolved via a label fallback
+// must not get an nf.cluster tag; this mirrors the Netflix K8s-native observability design's own
+// `where resource.attributes["netflix.app"] != nil` guards, which all key off the primary
+// attribute, not the transform's own output.
+std::optional<std::string> BuildNfCluster(const std::optional<std::string>& primary_app,
+                                           const std::optional<std::string>& primary_stack,
+                                           const std::optional<std::string>& primary_detail) noexcept
+{
+    if (!primary_app.has_value())
+    {
+        return std::nullopt;
+    }
+    std::string cluster = *primary_app;
+    if (primary_stack.has_value())
+    {
+        cluster += "-";
+        cluster += *primary_stack;
+    }
+    if (primary_detail.has_value())
+    {
+        cluster += "-";
+        cluster += *primary_detail;
+    }
+    return cluster;
+}
+
 }  // namespace
 
 PodMonitor::PodMonitor(Registry* registry, std::string path_prefix, std::string kubelet_url) noexcept
-    : registry_(registry), path_prefix_(std::move(path_prefix)),
-      identity_client_(registry, std::move(kubelet_url)), k8s_cluster_(ResolveK8sClusterEnv())
+    : registry_(registry),
+      path_prefix_(std::move(path_prefix)),
+      identity_client_(registry, std::move(kubelet_url)),
+      k8s_cluster_(ResolveK8sClusterEnv())
 {
 }
 
 std::optional<std::string_view> PodMonitor::MatchPodSliceName(std::string_view name, std::string_view name_prefix,
-                                                                std::string_view name_suffix) noexcept
+                                                              std::string_view name_suffix) noexcept
 {
     if (name.size() <= name_prefix.size() + name_suffix.size())
     {
@@ -111,7 +156,7 @@ std::optional<std::string> PodMonitor::NormalizePodUid(std::string_view raw_uid)
 }
 
 void PodMonitor::ScanPodSliceDirectory(const std::filesystem::path& dir, std::string_view name_prefix,
-                                        std::string_view name_suffix, PodCgroupMap* pods) noexcept
+                                       std::string_view name_suffix, PodCgroupMap* pods) noexcept
 {
     std::error_code ec;
     std::filesystem::directory_iterator it{dir, ec};
@@ -146,7 +191,7 @@ void PodMonitor::ScanPodSliceDirectory(const std::filesystem::path& dir, std::st
     }
 }
 
-PodCgroupMap PodMonitor::FindAllActivePods() const noexcept
+PodCgroupMap PodMonitor::FindActivePodCgroups() const noexcept
 {
     PodCgroupMap pods;
     std::error_code ec;
@@ -222,7 +267,7 @@ ContainerCgroupMap PodMonitor::FindContainersInPod(const std::filesystem::path& 
 }
 
 PodInfoMap PodMonitor::JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
-                                              const std::optional<PodIdentityMap>& identities) noexcept
+                                             const std::optional<PodIdentityMap>& identities) noexcept
 {
     PodInfoMap result;
     result.reserve(cgroup_pods.size());
@@ -246,9 +291,9 @@ PodInfoMap PodMonitor::JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
     return result;
 }
 
-PodInfoMap PodMonitor::FindAllActivePods2() const noexcept
+PodInfoMap PodMonitor::FindActivePodInfo() const noexcept
 {
-    auto cgroup_pods = FindAllActivePods();
+    auto cgroup_pods = FindActivePodCgroups();
     auto identities = identity_client_.FetchPodIdentities();
     return JoinCgroupAndIdentity(cgroup_pods, identities);
 }
@@ -262,30 +307,14 @@ std::optional<std::unordered_map<std::string, std::string>> PodMonitor::ResolveP
     auto primary_stack = NonEmptyValue(annotations, PodTagKeys::kAnnotationStack);
     auto primary_detail = NonEmptyValue(annotations, PodTagKeys::kAnnotationDetail);
 
-    auto nf_app = primary_app;
-    if (!nf_app.has_value())
-    {
-        for (auto key : {PodTagKeys::kLabelAppName, PodTagKeys::kLabelK8sApp, PodTagKeys::kLabelApp})
-        {
-            if (auto value = NonEmptyValue(labels, key); value.has_value())
-            {
-                nf_app = std::move(value);
-                break;
-            }
-        }
-    }
-
-    auto nf_stack = primary_stack;
-    if (!nf_stack.has_value())
-    {
-        nf_stack = NonEmptyValue(labels, PodTagKeys::kLabelAppInstance);
-    }
-
-    auto nf_detail = primary_detail;
-    if (!nf_detail.has_value())
-    {
-        nf_detail = NonEmptyValue(labels, PodTagKeys::kLabelAppComponent);
-    }
+    // primary_app/primary_stack/primary_detail are kept separate from nf_app/nf_stack/nf_detail
+    // below -- nf.cluster (see BuildNfCluster) needs the primary-only values specifically, not
+    // whatever the label fallback resolved.
+    auto nf_app = primary_app.has_value()
+                      ? primary_app
+                      : FirstNonEmptyValue(labels, {PodTagKeys::kLabelAppName, PodTagKeys::kLabelK8sApp, PodTagKeys::kLabelApp});
+    auto nf_stack = primary_stack.has_value() ? primary_stack : FirstNonEmptyValue(labels, {PodTagKeys::kLabelAppInstance});
+    auto nf_detail = primary_detail.has_value() ? primary_detail : FirstNonEmptyValue(labels, {PodTagKeys::kLabelAppComponent});
 
     if (!nf_app.has_value() && !nf_stack.has_value() && !nf_detail.has_value())
     {
@@ -296,27 +325,7 @@ std::optional<std::unordered_map<std::string, std::string>> PodMonitor::ResolveP
         return std::nullopt;
     }
 
-    // nf.cluster is gated on the *primary* netflix.com/app annotation specifically -- NOT on
-    // whatever nf_app ended up resolving to. A pod whose nf.app only resolved via a label
-    // fallback must not get an nf.cluster tag; this mirrors the Netflix K8s-native observability
-    // design's own `where resource.attributes["netflix.app"] != nil` guards, which all key off
-    // the primary attribute, not the transform's own output.
-    std::optional<std::string> nf_cluster;
-    if (primary_app.has_value())
-    {
-        std::string cluster = *primary_app;
-        if (primary_stack.has_value())
-        {
-            cluster += "-";
-            cluster += *primary_stack;
-        }
-        if (primary_detail.has_value())
-        {
-            cluster += "-";
-            cluster += *primary_detail;
-        }
-        nf_cluster = std::move(cluster);
-    }
+    auto nf_cluster = BuildNfCluster(primary_app, primary_stack, primary_detail);
 
     std::unordered_map<std::string, std::string> tags;
     if (nf_app.has_value())
@@ -404,8 +413,8 @@ void PodMonitor::EvictUntrackedContainers(TrackedPod& pod, const ContainerCgroup
 }
 
 void PodMonitor::ReconcileContainers(TrackedPod& pod, const PodInfo& info,
-                                      const ContainerCgroupMap& discovered_containers,
-                                      const std::unordered_map<std::string, std::string>& pod_tags) noexcept
+                                     const ContainerCgroupMap& discovered_containers,
+                                     const std::unordered_map<std::string, std::string>& pod_tags) noexcept
 {
     for (const auto& [container_id, container_cgroup_path] : discovered_containers)
     {
@@ -422,8 +431,8 @@ void PodMonitor::ReconcileContainers(TrackedPod& pod, const PodInfo& info,
         auto container_tags = pod_tags;
         container_tags["nf.process"] = container_name;
 
-        auto [cit, container_inserted] =
-            pod.containers.try_emplace(container_id, registry_, container_cgroup_path.string(), container_id, container_name);
+        auto [cit, container_inserted] = pod.containers.try_emplace(
+            container_id, registry_, container_cgroup_path.string(), container_id, container_name);
         if (!container_inserted)
         {
             cit->second.container_name = container_name;
@@ -439,7 +448,7 @@ void PodMonitor::ReconcileContainers(TrackedPod& pod, const PodInfo& info,
 
 void PodMonitor::RefreshTrackedPods() noexcept
 {
-    auto discovered = FindAllActivePods2();
+    auto discovered = FindActivePodInfo();
     EvictUntrackedPods(discovered);
 
     for (const auto& [uid, info] : discovered)
@@ -480,8 +489,8 @@ void PodMonitor::CollectCpuStats(const bool fiveSecondMetricsEnabled, const bool
         for (auto& container_entry : pod_entry.second.containers)
         {
             atlasagent::Logger()->debug("Collecting CPU stats for pod {}/{} (uid={}) container {} ({})",
-                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
-                                         container_entry.first, container_entry.second.container_name);
+                                        pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
+                                        container_entry.first, container_entry.second.container_name);
             container_entry.second.cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
         }
     }
@@ -494,8 +503,8 @@ void PodMonitor::CollectIOStats() noexcept
         for (auto& container_entry : pod_entry.second.containers)
         {
             atlasagent::Logger()->debug("Collecting IO stats for pod {}/{} (uid={}) container {} ({})",
-                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
-                                         container_entry.first, container_entry.second.container_name);
+                                        pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
+                                        container_entry.first, container_entry.second.container_name);
             container_entry.second.cgroup.IOStats();
         }
     }
@@ -509,8 +518,8 @@ void PodMonitor::CollectMemoryStats() noexcept
         for (auto& container_entry : pod_entry.second.containers)
         {
             atlasagent::Logger()->debug("Collecting memory stats for pod {}/{} (uid={}) container {} ({})",
-                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
-                                         container_entry.first, container_entry.second.container_name);
+                                        pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
+                                        container_entry.first, container_entry.second.container_name);
             container_entry.second.cgroup.MemoryStatsV2();
             container_entry.second.cgroup.MemoryStatsStdV2();
         }

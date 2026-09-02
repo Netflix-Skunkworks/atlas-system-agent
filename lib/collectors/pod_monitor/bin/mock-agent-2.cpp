@@ -156,7 +156,7 @@ int main(int argc, char** argv)
     for (int interval = 1; interval <= kTotalIntervals; ++interval)
     {
         podMonitor.RefreshTrackedPods();
-        auto discovered = podMonitor.FindAllActivePods2();
+        auto discovered = podMonitor.FindActivePodInfo();
         PrintSnapshot(discovered, podMonitor.TrackedPods(), k8s_cluster, interval);
 
         if (interval < kTotalIntervals)
