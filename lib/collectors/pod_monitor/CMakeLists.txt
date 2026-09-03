@@ -3,6 +3,13 @@ add_library(pod_monitor
     src/pod_monitor.cpp
     src/pod_identity_client.h
     src/pod_identity_client.cpp
+    src/pod_info.h
+    src/cgroup_pod_discovery.h
+    src/cgroup_pod_discovery.cpp
+    src/pod_tag_resolver.h
+    src/pod_tag_resolver.cpp
+    src/tracked_pod_registry.h
+    src/tracked_pod_registry.cpp
 )
 
 target_include_directories(pod_monitor

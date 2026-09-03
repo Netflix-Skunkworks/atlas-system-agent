@@ -57,7 +57,7 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
 
     // PodMonitor gets its own Registry, deliberately NOT the shared `registry` above. PodMonitor
     // tags every metric itself, per pod/container, from that pod's own annotations (see
-    // ResolvePodTags in pod_monitor.cpp) -- this node's own common_tags (this node's identity,
+    // ResolvePodTags in pod_tag_resolver.cpp) -- this node's own common_tags (this node's identity,
     // from get_common_tags() in atlas-agent.cpp's main()) must never be merged onto them, or
     // every pod's metrics would also carry this node's own nf.app/nf.node/etc., unrelated to
     // (and colliding with) the per-pod identity PodMonitor exists to attach instead. Same

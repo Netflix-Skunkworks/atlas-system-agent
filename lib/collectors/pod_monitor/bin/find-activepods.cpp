@@ -13,18 +13,20 @@
 // Usage: find-activepods [cgroup_path_prefix] [filtered]  (either order; both optional)
 // Pass "filtered" as one of the arguments to see the same PASS/FAIL decision
 // RefreshTrackedPods() makes for every pod and container, always with a reason:
-//   - Pod-level Gating (PodMonitor::ResolvePodTags): if none of nf.app/nf.stack/nf.detail
-//     resolve (from either the primary netflix.com/{app,stack,detail} annotations or their
-//     label fallbacks), the whole pod is GATED OUT -- printed with exactly which
-//     annotation/label keys were checked and found missing, and every one of its
+//   - Pod-level Gating (ResolvePodTags, in pod_tag_resolver.{h,cpp}): if none of
+//     nf.app/nf.stack/nf.detail resolve (from either the primary netflix.com/{app,stack,detail}
+//     annotations or their label fallbacks), the whole pod is GATED OUT -- printed with exactly
+//     which annotation/label keys were checked and found missing, and every one of its
 //     containers listed as excluded for that reason.
-//   - Container-level mismatch (PodMonitor::ReconcileContainers's real matching): even in a
-//     PASSED pod, a container only gets tracked if its cgroup-discovered id
-//     (FindContainersInPod) is also present in kubelet's reported container list, and vice
-//     versa -- a container visible on only one side is excluded independently of Gating,
-//     printed with that reason.
+//   - Container-level mismatch (TrackedPodRegistry::ReconcileContainers's real matching): even
+//     in a PASSED pod, a container only gets tracked if its cgroup-discovered id
+//     (CgroupPodDiscovery::FindContainersInPod) is also present in kubelet's reported container
+//     list, and vice versa -- a container visible on only one side is excluded independently of
+//     Gating, printed with that reason.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
+#include <lib/collectors/pod_monitor/src/cgroup_pod_discovery.h>
+#include <lib/collectors/pod_monitor/src/pod_tag_resolver.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
@@ -40,20 +42,6 @@
 
 namespace
 {
-
-// PodMonitor keeps ResolvePodTags()/FindContainersInPod()/PodTagKeys protected -- this repo's
-// own convention for exposing them to a standalone caller outside the class (see
-// pod_monitor_test.cpp's PodMonitorTest, mock-agent-2.cpp's PodMonitorIntrospect) is a thin
-// subclass with `using` declarations, not new public API on PodMonitor itself just for a debug
-// tool.
-class PodMonitorIntrospect : public atlasagent::PodMonitor
-{
-   public:
-    using PodMonitor::PodMonitor;
-    using PodMonitor::FindContainersInPod;
-    using PodMonitor::PodTagKeys;
-    using PodMonitor::ResolvePodTags;
-};
 
 void PrintSortedMap(const std::unordered_map<std::string, std::string>& values, const char* indent)
 {
@@ -99,7 +87,7 @@ std::string DescribeTagResolution(const std::unordered_map<std::string, std::str
     return fmt::format("{}: UNRESOLVED (checked {})", tag_name, checked);
 }
 
-// The three outcomes PodMonitor::ReconcileContainers's real loop produces when it iterates
+// The three outcomes TrackedPodRegistry::ReconcileContainers's real loop produces when it iterates
 // cgroup-discovered containers and looks each one up by id in kubelet's reported container
 // list: matched (both sides agree -- this is what actually gets tracked), cgroup_only (a cgroup
 // scope exists but kubelet hasn't reported that id -- ReconcileContainers skips it this cycle),
@@ -207,15 +195,16 @@ int main(int argc, char** argv)
         }
     }
 
-    // Read the same way PodMonitor's own constructor does (ResolveK8sClusterEnv in
-    // pod_monitor.cpp), purely for the filtered-mode ResolvePodTags call below -- this tool
-    // doesn't have access to the private k8s_cluster_ member PodMonitor resolved internally.
+    // Read the same way TrackedPodRegistry's own constructor does (ResolveK8sClusterEnv in
+    // tracked_pod_registry.cpp), purely for the filtered-mode ResolvePodTags call below -- this
+    // tool doesn't have access to the private k8s_cluster_ member TrackedPodRegistry resolved
+    // internally.
     const auto* k8s_cluster_env = std::getenv("K8S_CLUSTER");
     std::string k8s_cluster = k8s_cluster_env != nullptr ? std::string(k8s_cluster_env) : std::string();
 
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto registry = Registry(config);
-    PodMonitorIntrospect podMonitor{&registry, path_prefix};
+    atlasagent::PodMonitor podMonitor{&registry, path_prefix};
 
     auto pods = podMonitor.FindActivePodInfo();
 
@@ -248,8 +237,8 @@ int main(int argc, char** argv)
 
         if (filtered)
         {
-            auto pod_tags = PodMonitorIntrospect::ResolvePodTags(info.annotations, info.labels, info.name, k8s_cluster);
-            auto discovered_containers = PodMonitorIntrospect::FindContainersInPod(info.cgroup_path);
+            auto pod_tags = atlasagent::ResolvePodTags(info.annotations, info.labels, info.name, k8s_cluster);
+            auto discovered_containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(info.cgroup_path);
             auto classification = ClassifyContainers(discovered_containers, info.containers);
 
             if (pod_tags.has_value())
@@ -264,16 +253,16 @@ int main(int argc, char** argv)
             {
                 ++gated_out;
                 fmt::print("  GATED OUT -- none of nf.app/nf.stack/nf.detail resolved:\n");
-                fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.app", PodMonitorIntrospect::PodTagKeys::kAnnotationApp,
-                                                               {PodMonitorIntrospect::PodTagKeys::kLabelAppName,
-                                                                PodMonitorIntrospect::PodTagKeys::kLabelK8sApp,
-                                                                PodMonitorIntrospect::PodTagKeys::kLabelApp}));
+                fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.app", atlasagent::PodTagKeys::kAnnotationApp,
+                                                               {atlasagent::PodTagKeys::kLabelAppName,
+                                                                atlasagent::PodTagKeys::kLabelK8sApp,
+                                                                atlasagent::PodTagKeys::kLabelApp}));
                 fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.stack",
-                                                               PodMonitorIntrospect::PodTagKeys::kAnnotationStack,
-                                                               {PodMonitorIntrospect::PodTagKeys::kLabelAppInstance}));
+                                                               atlasagent::PodTagKeys::kAnnotationStack,
+                                                               {atlasagent::PodTagKeys::kLabelAppInstance}));
                 fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.detail",
-                                                               PodMonitorIntrospect::PodTagKeys::kAnnotationDetail,
-                                                               {PodMonitorIntrospect::PodTagKeys::kLabelAppComponent}));
+                                                               atlasagent::PodTagKeys::kAnnotationDetail,
+                                                               {atlasagent::PodTagKeys::kLabelAppComponent}));
                 fmt::print("  containers (all excluded -- pod gated out):\n");
                 PrintAllExcluded(classification, info.containers, "pod gated out");
             }

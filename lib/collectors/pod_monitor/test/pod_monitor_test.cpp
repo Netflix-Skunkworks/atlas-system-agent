@@ -1,5 +1,7 @@
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/collectors/pod_monitor/src/pod_identity_client.h>
+#include <lib/collectors/pod_monitor/src/cgroup_pod_discovery.h>
+#include <lib/collectors/pod_monitor/src/pod_tag_resolver.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
@@ -26,14 +28,21 @@ class PodMonitorTest : public atlasagent::PodMonitor
     }
 
     // Expose protected members and methods for testing
-    using PodMonitor::MatchPodSliceName;
-    using PodMonitor::NormalizePodUid;
-    using PodMonitor::ScanPodSliceDirectory;
     using PodMonitor::JoinCgroupAndIdentity;
-    using PodMonitor::FindContainersInPod;
-    using PodMonitor::ResolvePodTags;
     using PodMonitor::RefreshTrackedPods;
     using PodMonitor::TrackedPods;
+};
+
+// CgroupPodDiscovery keeps ScanPodSliceDirectory/MatchPodSliceName/NormalizePodUid protected --
+// same thin-subclass-with-`using` convention as PodMonitorTest above. FindActivePodCgroups()/
+// FindContainersInPod() are public on CgroupPodDiscovery itself, so tests exercising those call
+// atlasagent::CgroupPodDiscovery directly without needing this shim at all.
+class CgroupPodDiscoveryTest : public atlasagent::CgroupPodDiscovery
+{
+   public:
+    using CgroupPodDiscovery::ScanPodSliceDirectory;
+    using CgroupPodDiscovery::MatchPodSliceName;
+    using CgroupPodDiscovery::NormalizePodUid;
 };
 
 class PodIdentityClientTest : public atlasagent::PodIdentityClient
@@ -51,66 +60,64 @@ class PodIdentityClientTest : public atlasagent::PodIdentityClient
 namespace
 {
 
-TEST(PodMonitor, NormalizePodUidUnderscoresToDash)
+TEST(CgroupPodDiscovery, NormalizePodUidUnderscoresToDash)
 {
-    auto result = PodMonitorTest::NormalizePodUid("11111111_1111_1111_1111_111111111111");
+    auto result = CgroupPodDiscoveryTest::NormalizePodUid("11111111_1111_1111_1111_111111111111");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, "11111111-1111-1111-1111-111111111111");
 }
 
-TEST(PodMonitor, NormalizePodUidDashesUnchanged)
+TEST(CgroupPodDiscovery, NormalizePodUidDashesUnchanged)
 {
-    auto result = PodMonitorTest::NormalizePodUid("44444444-4444-4444-4444-444444444444");
+    auto result = CgroupPodDiscoveryTest::NormalizePodUid("44444444-4444-4444-4444-444444444444");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, "44444444-4444-4444-4444-444444444444");
 }
 
-TEST(PodMonitor, NormalizePodUidTooShortFails)
+TEST(CgroupPodDiscovery, NormalizePodUidTooShortFails)
 {
-    auto result = PodMonitorTest::NormalizePodUid("11111111-1111-1111-1111-11111111");
+    auto result = CgroupPodDiscoveryTest::NormalizePodUid("11111111-1111-1111-1111-11111111");
     EXPECT_FALSE(result.has_value());
 }
 
-TEST(PodMonitor, NormalizePodUidNonHexCharacterFails)
+TEST(CgroupPodDiscovery, NormalizePodUidNonHexCharacterFails)
 {
-    auto result = PodMonitorTest::NormalizePodUid("1111111g-1111-1111-1111-111111111111");
+    auto result = CgroupPodDiscoveryTest::NormalizePodUid("1111111g-1111-1111-1111-111111111111");
     EXPECT_FALSE(result.has_value());
 }
 
-TEST(PodMonitor, NormalizePodUidBadSeparatorFails)
+TEST(CgroupPodDiscovery, NormalizePodUidBadSeparatorFails)
 {
-    auto result = PodMonitorTest::NormalizePodUid("11111111*1111-1111-1111-111111111111");
+    auto result = CgroupPodDiscoveryTest::NormalizePodUid("11111111*1111-1111-1111-111111111111");
     EXPECT_FALSE(result.has_value());
 }
 
-TEST(PodMonitor, MatchPodSliceNameMatches)
+TEST(CgroupPodDiscovery, MatchPodSliceNameMatches)
 {
-    auto result = PodMonitorTest::MatchPodSliceName("kubepods-pod11111111_1111_1111_1111_111111111111.slice",
-                                                      "kubepods-pod", ".slice");
+    auto result = CgroupPodDiscoveryTest::MatchPodSliceName("kubepods-pod11111111_1111_1111_1111_111111111111.slice",
+                                                              "kubepods-pod", ".slice");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, "11111111_1111_1111_1111_111111111111");
 }
 
-TEST(PodMonitor, MatchPodSliceNameWrongPrefixFails)
+TEST(CgroupPodDiscovery, MatchPodSliceNameWrongPrefixFails)
 {
-    auto result = PodMonitorTest::MatchPodSliceName("kubepods-burstable-pod22222222_2222_2222_2222_222222222222.slice",
-                                                      "kubepods-pod", ".slice");
+    auto result = CgroupPodDiscoveryTest::MatchPodSliceName(
+        "kubepods-burstable-pod22222222_2222_2222_2222_222222222222.slice", "kubepods-pod", ".slice");
     EXPECT_FALSE(result.has_value());
 }
 
-TEST(PodMonitor, MatchPodSliceNameTooShortFails)
+TEST(CgroupPodDiscovery, MatchPodSliceNameTooShortFails)
 {
-    auto result = PodMonitorTest::MatchPodSliceName("kubepods-pod.slice", "kubepods-pod", ".slice");
+    auto result = CgroupPodDiscoveryTest::MatchPodSliceName("kubepods-pod.slice", "kubepods-pod", ".slice");
     EXPECT_FALSE(result.has_value());
 }
 
-TEST(PodMonitor, FindActivePodCgroupsSystemd)
+TEST(CgroupPodDiscovery, FindActivePodCgroupsSystemd)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
+    atlasagent::CgroupPodDiscovery discovery{"lib/collectors/pod_monitor/test/resources/systemd"};
 
-    auto pods = podMonitor.FindActivePodCgroups();
+    auto pods = discovery.FindActivePodCgroups();
 
     ASSERT_EQ(pods.size(), 3);
 
@@ -130,13 +137,11 @@ TEST(PodMonitor, FindActivePodCgroupsSystemd)
                   "kubepods-besteffort-pod33333333_3333_3333_3333_333333333333.slice"));
 }
 
-TEST(PodMonitor, FindActivePodCgroupsCgroupfs)
+TEST(CgroupPodDiscovery, FindActivePodCgroupsCgroupfs)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/cgroupfs"};
+    atlasagent::CgroupPodDiscovery discovery{"lib/collectors/pod_monitor/test/resources/cgroupfs"};
 
-    auto pods = podMonitor.FindActivePodCgroups();
+    auto pods = discovery.FindActivePodCgroups();
 
     ASSERT_EQ(pods.size(), 3);
 
@@ -156,13 +161,11 @@ TEST(PodMonitor, FindActivePodCgroupsCgroupfs)
                   "pod66666666-6666-6666-6666-666666666666"));
 }
 
-TEST(PodMonitor, FindActivePodCgroupsMissingRoot)
+TEST(CgroupPodDiscovery, FindActivePodCgroupsMissingRoot)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/does_not_exist"};
+    atlasagent::CgroupPodDiscovery discovery{"lib/collectors/pod_monitor/test/resources/does_not_exist"};
 
-    auto pods = podMonitor.FindActivePodCgroups();
+    auto pods = discovery.FindActivePodCgroups();
 
     EXPECT_TRUE(pods.empty());
 }
@@ -206,10 +209,11 @@ TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
 // always-fails) test setup can actually exercise.
 
 // FindContainersInPod tests (parallel to the ScanPodSliceDirectory/MatchPodSliceName coverage
-// above -- structural directory-name matching only, no PID/environ I/O involved).
-TEST(PodMonitor, FindContainersInPodMatchesCriContainerdScopes)
+// above -- structural directory-name matching only, no PID/environ I/O involved). Public on
+// CgroupPodDiscovery, so called directly -- no test shim needed.
+TEST(CgroupPodDiscovery, FindContainersInPodMatchesCriContainerdScopes)
 {
-    auto containers = PodMonitorTest::FindContainersInPod(
+    auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(
         "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
         "kubepods-pod11111111_1111_1111_1111_111111111111.slice");
 
@@ -222,11 +226,11 @@ TEST(PodMonitor, FindContainersInPodMatchesCriContainerdScopes)
                   "cri-containerd-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.scope"));
 }
 
-TEST(PodMonitor, FindContainersInPodIgnoresNonMatchingEntries)
+TEST(CgroupPodDiscovery, FindContainersInPodIgnoresNonMatchingEntries)
 {
     // The fixture directory also contains a plain file (cgroup.procs) and a subdirectory that
     // doesn't carry the cri-containerd-*.scope shape -- neither should be picked up.
-    auto containers = PodMonitorTest::FindContainersInPod(
+    auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(
         "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
         "kubepods-pod11111111_1111_1111_1111_111111111111.slice");
 
@@ -237,10 +241,10 @@ TEST(PodMonitor, FindContainersInPodIgnoresNonMatchingEntries)
     }
 }
 
-TEST(PodMonitor, FindContainersInPodMissingDirReturnsEmpty)
+TEST(CgroupPodDiscovery, FindContainersInPodMissingDirReturnsEmpty)
 {
     auto containers =
-        PodMonitorTest::FindContainersInPod("lib/collectors/pod_monitor/test/resources/does_not_exist");
+        atlasagent::CgroupPodDiscovery::FindContainersInPod("lib/collectors/pod_monitor/test/resources/does_not_exist");
     EXPECT_TRUE(containers.empty());
 }
 
@@ -248,7 +252,7 @@ TEST(PodMonitor, FindContainersInPodMissingDirReturnsEmpty)
 // annotation) tier, the app.kubernetes.io/*/k8s-app/app label fallback tier, nf.cluster's
 // asymmetric primary-only gate, the redefined all-absent Gating case, and nf.node's now-purely-
 // structural sourcing.
-TEST(PodMonitor, ResolvePodTagsPrimaryTierOnly)
+TEST(PodTagResolver, ResolvePodTagsPrimaryTierOnly)
 {
     std::unordered_map<std::string, std::string> annotations{
         {"netflix.com/app", "myapp"},
@@ -256,7 +260,7 @@ TEST(PodMonitor, ResolvePodTagsPrimaryTierOnly)
         {"netflix.com/detail", "mydetail"},
     };
 
-    auto result = PodMonitorTest::ResolvePodTags(annotations, {}, "my-pod-abc123", "");
+    auto result = atlasagent::ResolvePodTags(annotations, {}, "my-pod-abc123", "");
     ASSERT_TRUE(result.has_value());
 
     EXPECT_EQ(result->at("nf.app"), "myapp");
@@ -266,22 +270,22 @@ TEST(PodMonitor, ResolvePodTagsPrimaryTierOnly)
     EXPECT_EQ(result->at("nf.node"), "my-pod-abc123");
     EXPECT_EQ(result->at("nf.platform"), "k8s");
     EXPECT_FALSE(result->contains("k8s.cluster.name"));
-    // nf.process is per-container, applied by the caller (RefreshTrackedPods) -- never set here.
+    // nf.process is per-container, applied by the caller (TrackedPodRegistry) -- never set here.
     EXPECT_FALSE(result->contains("nf.process"));
 }
 
-TEST(PodMonitor, ResolvePodTagsPrimaryAppOnlyClusterHasNoStackOrDetailSuffix)
+TEST(PodTagResolver, ResolvePodTagsPrimaryAppOnlyClusterHasNoStackOrDetailSuffix)
 {
     std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
 
-    auto result = PodMonitorTest::ResolvePodTags(annotations, {}, "", "");
+    auto result = atlasagent::ResolvePodTags(annotations, {}, "", "");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->at("nf.cluster"), "myapp");
     EXPECT_FALSE(result->contains("nf.stack"));
     EXPECT_FALSE(result->contains("nf.detail"));
 }
 
-TEST(PodMonitor, ResolvePodTagsLabelFallbackTierOnly)
+TEST(PodTagResolver, ResolvePodTagsLabelFallbackTierOnly)
 {
     std::unordered_map<std::string, std::string> labels{
         {"app.kubernetes.io/name", "labelapp"},
@@ -289,7 +293,7 @@ TEST(PodMonitor, ResolvePodTagsLabelFallbackTierOnly)
         {"app.kubernetes.io/component", "labeldetail"},
     };
 
-    auto result = PodMonitorTest::ResolvePodTags({}, labels, "", "");
+    auto result = atlasagent::ResolvePodTags({}, labels, "", "");
     ASSERT_TRUE(result.has_value());
 
     EXPECT_EQ(result->at("nf.app"), "labelapp");
@@ -301,7 +305,7 @@ TEST(PodMonitor, ResolvePodTagsLabelFallbackTierOnly)
     EXPECT_FALSE(result->contains("nf.cluster"));
 }
 
-TEST(PodMonitor, ResolvePodTagsLabelFallbackOrderPrefersAppNameOverK8sAppOverApp)
+TEST(PodTagResolver, ResolvePodTagsLabelFallbackOrderPrefersAppNameOverK8sAppOverApp)
 {
     std::unordered_map<std::string, std::string> labels{
         {"app", "third"},
@@ -309,18 +313,18 @@ TEST(PodMonitor, ResolvePodTagsLabelFallbackOrderPrefersAppNameOverK8sAppOverApp
         {"app.kubernetes.io/name", "first"},
     };
 
-    auto result = PodMonitorTest::ResolvePodTags({}, labels, "", "");
+    auto result = atlasagent::ResolvePodTags({}, labels, "", "");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->at("nf.app"), "first");
 }
 
-TEST(PodMonitor, ResolvePodTagsEmptyAnnotationFallsThroughToLabelTier)
+TEST(PodTagResolver, ResolvePodTagsEmptyAnnotationFallsThroughToLabelTier)
 {
     // netflix.com/app present but empty must be treated as unset, per "present and non-empty".
     std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", ""}};
     std::unordered_map<std::string, std::string> labels{{"k8s-app", "fallback-app"}};
 
-    auto result = PodMonitorTest::ResolvePodTags(annotations, labels, "", "");
+    auto result = atlasagent::ResolvePodTags(annotations, labels, "", "");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->at("nf.app"), "fallback-app");
     // netflix.com/app was present-but-empty, not absent -- but primary_app is still unset per
@@ -328,10 +332,10 @@ TEST(PodMonitor, ResolvePodTagsEmptyAnnotationFallsThroughToLabelTier)
     EXPECT_FALSE(result->contains("nf.cluster"));
 }
 
-TEST(PodMonitor, ResolvePodTagsAllAbsentReturnsNullopt)
+TEST(PodTagResolver, ResolvePodTagsAllAbsentReturnsNullopt)
 {
-    EXPECT_FALSE(PodMonitorTest::ResolvePodTags({}, {}, "", "").has_value());
-    EXPECT_FALSE(PodMonitorTest::ResolvePodTags({}, {}, "", "some-cluster").has_value());
+    EXPECT_FALSE(atlasagent::ResolvePodTags({}, {}, "", "").has_value());
+    EXPECT_FALSE(atlasagent::ResolvePodTags({}, {}, "", "some-cluster").has_value());
 }
 
 // The single most important behavior change from the superseded environ-based design: nf.node
@@ -339,21 +343,21 @@ TEST(PodMonitor, ResolvePodTagsAllAbsentReturnsNullopt)
 // name, not read from environ/annotations), so it's deliberately excluded from the Gating
 // decision -- including it would make Gating vacuous (every pod would always pass). A pod with a
 // resolvable name but no matching netflix.com/*/app.kubernetes.io/* signal must still gate out.
-TEST(PodMonitor, ResolvePodTagsPodNameAloneStillGatesOut)
+TEST(PodTagResolver, ResolvePodTagsPodNameAloneStillGatesOut)
 {
-    auto result = PodMonitorTest::ResolvePodTags({}, {}, "my-pod-abc123", "");
+    auto result = atlasagent::ResolvePodTags({}, {}, "my-pod-abc123", "");
     EXPECT_FALSE(result.has_value());
 }
 
-TEST(PodMonitor, ResolvePodTagsSetsK8sClusterNameOnlyWhenNonEmpty)
+TEST(PodTagResolver, ResolvePodTagsSetsK8sClusterNameOnlyWhenNonEmpty)
 {
     std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
 
-    auto withCluster = PodMonitorTest::ResolvePodTags(annotations, {}, "", "my-cluster");
+    auto withCluster = atlasagent::ResolvePodTags(annotations, {}, "", "my-cluster");
     ASSERT_TRUE(withCluster.has_value());
     EXPECT_EQ(withCluster->at("k8s.cluster.name"), "my-cluster");
 
-    auto withoutCluster = PodMonitorTest::ResolvePodTags(annotations, {}, "", "");
+    auto withoutCluster = atlasagent::ResolvePodTags(annotations, {}, "", "");
     ASSERT_TRUE(withoutCluster.has_value());
     EXPECT_FALSE(withoutCluster->contains("k8s.cluster.name"));
 }

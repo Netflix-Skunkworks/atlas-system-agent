@@ -11,6 +11,8 @@
 // tool doesn't link against.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
+#include <lib/collectors/pod_monitor/src/cgroup_pod_discovery.h>
+#include <lib/collectors/pod_monitor/src/pod_tag_resolver.h>
 #include <lib/logger/src/logger.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
@@ -30,18 +32,16 @@
 namespace
 {
 
-// PodMonitor keeps RefreshTrackedPods()/TrackedPods()/ResolvePodTags() protected -- this repo's
-// own convention for exposing them to a standalone caller outside the class (see
-// pod_monitor_test.cpp's PodMonitorTest) is a thin subclass with `using` declarations, not new
-// public API on PodMonitor itself just for a debug tool.
+// PodMonitor keeps RefreshTrackedPods()/TrackedPods() protected -- this repo's own convention
+// for exposing them to a standalone caller outside the class (see pod_monitor_test.cpp's
+// PodMonitorTest) is a thin subclass with `using` declarations, not new public API on
+// PodMonitor itself just for a debug tool.
 class PodMonitorIntrospect : public atlasagent::PodMonitor
 {
    public:
     using PodMonitor::PodMonitor;
     using PodMonitor::RefreshTrackedPods;
     using PodMonitor::TrackedPods;
-    using PodMonitor::FindContainersInPod;
-    using PodMonitor::ResolvePodTags;
 };
 
 void PrintSortedMap(const std::unordered_map<std::string, std::string>& values, const char* indent)
@@ -80,7 +80,7 @@ void PrintSnapshot(const atlasagent::PodInfoMap& discovered, const atlasagent::P
 
         // This is the exact call RefreshTrackedPods() makes internally -- shown here purely for
         // display, never fed back into anything.
-        auto pod_tags = PodMonitorIntrospect::ResolvePodTags(info.annotations, info.labels, info.name, k8s_cluster);
+        auto pod_tags = atlasagent::ResolvePodTags(info.annotations, info.labels, info.name, k8s_cluster);
         if (!pod_tags.has_value())
         {
             fmt::print(
@@ -115,7 +115,7 @@ void PrintSnapshot(const atlasagent::PodInfoMap& discovered, const atlasagent::P
         // been discovered on disk but isn't in PodInfo.containers yet (kubelet racing the cgroup
         // appearing), which is why it wouldn't show up as tracked above even when the pod itself
         // resolved tags.
-        auto containers_in_pod = PodMonitorIntrospect::FindContainersInPod(info.cgroup_path);
+        auto containers_in_pod = atlasagent::CgroupPodDiscovery::FindContainersInPod(info.cgroup_path);
         fmt::print("    Container cgroup scopes discovered ({} total, tracked or not):\n", containers_in_pod.size());
         for (const auto& [container_id, container_cgroup_path] : containers_in_pod)
         {
@@ -140,9 +140,9 @@ int main(int argc, char** argv)
 
     std::string path_prefix = argc > 1 ? argv[1] : "/sys/fs/cgroup";
 
-    // Read the same way PodMonitor's own constructor does (ResolveK8sClusterEnv in
-    // pod_monitor.cpp), purely for display here -- this tool doesn't have access to the private
-    // k8s_cluster_ member PodMonitor resolved internally.
+    // Read the same way TrackedPodRegistry's own constructor does (ResolveK8sClusterEnv in
+    // tracked_pod_registry.cpp), purely for display here -- this tool doesn't have access to the
+    // private k8s_cluster_ member TrackedPodRegistry resolved internally.
     const auto* k8s_cluster_env = std::getenv("K8S_CLUSTER");
     std::string k8s_cluster = k8s_cluster_env != nullptr ? std::string(k8s_cluster_env) : std::string();
 
