@@ -17,9 +17,6 @@ struct HttpClientConfig
 {
     absl::Duration connect_timeout;
     absl::Duration read_timeout;
-    // Path to a CA bundle/file to verify the server certificate against (CURLOPT_CAINFO).
-    // Empty (the default) leaves libcurl's own default trust store in effect.
-    std::string ca_cert_path;
 };
 
 using HttpHeaders = std::unordered_map<std::string, std::string>;

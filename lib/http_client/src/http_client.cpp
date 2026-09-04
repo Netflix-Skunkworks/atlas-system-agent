@@ -121,14 +121,6 @@ class CurlHandle
         curl_easy_setopt(handle_, CURLOPT_TIMEOUT_MS, millis);
     }
 
-    void set_ca_cert_path(const std::string& ca_cert_path)
-    {
-        if (!ca_cert_path.empty())
-        {
-            curl_easy_setopt(handle_, CURLOPT_CAINFO, ca_cert_path.c_str());
-        }
-    }
-
     void post_payload(const void* payload, size_t size)
     {
         payload_ = payload;
@@ -190,7 +182,6 @@ HttpResponse HttpClient::perform(const char* method, const std::string& url, std
     auto total_timeout = config_.connect_timeout + config_.read_timeout;
     curl.set_timeout(total_timeout);
     curl.set_connect_timeout(config_.connect_timeout);
-    curl.set_ca_cert_path(config_.ca_cert_path);
 
     auto logger = Logger();
     curl.set_url(url);

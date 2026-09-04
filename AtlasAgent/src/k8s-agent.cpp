@@ -65,6 +65,7 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     // same place -- just no common_tags. Declared here (not threaded down from main()) since
     // PodMonitor is the only collector that needs this; every other collector here legitimately
     // wants this node's own identity on its metrics.
+    std::unordered_map<std::string, std::string> common_tags{{"metric-type", "pod-container"}};
     Config pod_monitor_config(WriterConfig(K8sAgentConstants::SpectatordSocket));
     Registry pod_monitor_registry(pod_monitor_config);
     atlasagent::PodMonitor podMonitor{&pod_monitor_registry};

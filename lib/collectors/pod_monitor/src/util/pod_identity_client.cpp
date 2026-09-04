@@ -42,7 +42,7 @@ std::unordered_map<std::string, std::string> ParseStringMap(const rapidjson::Val
 }  // namespace
 
 PodIdentityClient::PodIdentityClient(Registry* registry, std::string kubelet_url) noexcept
-    : kubelet_url_(std::move(kubelet_url)), http_client_{registry, HttpClientConfig{absl::Seconds(2), absl::Seconds(3), ""}}
+    : kubelet_url_(std::move(kubelet_url)), http_client_{registry, HttpClientConfig{absl::Seconds(2), absl::Seconds(3)}}
 {
 }
 
