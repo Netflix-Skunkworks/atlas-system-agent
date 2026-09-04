@@ -16,13 +16,11 @@ struct PodInfo
     std::filesystem::path cgroup_path;
     std::string name;
     std::string pod_namespace;
-    // Container id (bare hex) -> container name, from kubelet's
-    // status.containerStatuses[] (see PodIdentity::containers). Empty when identity resolution
-    // didn't resolve this uid this cycle, or the pod has no containers reported yet.
+    // Container id (bare hex) -> container name (see PodIdentity::containers). Empty if identity
+    // resolution didn't resolve this uid this cycle, or the pod has no containers reported yet.
     std::unordered_map<std::string, std::string> containers;
-    // Pod annotations/labels, from kubelet's metadata.annotations/metadata.labels (see
-    // PodIdentity::annotations/labels). Empty when identity resolution didn't resolve this uid
-    // this cycle, or the pod genuinely has none. Feeds ResolvePodTags's fallback chain.
+    // Pod annotations/labels (see PodIdentity::annotations/labels). Empty if unresolved this
+    // cycle, or the pod genuinely has none. Feed ResolvePodTags's fallback chain.
     std::unordered_map<std::string, std::string> annotations;
     std::unordered_map<std::string, std::string> labels;
 };

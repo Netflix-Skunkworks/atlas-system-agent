@@ -2,10 +2,10 @@
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
-#include "cgroup_pod_discovery.h"
-#include "pod_identity_client.h"
-#include "pod_info.h"
-#include "tracked_pod_registry.h"
+#include <lib/collectors/pod_monitor/src/util/cgroup_pod_discovery.h>
+#include <lib/collectors/pod_monitor/src/util/pod_identity_client.h>
+#include <lib/collectors/pod_monitor/src/util/pod_info.h>
+#include <lib/collectors/pod_monitor/src/util/tracked_pod_registry.h>
 
 #include <optional>
 #include <string>
@@ -13,50 +13,38 @@
 namespace atlasagent
 {
 
-// Facade composing three collaborators: CgroupPodDiscovery (pure cgroup-filesystem discovery),
+// Facade composing three collaborators: CgroupPodDiscovery (cgroup-filesystem discovery),
 // PodIdentityClient (kubelet-sourced identity), and TrackedPodRegistry (tracked pod/container
-// reconciliation + cadence-driven metric emission). See each collaborator's own header for the
-// detail of what it owns.
+// reconciliation plus metric emission). See each collaborator's own header for detail.
 class PodMonitor
 {
    public:
     explicit PodMonitor(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
                          std::string kubelet_url = PodIdentityClientConstants::KubeletUrl) noexcept;
 
-    // Discovers every pod-level cgroup directory on this node, keyed by pod UID in
-    // canonical (dashed) form. Detects the cgroup v2 driver (systemd vs cgroupfs) fresh
-    // on each call, and walks at most two levels deep, so it only ever finds pod-aggregate
-    // cgroups, never per-container leaves.
+    // Forwards to CgroupPodDiscovery::FindActivePodCgroups(); see there for detail.
     [[nodiscard]] PodCgroupMap FindActivePodCgroups() const noexcept { return discovery_.FindActivePodCgroups(); }
 
-    // Same as FindActivePodCgroups(), but also resolves each pod's Name, Namespace, annotations,
-    // labels, and each of its containers' id -> name mapping via a live call to kubelet's local
-    // API. Slower and network-dependent; FindActivePodCgroups() alone is sufficient when only
-    // cgroup paths are needed.
+    // Like FindActivePodCgroups(), but also resolves each pod's name, namespace, annotations,
+    // labels, and container id -> name map via a live kubelet API call. Slower and
+    // network-dependent; prefer FindActivePodCgroups() when only cgroup paths are needed.
     [[nodiscard]] PodInfoMap FindActivePodInfo() const noexcept;
 
     void SetPrefix(std::string new_prefix) noexcept { discovery_.SetPrefix(std::move(new_prefix)); }
 
-    // Emits cgroup.cpu.* container-scoped metrics (CGroup::PodCpuStats) for every container of
-    // every currently tracked pod. Never changes tracked pod/container membership itself -- that
-    // only happens inside RefreshTrackedPods(), called from CollectMemoryStats().
+    // Forwards to TrackedPodRegistry::CollectCpuStats(); see there for detail.
     void CollectCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept
     {
         tracked_registry_.CollectCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
     }
 
-    // Emits cgroup I/O metrics (CGroup::IOStats) for every container of every currently tracked
-    // pod.
+    // Forwards to TrackedPodRegistry::CollectIOStats(); see there for detail.
     void CollectIOStats() noexcept { tracked_registry_.CollectIOStats(); }
 
-    // Refreshes the tracked pod/container set (see RefreshTrackedPods()), then emits both
-    // CGroup::MemoryStatsV2's cgroup.mem.* metrics and CGroup::MemoryStatsStdV2's mem.* metrics
-    // (mem.cached/mem.shared/mem.availReal/mem.freeReal/mem.totalReal/mem.availSwap/
-    // mem.totalSwap/mem.totalFree -- NOT cgroup.mem.* names, despite reading the same per-cgroup
-    // files) for every now-current tracked container, each disambiguated by the nf.*/k8s.* tags
-    // ResolvePodTags resolved for its pod (plus its own nf.process) -- so a newly-discovered
-    // container is sampled the same cycle it's discovered, and an evicted container's
-    // already-destroyed CGroup is never touched.
+    // Refreshes the tracked pod/container set (RefreshTrackedPods()) before emitting memory
+    // metrics (TrackedPodRegistry::EmitMemoryStats()), so a newly-discovered container is
+    // sampled the same cycle it appears and an evicted container's already-destroyed CGroup is
+    // never touched. See EmitMemoryStats() for the metrics themselves.
     void CollectMemoryStats() noexcept
     {
         RefreshTrackedPods();
@@ -70,9 +58,8 @@ class PodMonitor
     [[nodiscard]] static PodInfoMap JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
                                                            const std::optional<PodIdentityMap>& identities) noexcept;
 
-    // Discovers the current pod set (FindActivePodInfo()) and reconciles the tracked pod/
-    // container set against it -- see TrackedPodRegistry::Refresh()'s own doc comment for the
-    // detail of that step.
+    // Discovers the current pod set and reconciles the tracked pod/container set against it; see
+    // TrackedPodRegistry::Refresh() for detail.
     void RefreshTrackedPods() noexcept { tracked_registry_.Refresh(FindActivePodInfo()); }
 
     // Read-only view of the tracked pod/container set, for test assertions and debug tooling.

@@ -25,8 +25,8 @@
 //     Gating, printed with that reason.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
-#include <lib/collectors/pod_monitor/src/cgroup_pod_discovery.h>
-#include <lib/collectors/pod_monitor/src/pod_tag_resolver.h>
+#include <lib/collectors/pod_monitor/src/util/cgroup_pod_discovery.h>
+#include <lib/collectors/pod_monitor/src/util/pod_tag_resolver.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 

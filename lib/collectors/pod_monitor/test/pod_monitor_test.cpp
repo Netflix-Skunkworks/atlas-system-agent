@@ -1,7 +1,7 @@
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
-#include <lib/collectors/pod_monitor/src/pod_identity_client.h>
-#include <lib/collectors/pod_monitor/src/cgroup_pod_discovery.h>
-#include <lib/collectors/pod_monitor/src/pod_tag_resolver.h>
+#include <lib/collectors/pod_monitor/src/util/pod_identity_client.h>
+#include <lib/collectors/pod_monitor/src/util/cgroup_pod_discovery.h>
+#include <lib/collectors/pod_monitor/src/util/pod_tag_resolver.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>

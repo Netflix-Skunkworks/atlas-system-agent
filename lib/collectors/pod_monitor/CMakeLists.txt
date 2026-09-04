@@ -1,15 +1,15 @@
 add_library(pod_monitor
     src/pod_monitor.h
     src/pod_monitor.cpp
-    src/pod_identity_client.h
-    src/pod_identity_client.cpp
-    src/pod_info.h
-    src/cgroup_pod_discovery.h
-    src/cgroup_pod_discovery.cpp
-    src/pod_tag_resolver.h
-    src/pod_tag_resolver.cpp
-    src/tracked_pod_registry.h
-    src/tracked_pod_registry.cpp
+    src/util/pod_identity_client.h
+    src/util/pod_identity_client.cpp
+    src/util/pod_info.h
+    src/util/cgroup_pod_discovery.h
+    src/util/cgroup_pod_discovery.cpp
+    src/util/pod_tag_resolver.h
+    src/util/pod_tag_resolver.cpp
+    src/util/tracked_pod_registry.h
+    src/util/tracked_pod_registry.cpp
 )
 
 target_include_directories(pod_monitor
@@ -65,21 +65,6 @@ add_executable(mock-agent
 )
 
 target_link_libraries(mock-agent
-    pod_monitor
-    fmt::fmt
-    spectator-registry
-)
-
-# Standalone debug tool: like mock-agent, but runs no collectors at all -- every 60 seconds it
-# refreshes PodMonitor's discovery/tracking state and prints each pod's PodInfo (everything
-# kubelet's local API reports) alongside its TrackedPod/TrackedContainer state (only what
-# actually gated in), for inspecting Gating behavior on a real node without touching
-# spectatord. Not part of the atlas_system_agent binary and not run by ctest.
-add_executable(mock-agent-2
-    bin/mock-agent-2.cpp
-)
-
-target_link_libraries(mock-agent-2
     pod_monitor
     fmt::fmt
     spectator-registry

@@ -31,10 +31,9 @@ using PodIdentityMap = absl::flat_hash_map<std::string, PodIdentity>;
 
 struct PodIdentityClientConstants
 {
-    // Kubelet's own local, unauthenticated read-only API -- returns a v1.PodList of every pod
-    // currently assigned to this node. Kubelet has no visibility into any other node's pods, so
-    // (unlike the apiserver-based mechanism this replaced) no fieldSelector/node-name lookup is
-    // needed to scope the response.
+    // Kubelet's own local, unauthenticated read-only API -- returns a v1.PodList of every pod on
+    // this node. No fieldSelector/node-name lookup is needed to scope the response, since
+    // kubelet has no visibility into any other node's pods.
     static constexpr auto KubeletUrl = "http://localhost:10255";
 };
 
