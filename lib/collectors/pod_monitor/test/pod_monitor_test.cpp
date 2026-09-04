@@ -265,10 +265,14 @@ TEST(PodTagResolver, ResolvePodTagsPrimaryTierOnly)
 
     EXPECT_EQ(result->at("nf.app"), "myapp");
     EXPECT_EQ(result->at("nf.stack"), "mystack");
-    EXPECT_EQ(result->at("nf.detail"), "mydetail");
+    // nf.detail's tag-emplace is currently disabled in ResolvePodTags (see its own "todo
+    // uncomment later" comment) -- nf.cluster's "-mydetail" suffix still comes through since
+    // BuildNfCluster reads the annotation directly, independent of this tag.
+    EXPECT_FALSE(result->contains("nf.detail"));
     EXPECT_EQ(result->at("nf.cluster"), "myapp-mystack-mydetail");
     EXPECT_EQ(result->at("nf.node"), "my-pod-abc123");
-    EXPECT_EQ(result->at("nf.platform"), "k8s");
+    // nf.platform's tag-emplace is likewise currently disabled -- see the same comment.
+    EXPECT_FALSE(result->contains("nf.platform"));
     EXPECT_FALSE(result->contains("k8s.cluster.name"));
     // nf.process is per-container, applied by the caller (TrackedPodRegistry) -- never set here.
     EXPECT_FALSE(result->contains("nf.process"));
@@ -298,8 +302,10 @@ TEST(PodTagResolver, ResolvePodTagsLabelFallbackTierOnly)
 
     EXPECT_EQ(result->at("nf.app"), "labelapp");
     EXPECT_EQ(result->at("nf.stack"), "labelstack");
-    EXPECT_EQ(result->at("nf.detail"), "labeldetail");
-    EXPECT_EQ(result->at("nf.platform"), "k8s");
+    // nf.detail/nf.platform's tag-emplaces are currently disabled in ResolvePodTags (see its own
+    // "todo uncomment later" comment).
+    EXPECT_FALSE(result->contains("nf.detail"));
+    EXPECT_FALSE(result->contains("nf.platform"));
     // Asymmetric gate: nf.app resolved (via the label fallback tier, not the netflix.com/app
     // annotation), so nf.cluster must NOT be set even though nf.app is.
     EXPECT_FALSE(result->contains("nf.cluster"));

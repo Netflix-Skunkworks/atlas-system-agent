@@ -33,13 +33,15 @@ struct PodTagKeys
 // app.kubernetes.io/instance for nf.stack, app.kubernetes.io/component for nf.detail. nf.cluster
 // is built only from the *primary* netflix.com/{app,stack,detail} annotations, never from
 // label-fallback-resolved nf.app/nf.stack/nf.detail -- so a stack/detail resolved only via label
-// fallback is omitted from nf.cluster's suffix even though it still appears in the nf.stack/
-// nf.detail tag itself (deliberate asymmetry). Returns nullopt (Gating: no metrics for
-// any container in this pod) if none of nf.app/nf.stack/nf.detail resolved; nf.node/nf.process
-// are excluded from that decision since they're always available once identity resolves at all,
-// which would make Gating vacuous. Otherwise returns whichever of nf.app/nf.stack/nf.detail/
-// nf.cluster resolved, nf.node=pod_name if non-empty, nf.platform="k8s", and k8s.cluster.name if
-// k8s_cluster is non-empty; nf.process is NOT set here, applied by the caller per-container.
+// fallback is omitted from nf.cluster's suffix even though nf.stack itself still reflects it
+// (deliberate asymmetry). Returns nullopt (Gating: no metrics for any container in this pod) if
+// none of nf.app/nf.stack/nf.detail resolved; nf.node/nf.process are excluded from that decision
+// since they're always available once identity resolves at all, which would make Gating vacuous.
+// Otherwise returns whichever of nf.app/nf.stack/nf.cluster resolved, nf.node=pod_name if
+// non-empty, and k8s.cluster.name if k8s_cluster is non-empty; nf.process is NOT set here,
+// applied by the caller per-container. nf.detail and nf.platform are resolved/used internally
+// (Gating, nf.cluster) but NOT currently included in the returned map -- their tag-emplace calls
+// are disabled in pod_tag_resolver.cpp pending a "todo uncomment later".
 [[nodiscard]] std::optional<std::unordered_map<std::string, std::string>> ResolvePodTags(
     const std::unordered_map<std::string, std::string>& annotations,
     const std::unordered_map<std::string, std::string>& labels, const std::string& pod_name,
