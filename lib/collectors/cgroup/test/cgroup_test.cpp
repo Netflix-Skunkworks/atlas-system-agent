@@ -234,13 +234,12 @@ TEST(CGroup, TwoInstancesIndependentCpuTimeState)
     memoryWriter->Clear();
 
     // Step 4: instance B's second call, still against its own sample2 baseline -- delta is
-    // zero by design, but the point is that it is unaffected by A's calls in between.
+    // zero by design, unaffected by A's calls in between. spectator::Counter::Increment()
+    // (counter.h) only writes when delta > 0, so a genuinely zero delta on all three counters
+    // means nothing gets written at all, not three zero-valued messages.
     cGroupB.CpuTimeV2(stats2);
     messages = memoryWriter->GetMessages();
-    EXPECT_EQ(messages.size(), 3);
-    EXPECT_EQ(messages.at(0), "c:cgroup.cpu.processingTime:0.000000\n");
-    EXPECT_EQ(messages.at(1), "c:cgroup.cpu.usageTime,id=system:0.000000\n");
-    EXPECT_EQ(messages.at(2), "c:cgroup.cpu.usageTime,id=user:0.000000\n");
+    EXPECT_EQ(messages.size(), 0);
 }
 
 // Regression coverage for the exact "max" -> 0 parsing pitfall QuotaCpuCount() is designed to

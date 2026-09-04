@@ -93,5 +93,4 @@ TEST(Utils, ParseTagsEmpty)
     EXPECT_EQ(some_invalid.size(), 1);
     EXPECT_EQ(some_invalid.at("key"), "val");
 }
-
 }  // namespace
