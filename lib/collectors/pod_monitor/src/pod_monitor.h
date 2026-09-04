@@ -32,14 +32,14 @@ class PodMonitor
 
     void SetPrefix(std::string new_prefix) noexcept { discovery_.SetPrefix(std::move(new_prefix)); }
 
-    // Forwards to TrackedPodRegistry::CollectCpuStats(); see there for detail.
+    // Forwards to TrackedPodRegistry::EmitCpuStats(); see there for detail.
     void CollectCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept
     {
-        tracked_registry_.CollectCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+        tracked_registry_.EmitCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
     }
 
-    // Forwards to TrackedPodRegistry::CollectIOStats(); see there for detail.
-    void CollectIOStats() noexcept { tracked_registry_.CollectIOStats(); }
+    // Forwards to TrackedPodRegistry::EmitIOStats(); see there for detail.
+    void CollectIOStats() noexcept { tracked_registry_.EmitIOStats(); }
 
     // Refreshes the tracked pod/container set (RefreshTrackedPods()) before emitting memory
     // metrics (TrackedPodRegistry::EmitMemoryStats()), so a newly-discovered container is

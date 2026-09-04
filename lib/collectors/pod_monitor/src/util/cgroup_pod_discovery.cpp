@@ -2,6 +2,7 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <cctype>
 #include <system_error>
 #include <utility>
@@ -17,12 +18,7 @@ std::optional<std::string_view> CgroupPodDiscovery::MatchPodSliceName(std::strin
         return std::nullopt;
     }
 
-    if (name.substr(0, name_prefix.size()) != name_prefix)
-    {
-        return std::nullopt;
-    }
-
-    if (name.substr(name.size() - name_suffix.size()) != name_suffix)
+    if (!name.starts_with(name_prefix) || !name.ends_with(name_suffix))
     {
         return std::nullopt;
     }
@@ -33,7 +29,7 @@ std::optional<std::string_view> CgroupPodDiscovery::MatchPodSliceName(std::strin
 std::optional<std::string> CgroupPodDiscovery::NormalizePodUid(std::string_view raw_uid) noexcept
 {
     constexpr size_t kUidLength = 36;
-    constexpr int kSeparatorPositions[] = {8, 13, 18, 23};
+    constexpr size_t kSeparatorPositions[] = {8, 13, 18, 23};
 
     if (raw_uid.size() != kUidLength)
     {
@@ -44,16 +40,7 @@ std::optional<std::string> CgroupPodDiscovery::NormalizePodUid(std::string_view 
 
     for (size_t i = 0; i < uid.size(); ++i)
     {
-        bool is_separator_position = false;
-        for (int sep : kSeparatorPositions)
-        {
-            if (static_cast<int>(i) == sep)
-            {
-                is_separator_position = true;
-                break;
-            }
-        }
-
+        bool is_separator_position = std::ranges::contains(kSeparatorPositions, i);
         auto ch = static_cast<unsigned char>(uid[i]);
 
         if (is_separator_position)
@@ -171,7 +158,7 @@ ContainerCgroupMap CgroupPodDiscovery::FindContainersInPod(const std::filesystem
         {
             auto name = entry.path().filename().string();
             if (auto matched = MatchPodSliceName(name, "cri-containerd-", ".scope");
-                matched && !matched->empty() && matched->size() >= kMinContainerIdLength)
+                matched && matched->size() >= kMinContainerIdLength)
             {
                 containers.emplace(std::string(*matched), entry.path());
             }

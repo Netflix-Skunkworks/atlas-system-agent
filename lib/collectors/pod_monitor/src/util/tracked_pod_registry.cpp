@@ -56,9 +56,14 @@ void TrackedPodRegistry::EvictUntrackedPods(const PodInfoMap& discovered) noexce
 
 TrackedPod& TrackedPodRegistry::UpsertPodIdentity(const std::string& uid, const PodInfo& info) noexcept
 {
+    // Key is the pod's uid. If uid is already tracked, try_emplace leaves that entry untouched
+    // and just returns an iterator to it (inserted=false) -- info.name/info.pod_namespace below
+    // are only used as constructor args for a *new* TrackedPod when uid isn't tracked yet.
     auto [it, inserted] = tracked_pods_.try_emplace(uid, info.name, info.pod_namespace);
-    if (!inserted && !info.name.empty() && !info.pod_namespace.empty() &&
-        (it->second.name != info.name || it->second.pod_namespace != info.pod_namespace))
+    // Already tracked (inserted=false): self-heal name/pod_namespace in place, but only if the
+    // fresh info actually carries a resolved (non-blank) identity -- see this method's header
+    // doc comment for why blank input must never overwrite an already-tracked identity.
+    if (!inserted && !info.name.empty() && !info.pod_namespace.empty())
     {
         it->second.name = info.name;
         it->second.pod_namespace = info.pod_namespace;
@@ -150,7 +155,7 @@ void TrackedPodRegistry::Refresh(const PodInfoMap& discovered) noexcept
     }
 }
 
-void TrackedPodRegistry::CollectCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept
+void TrackedPodRegistry::EmitCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept
 {
     for (auto& pod_entry : tracked_pods_)
     {
@@ -164,7 +169,7 @@ void TrackedPodRegistry::CollectCpuStats(const bool fiveSecondMetricsEnabled, co
     }
 }
 
-void TrackedPodRegistry::CollectIOStats() noexcept
+void TrackedPodRegistry::EmitIOStats() noexcept
 {
     for (auto& pod_entry : tracked_pods_)
     {

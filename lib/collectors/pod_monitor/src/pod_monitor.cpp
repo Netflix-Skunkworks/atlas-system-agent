@@ -6,7 +6,9 @@ namespace atlasagent
 {
 
 PodMonitor::PodMonitor(Registry* registry, std::string path_prefix, std::string kubelet_url) noexcept
-    : discovery_(std::move(path_prefix)), identity_client_(registry, std::move(kubelet_url)), tracked_registry_(registry)
+    : discovery_(std::move(path_prefix)),
+      identity_client_(registry, std::move(kubelet_url)),
+      tracked_registry_(registry)
 {
 }
 

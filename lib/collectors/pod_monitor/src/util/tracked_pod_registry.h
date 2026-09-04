@@ -56,7 +56,7 @@ using PodTrackedMap = absl::flat_hash_map<std::string, TrackedPod>;
 
 // Owns the tracked pod/container set and reconciles it every cycle against a caller-supplied
 // PodInfoMap (evict, upsert, resolve tags, reconcile containers), and hosts the cadence-driven
-// metric-emission loops (CollectCpuStats/CollectIOStats/EmitMemoryStats) -- the only place with
+// metric-emission loops (EmitCpuStats/EmitIOStats/EmitMemoryStats) -- the only place with
 // mutable access to the CGroups it owns.
 class TrackedPodRegistry
 {
@@ -77,11 +77,11 @@ class TrackedPodRegistry
     // (disambiguated per-container via SetExtraTags -- see PodCpuStats's own doc comment) for
     // every container of every currently tracked pod. Never changes tracked pod/container
     // membership itself -- that only happens inside Refresh().
-    void CollectCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept;
+    void EmitCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept;
 
     // Emits cgroup I/O metrics (CGroup::IOStats) for every container of every currently tracked
     // pod.
-    void CollectIOStats() noexcept;
+    void EmitIOStats() noexcept;
 
     // Emits CGroup::MemoryStatsV2's cgroup.mem.* metrics and CGroup::MemoryStatsStdV2's mem.*
     // metrics (despite both reading memory.current/memory.max/memory.stat, StdV2 uses mem.*
