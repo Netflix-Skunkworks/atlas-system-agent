@@ -138,6 +138,15 @@ void CGroup::CpuTimeV2(const std::unordered_map<std::string, int64_t>& stats) no
 double CGroup::GetAvailCpuTime(const double delta_t, const double cpuCount) noexcept
 {
     auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
+    // read_num_vector_from_file() returns an EMPTY vector when cpu.max can't be opened (see
+    // util.cpp) -- e.g. a pod/container cgroup directory removed since it was discovered, which
+    // for PodMonitor is routine: CollectCpuStats() runs every second while the tracked set is
+    // only refreshed every 60s. Without this guard cpu_max[1] is an out-of-bounds read on an
+    // empty vector, out of a noexcept function. 0 means "unknown"; callers must not divide by it.
+    if (cpu_max.size() < 2)
+    {
+        return 0.0;
+    }
     auto cfs_period = cpu_max[1];
     auto cfs_quota = cfs_period * cpuCount;
     return (delta_t / cfs_period) * cfs_quota;
@@ -219,19 +228,32 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
     registry_->CreateGauge("sys.cpu.numProcessors", MergeTags({})).Set(cpuCount);
     registry_->CreateGauge("titus.cpu.requested", MergeTags({})).Set(cpuCount);
 
-    if (utilization_prev_system_time_ >= 0)
+    // See CpuThrottleV2()/CpuTimeV2(), which already guard this: stats.at() would throw
+    // std::out_of_range out of this noexcept function -- terminating the process -- when cpu.stat
+    // couldn't be read this tick (parse_kv_from_file() silently leaves `stats` empty).
+    auto system_it = stats.find("system_usec");
+    auto user_it = stats.find("user_usec");
+    if (system_it == stats.end() || user_it == stats.end())
     {
-        auto secs = (stats.at("system_usec") - utilization_prev_system_time_) / MICROS;
+        return;
+    }
+
+    // avail_cpu_time == 0 means cpu.max was unreadable (see GetAvailCpuTime) or cpuCount is 0;
+    // dividing by it would publish inf. Skip the utilization gauges in that case, but still
+    // refresh the baselines below so the next successful cycle computes a correct delta.
+    if (avail_cpu_time > 0 && utilization_prev_system_time_ >= 0)
+    {
+        auto secs = (system_it->second - utilization_prev_system_time_) / MICROS;
         registry_->CreateGauge("sys.cpu.utilization", MergeTags({{"id", "system"}})).Set((secs / avail_cpu_time) * 100);
     }
-    utilization_prev_system_time_ = stats.at("system_usec");
+    utilization_prev_system_time_ = system_it->second;
 
-    if (utilization_prev_user_time_ >= 0)
+    if (avail_cpu_time > 0 && utilization_prev_user_time_ >= 0)
     {
-        auto secs = (stats.at("user_usec") - utilization_prev_user_time_) / MICROS;
+        auto secs = (user_it->second - utilization_prev_user_time_) / MICROS;
         registry_->CreateGauge("sys.cpu.utilization", MergeTags({{"id", "user"}})).Set((secs / avail_cpu_time) * 100);
     }
-    utilization_prev_user_time_ = stats.at("user_usec");
+    utilization_prev_user_time_ = user_it->second;
 }
 
 void CGroup::CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_map<std::string, int64_t>& stats, const double cpuCount) noexcept
@@ -241,19 +263,27 @@ void CGroup::CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_ma
 
     auto avail_cpu_time = GetAvailCpuTime(delta_t, cpuCount);
 
-    if (peak_prev_system_time_ >= 0)
+    // Same noexcept hazard as CpuUtilizationV2() above -- see its comment.
+    auto system_it = stats.find("system_usec");
+    auto user_it = stats.find("user_usec");
+    if (system_it == stats.end() || user_it == stats.end())
     {
-        auto secs = (stats.at("system_usec") - peak_prev_system_time_) / MICROS;
+        return;
+    }
+
+    if (avail_cpu_time > 0 && peak_prev_system_time_ >= 0)
+    {
+        auto secs = (system_it->second - peak_prev_system_time_) / MICROS;
         registry_->CreateMaxGauge("sys.cpu.peakUtilization", MergeTags({{"id", "system"}})).Set((secs / avail_cpu_time) * 100);
     }
-    peak_prev_system_time_ = stats.at("system_usec");
+    peak_prev_system_time_ = system_it->second;
 
-    if (peak_prev_user_time_ >= 0)
+    if (avail_cpu_time > 0 && peak_prev_user_time_ >= 0)
     {
-        auto secs = (stats.at("user_usec") - peak_prev_user_time_) / MICROS;
+        auto secs = (user_it->second - peak_prev_user_time_) / MICROS;
         registry_->CreateMaxGauge("sys.cpu.peakUtilization", MergeTags({{"id", "user"}})).Set((secs / avail_cpu_time) * 100);
     }
-    peak_prev_user_time_ = stats.at("user_usec");
+    peak_prev_user_time_ = user_it->second;
 }
 
 void CGroup::CpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)

@@ -36,8 +36,9 @@ class CgroupPodDiscovery
 
     // Lists pod_cgroup_dir's immediate subdirectories and matches container scope names shaped
     // "cri-containerd-<hex-id>.scope" (containerd/CRI convention), keyed by the stripped id. The
-    // id is only loosely validated (a plausible-length hex string, not a strict UUID like a
-    // pod's own uid). Never throws; returns an empty map if pod_cgroup_dir itself can't be
+    // id is validated on LENGTH ONLY (a plausible non-trivial length, not a strict UUID like a
+    // pod's own uid) -- its characters are never inspected, so a non-hex id of sufficient length
+    // is accepted as-is. Never throws; returns an empty map if pod_cgroup_dir itself can't be
     // opened, or whatever was already matched if an error interrupts iteration partway through.
     [[nodiscard]] static ContainerCgroupMap FindContainersInPod(const std::filesystem::path& pod_cgroup_dir) noexcept;
 

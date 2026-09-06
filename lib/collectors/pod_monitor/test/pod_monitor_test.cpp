@@ -204,9 +204,16 @@ TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
 // call -- so the *successful* Gating path (a pod whose annotations/labels actually resolve,
 // tracked with the right tags) is covered by ResolvePodTags's own direct unit tests and
 // JoinCgroupAndIdentity's wiring tests below, not by an end-to-end RefreshTrackedPods test.
-// RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved below is the concrete
-// end-to-end proof of the Gating-*failure* path, which this file's hermetic (identity-lookup-
-// always-fails) test setup can actually exercise.
+// The Gating-*failure* path is likewise NOT covered end-to-end here. See
+// RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved below for why: because identity
+// resolution always fails in this harness, a pod's tracked container map is empty from the moment
+// it is created and nothing can ever make it non-empty, so an assertion that it is empty holds
+// regardless of whether the Gating logic works, is deleted, or is inverted.
+//
+// Both paths ARE reachable without any HTTP mocking, just not through PodMonitor:
+// TrackedPodRegistry's constructor, Refresh(const PodInfoMap&) and TrackedPods() are all public,
+// so a test can hand it a fabricated PodInfoMap with populated annotations/labels/containers
+// whose cgroup_path points at a real fixture tree. No such test exists yet.
 
 // FindContainersInPod tests (parallel to the ScanPodSliceDirectory/MatchPodSliceName coverage
 // above -- structural directory-name matching only, no PID/environ I/O involved). Public on
@@ -228,13 +235,22 @@ TEST(CgroupPodDiscovery, FindContainersInPodMatchesCriContainerdScopes)
 
 TEST(CgroupPodDiscovery, FindContainersInPodIgnoresNonMatchingEntries)
 {
-    // The fixture directory also contains a plain file (cgroup.procs) and a subdirectory that
-    // doesn't carry the cri-containerd-*.scope shape -- neither should be picked up.
+    // The fixture directory also contains a plain file (cgroup.procs) and a subdirectory
+    // (not-a-container-scope-dir) that doesn't carry the cri-containerd-*.scope shape.
+    //
+    // Scope of what this actually proves: BOTH decoys are rejected purely by NAME, at
+    // MatchPodSliceName's size guard / prefix check -- not by the is_directory() type guard in
+    // FindContainersInPod. "cgroup.procs" is 12 chars, below the 21-char prefix+suffix floor, so
+    // it is rejected identically whether or not that type guard exists. So this test does NOT
+    // cover the type guard; a regular file shaped like cri-containerd-<64 hex>.scope would be
+    // needed for that, and no fixture has one.
     auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(
         "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
         "kubepods-pod11111111_1111_1111_1111_111111111111.slice");
 
-    EXPECT_FALSE(containers.contains("cgroup.procs"));
+    // Note this loop only catches a SPURIOUS entry with an unexpected id; it is blind to a
+    // MISSING entry (an empty map passes vacuously). The size()==1 assertion in
+    // FindContainersInPodMatchesCriContainerdScopes above is what pins the count.
     for (const auto& [id, path] : containers)
     {
         EXPECT_EQ(id, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
@@ -311,7 +327,12 @@ TEST(PodTagResolver, ResolvePodTagsLabelFallbackTierOnly)
     EXPECT_FALSE(result->contains("nf.cluster"));
 }
 
-TEST(PodTagResolver, ResolvePodTagsLabelFallbackOrderPrefersAppNameOverK8sAppOverApp)
+// Pins only that app.kubernetes.io/name wins when all three nf.app fallback labels are present.
+// It deliberately does NOT pin the relative order of k8s-app vs app: with all three seeded, only
+// the overall winner is observable, so swapping the last two entries of ResolvePodTags's fallback
+// list (or dropping "app" entirely) would still pass this. Pinning those needs one test per
+// label, each seeding that label alone.
+TEST(PodTagResolver, ResolvePodTagsLabelFallbackPrefersAppNameWhenAllPresent)
 {
     std::unordered_map<std::string, std::string> labels{
         {"app", "third"},
@@ -368,13 +389,18 @@ TEST(PodTagResolver, ResolvePodTagsSetsK8sClusterNameOnlyWhenNonEmpty)
     EXPECT_FALSE(withoutCluster->contains("k8s.cluster.name"));
 }
 
-// End-to-end wiring test through RefreshTrackedPods(): a pod with a real, discoverable container
-// (systemd_pod_with_containers, the same fixture FindContainersInPod's own tests use) is
-// discovered structurally, but this test's hermetic setup means FindActivePodInfo()'s identity
-// lookup always fails closed -- so info.annotations/info.labels are always empty and
-// ResolvePodTags always returns nullopt. Confirms Gating drops every container in that pod, not
-// just skips tagging it -- see the NOTE above this test group for why the successful path can't
-// be exercised the same way.
+// End-to-end wiring test through RefreshTrackedPods(): the pod in systemd_pod_with_containers is
+// discovered structurally AND so is its container scope, but this file's hermetic setup means
+// FindActivePodInfo()'s identity lookup always fails closed -- so info.annotations/info.labels
+// are empty, ResolvePodTags returns nullopt, and the container is never tracked.
+//
+// WHAT THIS DOES NOT PROVE: it is not a test of the Gating logic. Two independent causes produce
+// this same empty container map here -- Gating rejecting the pod, and the container simply not
+// being in the (always-empty) kubelet-reported info.containers -- and this assertion cannot tell
+// them apart. It passes with Gating's container-clearing statement working, deleted, or inverted.
+// It pins only the outer wiring: that a pod with an unresolved identity is still TRACKED as a pod
+// while emitting nothing for any container. See the NOTE above this test group for how to
+// actually cover Gating (drive TrackedPodRegistry::Refresh directly with a fabricated PodInfoMap).
 TEST(PodMonitor, RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -692,6 +718,13 @@ TEST(PodMonitor, FindActivePodInfoWithoutKubeletIsHermetic)
     }
 }
 
+// Pins that an unreachable kubelet fails closed (nullopt) rather than throwing or hanging --
+// which is what makes every other test in this file hermetic.
+//
+// It does NOT cover FetchPodIdentities' `status != 200` guard: an unreachable host yields an
+// empty body that ParsePodList rejects at its JSON-parse check anyway, so deleting the status
+// check entirely would leave this test green. Covering that guard needs the response-handling
+// step split out behind a seam a test can feed a canned status/body to.
 TEST(PodIdentityClient, FetchPodIdentitiesReturnsNulloptWhenKubeletUnreachable)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
