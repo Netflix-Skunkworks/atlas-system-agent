@@ -8,6 +8,7 @@
 #include "cgroup_pod_discovery.h"
 #include "pod_info.h"
 
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -21,11 +22,21 @@ namespace atlasagent
 struct TrackedContainer
 {
     CGroup cgroup;
+    // This container's own cgroup scope directory. Retained here as well as inside cgroup (whose
+    // path_prefix_ is protected) so the emit loops can test whether the container still exists --
+    // see TrackedPodRegistry::ContainerIsLive.
+    std::filesystem::path cgroup_path;
     std::string container_id;
     std::string container_name;
 
-    TrackedContainer(Registry* registry, std::string cgroup_path, std::string id, std::string name) noexcept
-        : cgroup(registry, std::move(cgroup_path)), container_id(std::move(id)), container_name(std::move(name))
+    // `path` is COPIED into cgroup and only then moved into cgroup_path -- members initialize in
+    // declaration order, so cgroup is built first. Do not std::move() it into cgroup, or
+    // cgroup_path would be constructed from a moved-from value.
+    TrackedContainer(Registry* registry, std::filesystem::path path, std::string id, std::string name) noexcept
+        : cgroup(registry, path.string()),
+          cgroup_path(std::move(path)),
+          container_id(std::move(id)),
+          container_name(std::move(name))
     {
     }
 };
@@ -73,22 +84,23 @@ class TrackedPodRegistry
     // Read-only view of the tracked pod/container set, for test assertions and debug tooling.
     [[nodiscard]] const PodTrackedMap& TrackedPods() const noexcept { return tracked_pods_; }
 
-    // Emits CGroup::PodCpuStats's cgroup.cpu.* metrics plus its sys.cpu.*/titus.cpu.* metrics
+    // Emits CGroup::PodCpuStats's cgroup.cpu.* metrics plus its sys.cpu.*/k8s.cpu.* metrics
     // (disambiguated per-container via SetExtraTags -- see PodCpuStats's own doc comment) for
-    // every container of every currently tracked pod. Never changes tracked pod/container
-    // membership itself -- that only happens inside Refresh().
+    // every LIVE container of every currently tracked pod: a container whose cgroup scope has
+    // disappeared since the last Refresh() is skipped, see ContainerIsLive. Never changes tracked
+    // pod/container membership itself -- that only happens inside Refresh().
     void EmitCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept;
 
-    // Emits cgroup I/O metrics (CGroup::IOStats) for every container of every currently tracked
-    // pod.
+    // Emits cgroup I/O metrics (CGroup::IOStats) for every LIVE container of every currently
+    // tracked pod -- see ContainerIsLive for the liveness skip.
     void EmitIOStats() noexcept;
 
     // Emits CGroup::MemoryStatsV2's cgroup.mem.* metrics and CGroup::MemoryStatsStdV2's mem.*
     // metrics (despite both reading memory.current/memory.max/memory.stat, StdV2 uses mem.*
-    // names, not cgroup.mem.*) for every tracked container, tagged with the nf.*/k8s.* tags
-    // ResolvePodTags resolved for its pod plus its own nf.process. Call Refresh() first to
-    // include a pod/container discovered this same cycle -- this method itself never changes
-    // tracked pod/container membership.
+    // names, not cgroup.mem.*) for every LIVE tracked container (see ContainerIsLive), tagged with
+    // the nf.*/k8s.* tags ResolvePodTags resolved for its pod plus its own nf.process. Call
+    // Refresh() first to include a pod/container discovered this same cycle -- this method itself
+    // never changes tracked pod/container membership.
     void EmitMemoryStats() noexcept;
 
    private:
@@ -130,6 +142,24 @@ class TrackedPodRegistry
     // set, otherwise the node's total logical CPU count (a container with no quota can burst
     // across every core on the node).
     [[nodiscard]] static double ResolveCpuCountForPod(const CGroup& cgroup) noexcept;
+
+    // Whether a tracked container's cgroup scope still exists. Refresh() already evicts
+    // terminated containers (EvictUntrackedContainers), but it only runs on the 60s cadence while
+    // EmitCpuStats() runs every second -- so a container stays tracked for up to a minute after
+    // containerd removed its scope directory. Emitting for one of those publishes wrong data under
+    // the POD's live nf.app/nf.cluster tags, and CpuProcessingCapacity is the worst of it: it
+    // reads no files at all, so nothing about the vanished cgroup stops it accumulating phantom
+    // capacity into a Counter. sys.cpu.numProcessors and k8s.cpu.requested leak the same way,
+    // because CpuUtilizationV2 emits both BEFORE its cpu.stat guard.
+    //
+    // Tests the scope DIRECTORY, not a file inside it: containerd removes the whole directory on
+    // termination, so that is the unambiguous signal. Keying on a particular file would conflate
+    // "container gone" with "that one file unreadable" -- and no test fixture carries cpu.stat, so
+    // it would also gate out every fixture-driven test in pod_monitor_test.cpp.
+    //
+    // Skipping, not evicting: membership changes belong to Refresh() alone (see the Emit* docs
+    // above), and erasing mid-iteration would invalidate the loop's own iterator.
+    [[nodiscard]] static bool ContainerIsLive(const TrackedContainer& container) noexcept;
 
     // Read by Refresh() to construct each newly-discovered container's own CGroup instance.
     Registry* registry_;

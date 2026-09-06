@@ -5,7 +5,9 @@
 #include <lib/logger/src/logger.h>
 
 #include <cstdlib>
+#include <filesystem>
 #include <optional>
+#include <system_error>
 #include <unistd.h>
 #include <utility>
 
@@ -34,6 +36,16 @@ double TrackedPodRegistry::ResolveCpuCountForPod(const CGroup& cgroup) noexcept
         return *quota;
     }
     return static_cast<double>(sysconf(_SC_NPROCESSORS_ONLN));
+}
+
+bool TrackedPodRegistry::ContainerIsLive(const TrackedContainer& container) noexcept
+{
+    // The std::error_code overload is mandatory here, not a style choice: the throwing overload
+    // raises std::filesystem::filesystem_error, which out of the noexcept Emit* callers would
+    // terminate the agent. On any error it reports false instead, which is also the answer we want
+    // here -- a scope we cannot stat is not one to emit for.
+    std::error_code ec;
+    return std::filesystem::exists(container.cgroup_path, ec);
 }
 
 void TrackedPodRegistry::EvictUntrackedPods(const PodInfoMap& discovered) noexcept
@@ -107,7 +119,7 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const PodInfo& inf
         container_tags["nf.process"] = container_name;
 
         auto [cit, container_inserted] = pod.containers.try_emplace(
-            container_id, registry_, container_cgroup_path.string(), container_id, container_name);
+            container_id, registry_, container_cgroup_path, container_id, container_name);
         if (!container_inserted)
         {
             cit->second.container_name = container_name;
@@ -170,6 +182,10 @@ void TrackedPodRegistry::EmitCpuStats(const bool fiveSecondMetricsEnabled, const
     {
         for (auto& container_entry : pod_entry.second.containers)
         {
+            if (!ContainerIsLive(container_entry.second))
+            {
+                continue;
+            }
             atlasagent::Logger()->debug("Collecting CPU stats for pod {}/{} (uid={}) container {} ({})",
                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
                                         container_entry.first, container_entry.second.container_name);
@@ -184,6 +200,10 @@ void TrackedPodRegistry::EmitIOStats() noexcept
     {
         for (auto& container_entry : pod_entry.second.containers)
         {
+            if (!ContainerIsLive(container_entry.second))
+            {
+                continue;
+            }
             atlasagent::Logger()->debug("Collecting IO stats for pod {}/{} (uid={}) container {} ({})",
                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
                                         container_entry.first, container_entry.second.container_name);
@@ -198,6 +218,10 @@ void TrackedPodRegistry::EmitMemoryStats() noexcept
     {
         for (auto& container_entry : pod_entry.second.containers)
         {
+            if (!ContainerIsLive(container_entry.second))
+            {
+                continue;
+            }
             atlasagent::Logger()->debug("Collecting memory stats for pod {}/{} (uid={}) container {} ({})",
                                         pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
                                         container_entry.first, container_entry.second.container_name);

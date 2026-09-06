@@ -1050,6 +1050,76 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
     }
 }
 
+// The complement of EmitCpuStatsSurvivesMissingAndPartialCpuStat above: there the scope directory
+// exists with files missing; here the whole directory is gone, i.e. a container that terminated
+// since the last Refresh(). Refresh() does evict it (EvictUntrackedContainers), but Refresh() runs
+// on the 60s cadence while EmitCpuStats runs every second, so it stays tracked for up to a minute.
+//
+// Emitting for it is not harmless. nf.app/nf.cluster are POD-level, so a dead container's output
+// lands under the live app's tags -- and cgroup.cpu.processingCapacity is the real damage: it reads
+// no files at all (pure delta_t * cpuCount), so nothing about the vanished cgroup stops it, and it
+// is a Counter, so ~60s of phantom capacity is permanently accumulated into the pod's own
+// utilization denominator. sys.cpu.numProcessors and k8s.cpu.requested leak the same way, because
+// CpuUtilizationV2 emits both BEFORE its cpu.stat guard.
+//
+// Asserting emission BEFORE the removal is what keeps this honest: without that baseline, every
+// absence assertion below would also be satisfied by "nothing ran at all".
+TEST(TrackedPodRegistry, SkipsEmissionForContainerWhoseCgroupVanishedSinceRefresh)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    atlasagent::TrackedPodRegistry registry{&r};
+
+    TempCgroupTree tree{"vanished_scope"};
+    tree.WriteScopeFile("cpu.max", "50000 100000\n");
+    tree.WriteScopeFile("memory.current", "1048576\n");
+
+    registry.Refresh(OnePodInfoMap(kPod1Uid, tree.PodPath(), {{ContainerId('a'), "main"}},
+                                    {{"netflix.com/app", "myapp"}}, "pod-one", "ns-one", {{"main", 0.25}}));
+    ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
+
+    // Baseline: while the scope exists, every leak-prone metric really is published.
+    memoryWriter->Clear();
+    registry.EmitCpuStats(true, true);
+    registry.EmitMemoryStats();
+    {
+        auto messages = memoryWriter->GetMessages();
+        ASSERT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
+        ASSERT_TRUE(AnyLineContainsAll(messages, {"k8s.cpu.requested", ":0.250000"}));
+        ASSERT_TRUE(AnyLineContains(messages, "cgroup.cpu.processingCapacity"));
+        ASSERT_TRUE(AnyLineContains(messages, "cgroup.mem.used"));
+    }
+
+    // The container terminates: containerd removes the entire scope directory. It stays TRACKED,
+    // since only Refresh() changes membership and it has not run again -- so this exercises the
+    // liveness skip, not eviction.
+    std::filesystem::remove_all(tree.ScopePath());
+    ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
+
+    memoryWriter->Clear();
+    registry.EmitCpuStats(true, true);
+    registry.EmitIOStats();
+    registry.EmitMemoryStats();
+
+    auto messages = memoryWriter->GetMessages();
+    // Named individually as well as via the emptiness check below, so a regression reports WHICH
+    // metric started leaking rather than just a count.
+    EXPECT_FALSE(AnyLineContains(messages, "cgroup.cpu.processingCapacity"));
+    EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.numProcessors"));
+    EXPECT_FALSE(AnyLineContains(messages, "k8s.cpu.requested"));
+    // Memory would otherwise publish fabricated zeros from the now-absent files, since cgroup.cpp
+    // reads memory.stat/memory.events keys with operator[] rather than find().
+    EXPECT_FALSE(AnyLineContains(messages, "cgroup.mem."));
+    EXPECT_FALSE(AnyLineContains(messages, "mem.cached"));
+    EXPECT_TRUE(messages.empty());
+
+    // NOTE: this does not independently cover EmitIOStats' guard. IOStats() emits nothing for a
+    // LIVE container here either (no io.stat in the tree, so ParseIOLines yields nothing), so its
+    // contribution to the emptiness assertion above would hold with or without the skip. The guard
+    // is there for the same reason as the other two; proving it needs an io.stat fixture.
+}
+
 TEST(TrackedPodRegistry, EmitMethodsAreNoOpsWithNothingTracked)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
