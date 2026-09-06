@@ -225,8 +225,30 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
     utilization_last_updated_ = now;
 
     auto avail_cpu_time = GetAvailCpuTime(delta_t, cpuCount);
+    // numProcessors is capacity, so cpuCount (the cpu.max limit, or the node's core count when
+    // unlimited) is the right value for it on both agents.
     registry_->CreateGauge("sys.cpu.numProcessors", MergeTags({})).Set(cpuCount);
-    registry_->CreateGauge("titus.cpu.requested", MergeTags({})).Set(cpuCount);
+
+    // "requested" is NOT capacity -- it is what the workload asked for, which on Kubernetes is a
+    // different number from the limit. The two agents publish it under DIFFERENT NAMES on purpose,
+    // because the quantity itself differs: Titus reports a fixed allocation, Kubernetes reports a
+    // declared request that its limit may exceed. Sharing one name would put two different
+    // meanings on one series, distinguishable only by tags.
+    if (!cpu_count_override_.has_value())
+    {
+        // Titus: one fixed allocation (TITUS_NUM_CPU), for which request == limit == count.
+        // Unchanged from before pod support existed -- do not rename, Titus dashboards read this.
+        registry_->CreateGauge("titus.cpu.requested", MergeTags({})).Set(cpuCount);
+    }
+    else if (cpu_request_override_.has_value())
+    {
+        // A pod container that declares resources.requests.cpu, matching the k8s.* prefix already
+        // used for the pod-scoped tags (k8s.namespace.name, k8s.cluster.name).
+        registry_->CreateGauge("k8s.cpu.requested", MergeTags({})).Set(*cpu_request_override_);
+    }
+    // else: a pod container with no declared CPU request (BestEffort). Omit the gauge entirely --
+    // publishing cpuCount would report the limit (or the whole node) as if it were the request,
+    // and publishing 0 would turn every utilization/requested division into inf.
 
     // See CpuThrottleV2()/CpuTimeV2(), which already guard this: stats.at() would throw
     // std::out_of_range out of this noexcept function -- terminating the process -- when cpu.stat

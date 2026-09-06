@@ -8,6 +8,8 @@ add_library(pod_monitor
     src/util/cgroup_pod_discovery.cpp
     src/util/pod_tag_resolver.h
     src/util/pod_tag_resolver.cpp
+    src/util/cpu_quantity.h
+    src/util/cpu_quantity.cpp
     src/util/tracked_pod_registry.h
     src/util/tracked_pod_registry.cpp
 )

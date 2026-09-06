@@ -70,7 +70,22 @@ class CGroup
     // Lets a caller (e.g. a per-pod monitor) supply the CPU count directly instead of relying
     // on the TITUS_NUM_CPU environment variable. Titus code never calls this, so GetNumCpu()'s
     // behavior for Titus is identical to today.
+    //
+    // NOTE: whether this has been set also selects WHICH "requested" metric CpuUtilizationV2
+    // emits -- titus.cpu.requested when unset (Titus), k8s.cpu.requested when set (a pod
+    // container). PodMonitor sets it unconditionally for every tracked container; if that ever
+    // becomes conditional, revisit that emission rather than assuming it still distinguishes the
+    // two callers.
     void SetCpuCountOverride(std::optional<double> count) noexcept { cpu_count_override_ = count; }
+
+    // The container's DECLARED CPU request, which is a different quantity from the CPU count
+    // above: the count comes from cpu.max (the limit, or the node's core count when unlimited),
+    // while this is resources.requests.cpu as reported by kubelet. On Titus the two are the same
+    // single allocation, so Titus never calls this and keeps publishing titus.cpu.requested from
+    // the count. When set, the pod-scoped k8s.cpu.requested is published from this value instead.
+    // nullopt means "this container declares no CPU request" (BestEffort), in which case
+    // k8s.cpu.requested is omitted rather than published with the limit or a zero.
+    void SetCpuRequestOverride(std::optional<double> request) noexcept { cpu_request_override_ = request; }
 
     // Reads cpu.max and returns quota/period, or std::nullopt when the quota is "max"
     // (unlimited).
@@ -123,6 +138,7 @@ class CGroup
 
     std::unordered_map<std::string, std::string> extra_tags_;
     std::optional<double> cpu_count_override_;
+    std::optional<double> cpu_request_override_;
 };
 
 // TODO: Stop exposing these functions publicly, currently required for testing

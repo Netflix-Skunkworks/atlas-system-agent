@@ -19,7 +19,10 @@ PodInfoMap PodMonitor::JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
     result.reserve(cgroup_pods.size());
     for (const auto& [uid, cgroup_path] : cgroup_pods)
     {
-        PodInfo info{uid, cgroup_path, "", "", {}, {}, {}};
+        // Positional aggregate init, and several adjacent members share a type -- keep this in the
+        // same order as PodInfo's declaration (uid, cgroup_path, name, pod_namespace, containers,
+        // annotations, labels, cpu_requests) or a mix-up compiles silently.
+        PodInfo info{uid, cgroup_path, "", "", {}, {}, {}, {}};
         if (identities.has_value())
         {
             auto it = identities->find(uid);
@@ -30,6 +33,7 @@ PodInfoMap PodMonitor::JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
                 info.containers = it->second.containers;
                 info.annotations = it->second.annotations;
                 info.labels = it->second.labels;
+                info.cpu_requests = it->second.cpu_requests;
             }
         }
         result.emplace(uid, std::move(info));

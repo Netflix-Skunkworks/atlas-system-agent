@@ -23,6 +23,10 @@ struct PodInfo
     // cycle, or the pod genuinely has none. Feed ResolvePodTags's fallback chain.
     std::unordered_map<std::string, std::string> annotations;
     std::unordered_map<std::string, std::string> labels;
+    // Container NAME -> declared CPU request in cores (see PodIdentity::cpu_requests). A container
+    // is absent when it declares no request, which is NOT the same as a request of zero -- the
+    // absence is what makes k8s.cpu.requested omit the gauge rather than publish a wrong value.
+    std::unordered_map<std::string, double> cpu_requests;
 };
 using PodInfoMap = absl::flat_hash_map<std::string, PodInfo>;
 

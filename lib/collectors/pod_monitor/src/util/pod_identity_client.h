@@ -24,6 +24,13 @@ struct PodIdentity
     std::unordered_map<std::string, std::string> annotations;
     // Pod labels from metadata.labels. Empty if the pod has none (not a parse failure).
     std::unordered_map<std::string, std::string> labels;
+    // Container NAME -> that container's resources.requests.cpu in cores, from spec.containers[]
+    // and spec.initContainers[]. Keyed by name rather than id because that is how the pod spec
+    // identifies containers; the caller already holds the name where it needs this
+    // (TrackedPodRegistry::ReconcileContainers). A container is ABSENT from this map when it
+    // declares no CPU request -- BestEffort pods have none -- which is deliberately distinct from
+    // a request of zero.
+    std::unordered_map<std::string, double> cpu_requests;
 };
 
 // Pod UID (kubelet's canonical dashed form) -> that pod's identity.

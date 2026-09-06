@@ -2,6 +2,7 @@
 #include <lib/collectors/pod_monitor/src/util/pod_identity_client.h>
 #include <lib/collectors/pod_monitor/src/util/cgroup_pod_discovery.h>
 #include <lib/collectors/pod_monitor/src/util/pod_tag_resolver.h>
+#include <lib/collectors/pod_monitor/src/util/cpu_quantity.h>
 #include <lib/collectors/pod_monitor/src/util/tracked_pod_registry.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
@@ -90,11 +91,14 @@ atlasagent::PodInfoMap OnePodInfoMap(const std::string& uid, const std::string& 
                                       std::unordered_map<std::string, std::string> containers,
                                       std::unordered_map<std::string, std::string> annotations,
                                       const std::string& name = "pod-one",
-                                      const std::string& pod_namespace = "ns-one")
+                                      const std::string& pod_namespace = "ns-one",
+                                      std::unordered_map<std::string, double> cpu_requests = {})
 {
     atlasagent::PodInfoMap pods;
+    // Positional aggregate init -- keep in sync with PodInfo's declaration order (uid,
+    // cgroup_path, name, pod_namespace, containers, annotations, labels, cpu_requests).
     pods.emplace(uid, atlasagent::PodInfo{uid, cgroup_path, name, pod_namespace, std::move(containers),
-                                           std::move(annotations), {}});
+                                           std::move(annotations), {}, std::move(cpu_requests)});
     return pods;
 }
 
@@ -607,6 +611,58 @@ TEST(PodMonitor, RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved)
     EXPECT_TRUE(podMonitor.TrackedPods().at("11111111-1111-1111-1111-111111111111").containers.empty());
 }
 
+// ParseCpuQuantity: the CPU subset of a Kubernetes resource Quantity. Only source for a
+// container's CPU REQUEST -- the cgroup filesystem exposes cpu.max (the limit), never the request.
+TEST(CpuQuantity, ParseCpuQuantityAcceptsMillicpuAndDecimalCores)
+{
+    // EXPECT_DOUBLE_EQ rather than EXPECT_EQ: the millicpu path divides by 1000, and whether e.g.
+    // 100.0/1000.0 is bit-identical to the literal 0.1 is a subtlety no test should rest on.
+    auto expect_cores = [](std::string_view input, double expected) {
+        auto result = atlasagent::ParseCpuQuantity(input);
+        ASSERT_TRUE(result.has_value()) << "failed to parse: " << input;
+        EXPECT_DOUBLE_EQ(*result, expected) << "input: " << input;
+    };
+
+    expect_cores("500m", 0.5);
+    expect_cores("100m", 0.1);
+    expect_cores("1500m", 1.5);
+    expect_cores("2", 2.0);
+    expect_cores("0.5", 0.5);
+}
+
+TEST(CpuQuantity, ParseCpuQuantityRejectsMalformedInput)
+{
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("").has_value());
+    // A bare suffix leaves nothing to parse once stripped.
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("m").has_value());
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("abc").has_value());
+    // A negative request is meaningless.
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("-1").has_value());
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("-500m").has_value());
+    // std::from_chars deliberately does not accept a leading '+'.
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("+2").has_value());
+}
+
+// These two are the reason ParseCpuQuantity checks that from_chars consumed the WHOLE input.
+// from_chars stops at the first character it cannot use instead of failing, so without that check
+// these parse as 0.5 and 5 -- wrong by 10x and 10x respectively, silently. A full-consumption
+// check is not used anywhere else in this repo, so it is easy to drop in a refactor; this test
+// exists to make that break loudly.
+TEST(CpuQuantity, ParseCpuQuantityRejectsTrailingJunkRatherThanTruncating)
+{
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("0.5.1").has_value());
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("5x0m").has_value());
+}
+
+// Memory quantities use SI suffixes ParseCpuQuantity does not implement. It must reject them
+// rather than return a plausible-looking number -- "128Mi" must not parse as 128.
+TEST(CpuQuantity, ParseCpuQuantityRejectsMemoryStyleSuffixes)
+{
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("128Mi").has_value());
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("1Gi").has_value());
+    EXPECT_FALSE(atlasagent::ParseCpuQuantity("64Ki").has_value());
+}
+
 // ---------------------------------------------------------------------------------------------
 // TrackedPodRegistry: the gated-IN path. Everything below drives Refresh(const PodInfoMap&)
 // directly with a fabricated PodInfoMap, which is what lets these tests exercise
@@ -804,6 +860,61 @@ TEST(TrackedPodRegistry, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
     }
 }
 
+// k8s.cpu.requested must carry the DECLARED request, not the cpu.max limit. This is the whole
+// point of the request plumbing: before it, both gauges published the same limit-derived number,
+// so a container's request was indistinguishable from its limit. The fixture's cpu.max is
+// "50000 100000" (0.5 cores) while the declared request here is
+// 250m, so the two gauges MUST disagree -- if they ever print the same value again, the request
+// has stopped being threaded through.
+TEST(TrackedPodRegistry, RequestedGaugeReportsDeclaredRequestNotTheLimit)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    atlasagent::TrackedPodRegistry registry{&r};
+
+    registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_single_pod_with_quota"),
+                                    {{ContainerId('a'), "main"}}, {{"netflix.com/app", "myapp"}}, "pod-one", "ns-one",
+                                    {{"main", 0.25}}));
+    ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
+
+    memoryWriter->Clear();
+    registry.EmitCpuStats(true, true);
+    auto messages = memoryWriter->GetMessages();
+
+    // The request, from the pod spec, under the pod-scoped name.
+    EXPECT_TRUE(AnyLineContainsAll(messages, {"k8s.cpu.requested", ":0.250000"}));
+    // Capacity still comes from cpu.max, and must NOT have been overwritten by the request.
+    EXPECT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
+    EXPECT_FALSE(AnyLineContainsAll(messages, {"k8s.cpu.requested", ":0.500000"}));
+    // The Titus name is reserved for the Titus path (a fixed allocation) and must not appear here.
+    EXPECT_FALSE(AnyLineContains(messages, "titus.cpu.requested"));
+}
+
+// A container the pod spec gives no CPU request (BestEffort) must publish NO k8s.cpu.requested
+// at all -- not the limit, and not a zero that would turn every utilization/requested division in
+// a dashboard into inf. The capacity gauge is unaffected.
+TEST(TrackedPodRegistry, RequestedGaugeOmittedForContainerWithNoCpuRequest)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    atlasagent::TrackedPodRegistry registry{&r};
+
+    // Same fixture and container as above, but cpu_requests is empty.
+    registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_single_pod_with_quota"),
+                                    {{ContainerId('a'), "main"}}, {{"netflix.com/app", "myapp"}}));
+    ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
+
+    memoryWriter->Clear();
+    registry.EmitCpuStats(true, true);
+    auto messages = memoryWriter->GetMessages();
+
+    EXPECT_FALSE(AnyLineContains(messages, "k8s.cpu.requested"));
+    EXPECT_FALSE(AnyLineContains(messages, "titus.cpu.requested"));
+    EXPECT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
+}
+
 TEST(TrackedPodRegistry, ReResolvesCpuCountEveryRefreshCycle)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -872,7 +983,12 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
         // above these two gauges (silently killing them for every pod) would go unnoticed. They
         // depend only on the resolved CPU count, not on cpu.stat, so they survive here by design.
         EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.numProcessors"));
-        EXPECT_TRUE(AnyLineContains(messages, "titus.cpu.requested"));
+        // No "requested" gauge at all: these PodInfoMaps declare no CPU request, and a pod
+        // container without one omits it rather than publishing the limit (or the node's core
+        // count) as though it were the request. titus.cpu.requested is asserted absent too --
+        // that name belongs to the Titus path and must never appear on pod metrics.
+        EXPECT_FALSE(AnyLineContains(messages, "k8s.cpu.requested"));
+        EXPECT_FALSE(AnyLineContains(messages, "titus.cpu.requested"));
         // The cpu.stat-derived metrics must be absent rather than garbage.
         EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.utilization"));
         EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.peakUtilization"));
@@ -895,7 +1011,12 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
 
         auto messages = memoryWriter->GetMessages();
         EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.numProcessors"));
-        EXPECT_TRUE(AnyLineContains(messages, "titus.cpu.requested"));
+        // No "requested" gauge at all: these PodInfoMaps declare no CPU request, and a pod
+        // container without one omits it rather than publishing the limit (or the node's core
+        // count) as though it were the request. titus.cpu.requested is asserted absent too --
+        // that name belongs to the Titus path and must never appear on pod metrics.
+        EXPECT_FALSE(AnyLineContains(messages, "k8s.cpu.requested"));
+        EXPECT_FALSE(AnyLineContains(messages, "titus.cpu.requested"));
         EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.utilization"));
         EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.peakUtilization"));
         EXPECT_FALSE(AnyLineContains(messages, "cgroup.cpu.usageTime"));
@@ -1194,6 +1315,88 @@ TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
     EXPECT_EQ(identity.containers.at("x://" + std::string(60, 'c')), "double-scheme");
     // No scheme at all: passed through unchanged rather than mangled.
     EXPECT_EQ(identity.containers.at(ContainerId('d')), "bare");
+}
+
+// spec.containers[].resources.requests.cpu is the only source for a container's CPU request --
+// the cgroup filesystem carries cpu.max (the limit) instead. spec was fetched but never parsed
+// before this, so nothing here had coverage.
+//
+// Also covers initContainers[]: a native sidecar (restartPolicy=Always) runs for the pod's whole
+// lifetime and gets its own cgroup scope, so leaving that array unparsed would make exactly the
+// mesh-proxy / log-forwarder tier permanently unattributed.
+TEST(PodIdentityClient, ParsePodListParsesCpuRequestsFromSpec)
+{
+    auto json = R"json(
+{
+  "kind": "PodList",
+  "items": [
+    {
+      "metadata": {
+        "uid": "11111111-1111-1111-1111-111111111111",
+        "name": "pod-one",
+        "namespace": "ns-one"
+      },
+      "spec": {
+        "initContainers": [
+          {"name": "sidecar", "resources": {"requests": {"cpu": "50m", "memory": "64Mi"}}}
+        ],
+        "containers": [
+          {"name": "main", "resources": {"requests": {"cpu": "500m"}, "limits": {"cpu": "2"}}},
+          {"name": "besteffort", "resources": {}},
+          {"name": "limits-only", "resources": {"limits": {"cpu": "1"}}},
+          {"name": "no-resources-key"},
+          {"name": "unparseable", "resources": {"requests": {"cpu": "not-a-number"}}}
+        ]
+      }
+    }
+  ]
+}
+  )json";
+
+    auto result = PodIdentityClientTest::ParsePodList(json);
+
+    ASSERT_TRUE(result.has_value());
+    const auto& identity = result->at("11111111-1111-1111-1111-111111111111");
+
+    // Only the containers that actually declare a parseable requests.cpu appear.
+    ASSERT_EQ(identity.cpu_requests.size(), 2);
+    EXPECT_DOUBLE_EQ(identity.cpu_requests.at("main"), 0.5);
+    // From initContainers[], not containers[].
+    EXPECT_DOUBLE_EQ(identity.cpu_requests.at("sidecar"), 0.05);
+
+    // Every "no request" shape must be ABSENT rather than present-with-zero: absence is what makes
+    // the emission omit k8s.cpu.requested instead of publishing a misleading 0.
+    EXPECT_FALSE(identity.cpu_requests.contains("besteffort"));
+    EXPECT_FALSE(identity.cpu_requests.contains("limits-only"));
+    EXPECT_FALSE(identity.cpu_requests.contains("no-resources-key"));
+    EXPECT_FALSE(identity.cpu_requests.contains("unparseable"));
+}
+
+// A pod with no spec at all (or no containers array) must parse cleanly with an empty map rather
+// than failing the whole pod -- matching how this parser treats every other optional section.
+TEST(PodIdentityClient, ParsePodListMissingSpecLeavesCpuRequestsEmpty)
+{
+    auto json = R"json(
+{
+  "kind": "PodList",
+  "items": [
+    {
+      "metadata": {
+        "uid": "11111111-1111-1111-1111-111111111111",
+        "name": "pod-one",
+        "namespace": "ns-one"
+      }
+    }
+  ]
+}
+  )json";
+
+    auto result = PodIdentityClientTest::ParsePodList(json);
+
+    ASSERT_TRUE(result.has_value());
+    const auto& identity = result->at("11111111-1111-1111-1111-111111111111");
+    EXPECT_EQ(identity.name, "pod-one");
+    EXPECT_TRUE(identity.cpu_requests.empty());
 }
 
 TEST(PodMonitor, JoinCgroupAndIdentityPartialMatch)

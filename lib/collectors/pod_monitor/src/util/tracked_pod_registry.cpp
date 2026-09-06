@@ -5,6 +5,7 @@
 #include <lib/logger/src/logger.h>
 
 #include <cstdlib>
+#include <optional>
 #include <unistd.h>
 #include <utility>
 
@@ -117,6 +118,14 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const PodInfo& inf
         // directory can appear slightly before cpu.max is set to its real quota, and an in-place
         // resize can change it later.
         cit->second.cgroup.SetCpuCountOverride(ResolveCpuCountForPod(cit->second.cgroup));
+
+        // The declared CPU request, keyed by container name because that is how the pod spec
+        // identifies containers. Absent means this container declares no request (BestEffort), in
+        // which case CGroup omits k8s.cpu.requested rather than reporting the limit as if it
+        // were the request. Also re-resolved every cycle, so an in-place resize is picked up.
+        auto request_it = info.cpu_requests.find(container_name);
+        cit->second.cgroup.SetCpuRequestOverride(
+            request_it != info.cpu_requests.end() ? std::optional<double>{request_it->second} : std::nullopt);
     }
 }
 
