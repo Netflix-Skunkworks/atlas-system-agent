@@ -87,6 +87,49 @@ void CollectCpuRequests(const rapidjson::Value& containers,
     }
 }
 
+// Collects container id (bare hex) -> container name out of one status array. Called for BOTH
+// status.containerStatuses[] and status.initContainerStatuses[] so the two cannot drift.
+//
+// This map is the ONLY thing that lets a cgroup-discovered scope be attributed to anything: the
+// scope directory carries a runtime id, and `status` is the only place ids exist at all --
+// spec.containers[]/spec.initContainers[] carry names but no ids, since an id is assigned when the
+// runtime creates the container, long after the spec was written. So parsing spec alone (which is
+// all cpu_requests needs) is not sufficient to resolve a container.
+//
+// initContainerStatuses is therefore not an edge case: a NATIVE SIDECAR (an initContainer with
+// restartPolicy=Always, k8s 1.28+) is reported there rather than in containerStatuses and runs for
+// the pod's whole lifetime with its own cgroup scope. While this array went unparsed, such a
+// container was discovered on disk every cycle and skipped every cycle -- permanently and
+// silently, since ReconcileContainers matches discovered ids against this map.
+//
+// Keyed by id, which is unique per container, so merging both arrays into one map cannot collide.
+void CollectContainerNames(const rapidjson::Value& statuses,
+                           std::unordered_map<std::string, std::string>* containers) noexcept
+{
+    for (const auto& container : statuses.GetArray())
+    {
+        if (!container.IsObject() || !container.HasMember("name") || !container["name"].IsString() ||
+            !container.HasMember("containerID") || !container["containerID"].IsString())
+        {
+            Logger()->debug("Skipping container status entry with incomplete name/containerID");
+            continue;
+        }
+        auto container_id = StripContainerIdScheme(container["containerID"].GetString());
+        if (container_id.empty())
+        {
+            // A container still in `waiting` (ImagePullBackOff, CreateContainerError) is reported
+            // with an EMPTY containerID rather than none at all, which passes the IsString() check
+            // above. Emplacing it would put a key no cgroup scope can ever match into a map
+            // documented as holding bare hex ids -- and every not-yet-started container in the pod
+            // would contend for that one "" key.
+            Logger()->debug("Skipping container status entry for {} with an empty containerID",
+                            container["name"].GetString());
+            continue;
+        }
+        containers->emplace(std::move(container_id), container["name"].GetString());
+    }
+}
+
 }  // namespace
 
 PodIdentityClient::PodIdentityClient(Registry* registry, std::string kubelet_url) noexcept
@@ -174,25 +217,28 @@ std::optional<PodIdentityMap> PodIdentityClient::ParsePodList(const std::string&
             }
         }
 
-        // status.containerStatuses is absent for a pod that hasn't started any containers yet --
-        // leave `containers` empty for it rather than failing the whole pod's parse.
+        // status is where a container's RUNTIME id lives -- spec above carries names but no ids,
+        // so this is the only source for the id -> name map ReconcileContainers resolves
+        // cgroup-discovered scopes against. Both arrays are optional: a pod that has started no
+        // container yet has neither, which leaves `containers` empty rather than failing the
+        // whole pod's parse. See CollectContainerNames for why initContainerStatuses matters.
         if (entry.HasMember("status") && entry["status"].IsObject())
         {
             const auto& status = entry["status"];
             if (status.HasMember("containerStatuses") && status["containerStatuses"].IsArray())
             {
-                for (const auto& container : status["containerStatuses"].GetArray())
-                {
-                    if (!container.IsObject() || !container.HasMember("name") || !container["name"].IsString() ||
-                        !container.HasMember("containerID") || !container["containerID"].IsString())
-                    {
-                        Logger()->debug("Skipping containerStatuses entry with incomplete name/containerID");
-                        continue;
-                    }
-                    auto container_id = StripContainerIdScheme(container["containerID"].GetString());
-                    identity.containers.emplace(std::move(container_id), container["name"].GetString());
-                }
+                CollectContainerNames(status["containerStatuses"], &identity.containers);
             }
+            if (status.HasMember("initContainerStatuses") && status["initContainerStatuses"].IsArray())
+            {
+                CollectContainerNames(status["initContainerStatuses"], &identity.containers);
+            }
+            // NOT parsed: status.ephemeralContainerStatuses[] (kubectl debug containers). Those do
+            // get their own cgroup scope, so they land on the same skip path native sidecars used
+            // to -- but each one's name would become a new nf.process tag value, i.e. a fresh Atlas
+            // series per debug session. Left out pending that call; adding it is one more
+            // CollectContainerNames call here. The debug log on ReconcileContainers' skip path is
+            // what keeps the resulting gap diagnosable rather than silent.
         }
 
         result.emplace(metadata["uid"].GetString(), std::move(identity));

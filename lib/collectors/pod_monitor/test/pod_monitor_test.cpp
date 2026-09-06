@@ -1110,6 +1110,12 @@ TEST(TrackedPodRegistry, SkipsEmissionForContainerWhoseCgroupVanishedSinceRefres
     EXPECT_FALSE(AnyLineContains(messages, "k8s.cpu.requested"));
     // Memory would otherwise publish fabricated zeros from the now-absent files, since cgroup.cpp
     // reads memory.stat/memory.events keys with operator[] rather than find().
+    //
+    // DO NOT trim the CPU assertions above on the grounds that these memory ones cover it. Once
+    // the operator[] reads are guarded, these two hold whether or not the liveness skip exists --
+    // the files are gone either way -- so they stop being evidence of anything. Only
+    // cgroup.cpu.processingCapacity can prove the skip: it reads NO files at all, so its absence
+    // is attributable to nothing but the guard.
     EXPECT_FALSE(AnyLineContains(messages, "cgroup.mem."));
     EXPECT_FALSE(AnyLineContains(messages, "mem.cached"));
     EXPECT_TRUE(messages.empty());
@@ -1385,6 +1391,111 @@ TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
     EXPECT_EQ(identity.containers.at("x://" + std::string(60, 'c')), "double-scheme");
     // No scheme at all: passed through unchanged rather than mangled.
     EXPECT_EQ(identity.containers.at(ContainerId('d')), "bare");
+}
+
+// A NATIVE SIDECAR -- an initContainer with restartPolicy=Always (k8s 1.28+) -- is reported in
+// status.initContainerStatuses, NOT status.containerStatuses, and runs for the pod's whole
+// lifetime with its own cgroup scope. While that array went unparsed, such a container was
+// discovered on disk every cycle and skipped every cycle: forever, and silently. Zero CPU, memory
+// and IO metrics for the entire mesh-proxy / log-forwarder tier, while the pod and its main
+// container looked perfectly healthy.
+//
+// Parsing spec.initContainers[] (which ParsePodListParsesCpuRequestsFromSpec covers) is NOT the
+// same fix and does not substitute for this one: spec carries container names but no ids, because
+// an id is assigned when the runtime creates the container. status is the only source of ids, and
+// ReconcileContainers resolves cgroup-discovered scopes by id.
+TEST(PodIdentityClient, ParsePodListParsesInitContainerStatusesForNativeSidecars)
+{
+    auto json = R"json(
+{
+  "kind": "PodList",
+  "items": [
+    {
+      "metadata": {
+        "uid": "11111111-1111-1111-1111-111111111111",
+        "name": "pod-one",
+        "namespace": "ns-one"
+      },
+      "spec": {
+        "initContainers": [
+          {"name": "envoy", "restartPolicy": "Always", "resources": {"requests": {"cpu": "50m"}}}
+        ],
+        "containers": [
+          {"name": "app", "resources": {"requests": {"cpu": "500m"}}}
+        ]
+      },
+      "status": {
+        "initContainerStatuses": [
+          {"name": "envoy", "containerID": "containerd://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+        ],
+        "containerStatuses": [
+          {"name": "app", "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ]
+      }
+    }
+  ]
+}
+  )json";
+
+    auto result = PodIdentityClientTest::ParsePodList(json);
+
+    ASSERT_TRUE(result.has_value());
+    const auto& identity = result->at("11111111-1111-1111-1111-111111111111");
+
+    // Both status arrays land in the SAME map, keyed by id -- ids are unique per container, so
+    // merging them cannot collide. Dropping the initContainerStatuses call makes this size 1.
+    ASSERT_EQ(identity.containers.size(), 2);
+    EXPECT_EQ(identity.containers.at(ContainerId('a')), "app");
+    EXPECT_EQ(identity.containers.at(ContainerId('b')), "envoy");
+
+    // The sidecar's CPU request is now REACHABLE. It was already parsed from spec.initContainers[]
+    // before this fix, but ReconcileContainers looks cpu_requests up by NAME and obtains that name
+    // only via the id lookup above -- so a correctly-parsed 50m sat permanently unread.
+    EXPECT_DOUBLE_EQ(identity.cpu_requests.at("envoy"), 0.05);
+    EXPECT_DOUBLE_EQ(identity.cpu_requests.at("app"), 0.5);
+}
+
+// A container still in `waiting` (ImagePullBackOff, CreateContainerError) is reported with an
+// EMPTY containerID rather than none at all, so it passes the IsString() check. Keying the map on
+// "" would break its documented contract of holding bare hex ids, and -- worse -- every
+// not-yet-started container in the pod would contend for that single "" entry.
+TEST(PodIdentityClient, ParsePodListSkipsContainerStatusWithEmptyContainerId)
+{
+    auto json = R"json(
+{
+  "kind": "PodList",
+  "items": [
+    {
+      "metadata": {
+        "uid": "11111111-1111-1111-1111-111111111111",
+        "name": "pod-one",
+        "namespace": "ns-one"
+      },
+      "status": {
+        "containerStatuses": [
+          {"name": "pending", "containerID": ""},
+          {"name": "running", "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ],
+        "initContainerStatuses": [
+          {"name": "init-pending", "containerID": ""}
+        ]
+      }
+    }
+  ]
+}
+  )json";
+
+    auto result = PodIdentityClientTest::ParsePodList(json);
+
+    ASSERT_TRUE(result.has_value());
+    const auto& identity = result->at("11111111-1111-1111-1111-111111111111");
+
+    // Only the started container survives. TWO entries carry an empty containerID on purpose, one
+    // per status array: without the guard both would target the same "" key, emplace would keep
+    // whichever arrived first, and this map would be size 2 with a junk entry.
+    ASSERT_EQ(identity.containers.size(), 1);
+    EXPECT_EQ(identity.containers.at(ContainerId('a')), "running");
+    EXPECT_FALSE(identity.containers.contains(""));
 }
 
 // spec.containers[].resources.requests.cpu is the only source for a container's CPU request --

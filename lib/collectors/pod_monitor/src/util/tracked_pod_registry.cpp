@@ -108,9 +108,17 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const PodInfo& inf
         auto container_name_it = info.containers.find(container_id);
         if (container_name_it == info.containers.end())
         {
-            // Not ready yet -- expected transient race: a container's cgroup scope can appear
-            // slightly before kubelet reports it in containerStatuses (or vice versa). Skip this
-            // cycle without evicting it if it was already tracked.
+            // Genuinely transient now: a container's cgroup scope can appear slightly before
+            // kubelet reports it in *ContainerStatuses (or vice versa), and it resolves on a later
+            // cycle. Skip without evicting, so an already-tracked container survives the blip.
+            //
+            // It was NOT transient while status.initContainerStatuses went unparsed -- every native
+            // sidecar landed here on every cycle, forever. The one remaining permanent case is an
+            // ephemeral (kubectl debug) container, which PodIdentityClient deliberately does not
+            // resolve. Hence the log: a scope stuck here across many cycles is a real gap, and this
+            // path used to be entirely silent, which is exactly why the sidecar hole went unseen.
+            atlasagent::Logger()->debug("Pod {} container {} has a cgroup scope but no kubelet-reported name; skipping",
+                                        info.uid, container_id);
             continue;
         }
         const std::string& container_name = container_name_it->second;

@@ -16,9 +16,12 @@ struct PodIdentity
 {
     std::string name;
     std::string pod_namespace;  // "namespace" is a reserved C++ keyword, cannot be a field name
-    // Container id (bare hex, scheme prefix like "containerd://" stripped) -> container name,
-    // from status.containerStatuses[]. Empty when the pod has no containerStatuses yet (e.g. not
-    // started) rather than treated as a parse failure.
+    // Container id (bare hex, scheme prefix like "containerd://" stripped) -> container name, from
+    // status.containerStatuses[] AND status.initContainerStatuses[] -- the latter is where a native
+    // sidecar (an initContainer with restartPolicy=Always) is reported, and `status` is the only
+    // place a container's runtime id exists at all, since spec carries names but no ids. Empty when
+    // the pod has started no container yet, rather than treated as a parse failure. Never contains
+    // an empty-string key. See CollectContainerNames in the .cpp.
     std::unordered_map<std::string, std::string> containers;
     // Pod annotations from metadata.annotations. Empty if the pod has none (not a parse failure).
     std::unordered_map<std::string, std::string> annotations;
