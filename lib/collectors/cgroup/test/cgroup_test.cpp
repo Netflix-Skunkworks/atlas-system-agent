@@ -4,6 +4,9 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
+#include <algorithm>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 class CGroupTest : public atlasagent::CGroup
@@ -136,6 +139,111 @@ TEST(CGroup, CpuUtilizationV2)
     EXPECT_EQ(messages.at(4), "g:sys.cpu.utilization,id=user:33.333333\n");
 }
 
+// utilization = (usage delta) / (delta_t * cpuCount), so the counter baseline
+// (utilization_prev_*_time_) and the clock (utilization_last_updated_) MUST span the same window.
+// CpuUtilizationV2 updates the two on either side of its unreadable-cpu.stat guard, so advancing
+// the clock before that guard would leave the baseline behind, and the next successful tick would
+// divide a two-interval usage delta by ONE interval of capacity.
+//
+// sample1 -> sample2 is a fixed 40s system / 20s user delta: 33.333333% / 16.666667% over the real
+// 120s window, but 66.666667% / 33.333333% if delta_t were 60s -- exactly double, and exactly what
+// CGroup.CpuUtilizationV2 above asserts for a genuine 60s window. So a regression here does not
+// merely change a number, it reproduces a plausible-looking one.
+TEST(CGroup, CpuUtilizationV2ClockDoesNotAdvanceOnUnreadableCpuStat)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    setenv("TITUS_NUM_CPU", "1", 1);
+
+    std::unordered_map<std::string, int64_t> stats;
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+
+    auto baseTime = absl::FromUnixSeconds(1000000000);
+    auto cpuCount = cGroup.GetNumCpu();
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    // t=0: seeds the baselines. No utilization yet (prev_*_time_ is still -1).
+    cGroup.CpuUtilizationV2(baseTime, cpuCount, stats, absl::Seconds(60));
+
+    // t=60: cpu.stat unreadable, which parse_kv_from_file reports as an EMPTY map. The guard must
+    // bail without publishing utilization AND without advancing the clock.
+    memoryWriter->Clear();
+    std::unordered_map<std::string, int64_t> unreadable;
+    cGroup.CpuUtilizationV2(baseTime + absl::Seconds(60), cpuCount, unreadable, absl::Seconds(60));
+    {
+        auto skipped = memoryWriter->GetMessages();
+        // Exactly the three pre-guard emissions: cgroup.cpu.weight (cpu.weight on disk is still
+        // present) plus numProcessors/titus.cpu.requested (from cpuCount alone). Pinning the COUNT,
+        // not just the needles below, is what makes a spurious extra emission on the bail-out path
+        // visible.
+        EXPECT_EQ(skipped.size(), 3);
+        EXPECT_TRUE(std::any_of(skipped.begin(), skipped.end(),
+                                 [](const std::string& m) { return m.find("sys.cpu.numProcessors") != std::string::npos; }));
+        EXPECT_FALSE(std::any_of(skipped.begin(), skipped.end(),
+                                  [](const std::string& m) { return m.find("sys.cpu.utilization") != std::string::npos; }));
+    }
+
+    // t=120: readable again. delta_t must span the FULL 120s, not the 60s since the skipped tick.
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+    memoryWriter->Clear();
+    cGroup.CpuUtilizationV2(baseTime + absl::Seconds(120), cpuCount, stats, absl::Seconds(60));
+
+    auto messages = memoryWriter->GetMessages();
+    auto has = [&messages](const std::string& needle) {
+        return std::any_of(messages.begin(), messages.end(),
+                            [&needle](const std::string& m) { return m.find(needle) != std::string::npos; });
+    };
+    // weight, numProcessors, titus.cpu.requested, utilization system, utilization user.
+    EXPECT_EQ(messages.size(), 5);
+    EXPECT_TRUE(has("g:sys.cpu.utilization,id=system:33.333333\n"));
+    EXPECT_TRUE(has("g:sys.cpu.utilization,id=user:16.666667\n"));
+    // What a clock advanced BEFORE the guard would produce -- see the doubling note above.
+    EXPECT_FALSE(has("g:sys.cpu.utilization,id=system:66.666667\n"));
+    EXPECT_FALSE(has("g:sys.cpu.utilization,id=user:33.333333\n"));
+}
+
+// Same defect and fix in CpuPeakUtilizationV2, where the consequence is worse: peakUtilization is a
+// MaxGauge, so one inflated sample latches as the reported peak for the whole publishing interval
+// instead of being averaged away.
+TEST(CGroup, CpuPeakUtilizationV2ClockDoesNotAdvanceOnUnreadableCpuStat)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    setenv("TITUS_NUM_CPU", "1", 1);
+
+    std::unordered_map<std::string, int64_t> stats;
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+
+    auto baseTime = absl::FromUnixSeconds(1000000000);
+    auto cpuCount = cGroup.GetNumCpu();
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    cGroup.CpuPeakUtilizationV2(baseTime, stats, cpuCount);
+
+    std::unordered_map<std::string, int64_t> unreadable;
+    cGroup.CpuPeakUtilizationV2(baseTime + absl::Seconds(60), unreadable, cpuCount);
+
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+    memoryWriter->Clear();
+    cGroup.CpuPeakUtilizationV2(baseTime + absl::Seconds(120), stats, cpuCount);
+
+    auto messages = memoryWriter->GetMessages();
+    auto has = [&messages](const std::string& needle) {
+        return std::any_of(messages.begin(), messages.end(),
+                            [&needle](const std::string& m) { return m.find(needle) != std::string::npos; });
+    };
+    // Peak emits only its two lines -- it reads no cpu.weight and no cpuCount gauges.
+    EXPECT_EQ(messages.size(), 2);
+    EXPECT_TRUE(has("sys.cpu.peakUtilization,id=system:33.333333\n"));
+    EXPECT_TRUE(has("sys.cpu.peakUtilization,id=user:16.666667\n"));
+    EXPECT_FALSE(has("sys.cpu.peakUtilization,id=system:66.666667\n"));
+    EXPECT_FALSE(has("sys.cpu.peakUtilization,id=user:33.333333\n"));
+}
+
 TEST(CGroup, CpuTimeV2)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -185,6 +293,71 @@ TEST(CGroup, ProcessingTime)
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 1);
     EXPECT_EQ(messages.at(0), "c:cgroup.cpu.processingCapacity:30.000000\n");
+}
+
+// Regression test for the refactor that turned CpuTimeV2's (and its siblings') `static` delta
+// locals into per-instance members: two CGroup instances must keep independent prev_* baselines.
+// Against the old shared statics this fails twice -- step 2 would emit a 60/40/20 delta instead of
+// nothing (A's step-1 call already primed the shared static), and step 3 would compute zero instead
+// of 60/40/20 (B's step-2 call having clobbered the baseline with sample2's values).
+TEST(CGroup, TwoInstancesIndependentCpuTimeState)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+
+    CGroupTest cGroupA{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    CGroupTest cGroupB{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+
+    std::unordered_map<std::string, int64_t> stats1;
+    atlasagent::parse_kv_from_file("lib/collectors/cgroup/test/resources/sample1", "cpu.stat", &stats1);
+    std::unordered_map<std::string, int64_t> stats2;
+    atlasagent::parse_kv_from_file("lib/collectors/cgroup/test/resources/sample2", "cpu.stat", &stats2);
+
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    // Step 1: instance A's first-ever call (baseline from sample1) -- no delta yet.
+    cGroupA.CpuTimeV2(stats1);
+    auto messages = memoryWriter->GetMessages();
+    EXPECT_EQ(messages.size(), 0);
+    memoryWriter->Clear();
+
+    // Step 2: B's first-ever call (baseline from sample2) -- also no delta, so B's prev_* state
+    // starts independent of what A just recorded.
+    cGroupB.CpuTimeV2(stats2);
+    messages = memoryWriter->GetMessages();
+    EXPECT_EQ(messages.size(), 0);
+    memoryWriter->Clear();
+
+    // Step 3: A's second call reproduces the known-good delta from the single-instance CpuTimeV2
+    // test above (60/40/20), unaffected by B's call in between.
+    cGroupA.CpuTimeV2(stats2);
+    messages = memoryWriter->GetMessages();
+    EXPECT_EQ(messages.size(), 3);
+    EXPECT_EQ(messages.at(0), "c:cgroup.cpu.processingTime:60.000000\n");
+    EXPECT_EQ(messages.at(1), "c:cgroup.cpu.usageTime,id=system:40.000000\n");
+    EXPECT_EQ(messages.at(2), "c:cgroup.cpu.usageTime,id=user:20.000000\n");
+    memoryWriter->Clear();
+
+    // Step 4: B's second call against its own sample2 baseline -- delta is zero by design.
+    // spectator::Counter::Increment() (counter.h) writes only when delta > 0, so a genuinely zero
+    // delta on all three counters means no messages at all, not three zero-valued ones.
+    cGroupB.CpuTimeV2(stats2);
+    messages = memoryWriter->GetMessages();
+    EXPECT_EQ(messages.size(), 0);
+}
+
+TEST(CGroup, CpuWeight)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+
+    cGroup.CpuWeight();
+
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+    EXPECT_EQ(messages.size(), 1);
+    EXPECT_EQ(messages.at(0), "g:cgroup.cpu.weight:100.000000\n");
 }
 
 TEST(CGroup, CpuPeakUtilizationV2)
