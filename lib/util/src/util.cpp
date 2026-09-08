@@ -300,6 +300,15 @@ static std::string trim(std::string s)
 {
     auto not_space = [](unsigned char c) { return !std::isspace(c); };
     auto first = std::ranges::find_if(s, not_space);
+    if (first == s.end())
+    {
+        // Load-bearing, not defensive: with no non-space char, `last` below resolves to s.begin()
+        // while `first` is s.end(), so std::string(first, last) is a REVERSED range -- the negative
+        // distance becomes a huge size_type and throws std::length_error. Uncaught, and
+        // get_common_tags() runs in main() before the Registry exists, so this killed the agent at
+        // startup on exactly the input trim() exists to normalize.
+        return {};
+    }
     auto last = std::ranges::find_if(s | std::views::reverse, not_space).base();
     return std::string(first, last);
 }
