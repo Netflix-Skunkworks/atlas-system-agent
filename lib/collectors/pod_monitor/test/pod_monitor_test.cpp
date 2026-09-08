@@ -23,10 +23,9 @@
 class PodMonitorTest : public atlasagent::PodMonitor
 {
    public:
-    // Points at a reserved, virtually-guaranteed-unreachable local port (not a real path or
-    // file) -- FetchPodIdentities()'s HTTP GET fails fast (connection refused) against it, so
-    // identity resolution always returns nullopt and no real network access is ever made. This
-    // is what makes every test in this file hermetic.
+    // The default URL points at a local port nothing listens on -- FetchPodIdentities()'s GET
+    // fails fast (connection refused), so identity resolution always returns nullopt and no
+    // network access ever happens. This is what makes every test in this file hermetic.
     explicit PodMonitorTest(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
                              std::string kubelet_url = "http://127.0.0.1:1") noexcept
         : PodMonitor(registry, std::move(path_prefix), std::move(kubelet_url))
@@ -39,10 +38,9 @@ class PodMonitorTest : public atlasagent::PodMonitor
     using PodMonitor::TrackedPods;
 };
 
-// CgroupPodDiscovery keeps ScanPodSliceDirectory/MatchPodSliceName/NormalizePodUid protected --
-// same thin-subclass-with-`using` convention as PodMonitorTest above. FindActivePodCgroups()/
-// FindContainersInPod() are public on CgroupPodDiscovery itself, so tests exercising those call
-// atlasagent::CgroupPodDiscovery directly without needing this shim at all.
+// Exposes CgroupPodDiscovery's protected helpers -- same thin-subclass-with-`using` convention as
+// PodMonitorTest above. FindActivePodCgroups()/FindContainersInPod() are public, so their tests
+// call atlasagent::CgroupPodDiscovery directly and skip this shim.
 class CgroupPodDiscoveryTest : public atlasagent::CgroupPodDiscovery
 {
    public:
@@ -69,8 +67,8 @@ namespace
 // Fixture roots, so a path typo is a compile-visible constant rather than a silently-empty scan.
 constexpr auto kResources = "lib/collectors/pod_monitor/test/resources";
 
-// The pod uid every single-pod fixture tree uses, in both its cgroup-directory (underscore) and
-// canonical (dashed) spellings.
+// The uid every single-pod fixture uses, in its cgroup-directory (underscore) and canonical
+// (dashed) spellings.
 constexpr auto kPod1Dir = "kubepods-pod11111111_1111_1111_1111_111111111111.slice";
 constexpr auto kPod1Uid = "11111111-1111-1111-1111-111111111111";
 
@@ -81,12 +79,10 @@ std::string Pod1SlicePath(const std::string& tree)
     return std::string(kResources) + "/" + tree + "/kubepods.slice/" + kPod1Dir;
 }
 
-// Builds a one-pod PodInfoMap for driving TrackedPodRegistry::Refresh() DIRECTLY. This is the
-// seam that makes the gated-in path testable at all: Refresh() takes its input as a plain
-// parameter, so unlike going through PodMonitor (whose FindActivePodInfo() always fails its
-// kubelet lookup in this harness) a test can supply resolved annotations and a non-empty
-// container list. `cgroup_path` must still point at a real fixture tree, because Refresh()
-// discovers the pod's container scopes from the filesystem.
+// Builds a one-pod PodInfoMap for driving TrackedPodRegistry::Refresh() DIRECTLY -- the seam that
+// makes the gated-in path testable, since a test can supply resolved annotations and a non-empty
+// container list, which PodMonitor's always-failing kubelet lookup never can. `cgroup_path` must
+// still point at a real fixture tree: Refresh() discovers container scopes from the filesystem.
 atlasagent::PodInfoMap OnePodInfoMap(const std::string& uid, const std::string& cgroup_path,
                                       std::unordered_map<std::string, std::string> containers,
                                       std::unordered_map<std::string, std::string> annotations,
@@ -102,17 +98,17 @@ atlasagent::PodInfoMap OnePodInfoMap(const std::string& uid, const std::string& 
     return pods;
 }
 
-// Emitted lines look like "<sym>:<name>,<k>=<v>,<k>=<v>:<value>\n". ToSpectatorId() builds the
-// tag list by iterating an unordered_map, so TAG ORDER IS NOT STABLE -- assertions on tagged
-// metrics must match substrings, never whole lines.
+// Emitted lines look like "<sym>:<name>,<k>=<v>,<k>=<v>:<value>\n". ToSpectatorId() builds the tag
+// list by iterating an unordered_map, so TAG ORDER IS NOT STABLE -- assert on substrings, never
+// whole lines.
 bool AnyLineContains(const std::vector<std::string>& messages, const std::string& needle)
 {
     return std::any_of(messages.begin(), messages.end(),
                        [&needle](const std::string& line) { return line.find(needle) != std::string::npos; });
 }
 
-// For "this one line carries all of these at once" -- e.g. that a specific container's line also
-// carries its pod's shared tags.
+// For "one line carries all of these at once" -- e.g. a container's line also carrying its pod's
+// shared tags.
 bool AnyLineContainsAll(const std::vector<std::string>& messages, const std::vector<std::string>& needles)
 {
     return std::any_of(messages.begin(), messages.end(), [&needles](const std::string& line) {
@@ -266,9 +262,8 @@ TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    // Uses the identity-client's default kubelet URL, which points at nothing listening (see
-    // PodMonitorTest's default above), so FindActivePodInfo()'s identity lookup always fails
-    // closed and no real network call is ever made -- this test is hermetic.
+    // Hermetic: the default kubelet URL reaches nothing, so FindActivePodInfo()'s identity lookup
+    // always fails closed (see PodMonitorTest above).
     PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
 
     podMonitor.RefreshTrackedPods();
@@ -277,8 +272,8 @@ TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
     EXPECT_TRUE(podMonitor.TrackedPods().contains("22222222-2222-2222-2222-222222222222"));
     EXPECT_TRUE(podMonitor.TrackedPods().contains("33333333-3333-3333-3333-333333333333"));
 
-    // "systemd_partial" reuses UID 11111111... (already tracked above) and introduces a
-    // brand-new UID 77777777...; UIDs 22222222... and 33333333... are no longer discovered.
+    // "systemd_partial" reuses the already-tracked UID 11111111..., adds a brand-new 77777777...,
+    // and no longer contains 22222222... or 33333333....
     podMonitor.SetPrefix("lib/collectors/pod_monitor/test/resources/systemd_partial");
     podMonitor.RefreshTrackedPods();
 
@@ -290,26 +285,21 @@ TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
     EXPECT_FALSE(tracked.contains("33333333-3333-3333-3333-333333333333"));
 }
 
-// NOTE on test coverage for the tagging/Gating redesign (annotations/labels via kubelet's local
-// API, replacing per-container /proc/<pid>/environ reads): identity resolution and Gating are
-// now the same data source (one HTTP call to kubelet), and nothing in this codebase mocks that
-// call -- so the *successful* Gating path (a pod whose annotations/labels actually resolve,
-// tracked with the right tags) is covered by ResolvePodTags's own direct unit tests and
-// JoinCgroupAndIdentity's wiring tests below, not by an end-to-end RefreshTrackedPods test.
-// The Gating-*failure* path is likewise NOT covered end-to-end here. See
-// RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved below for why: because identity
-// resolution always fails in this harness, a pod's tracked container map is empty from the moment
-// it is created and nothing can ever make it non-empty, so an assertion that it is empty holds
-// regardless of whether the Gating logic works, is deleted, or is inverted.
+// NOTE on Gating coverage. Since the tagging/Gating redesign (annotations/labels from kubelet's
+// local API, replacing per-container /proc/<pid>/environ reads), identity resolution and Gating
+// share one data source -- a single kubelet HTTP call -- and nothing here mocks it. So the
+// *successful* Gating path is covered by ResolvePodTags's direct unit tests and
+// JoinCgroupAndIdentity's wiring tests, not end-to-end through RefreshTrackedPods.
 //
-// Both paths ARE reachable without any HTTP mocking, just not through PodMonitor:
-// TrackedPodRegistry's constructor, Refresh(const PodInfoMap&) and TrackedPods() are all public,
-// so a test can hand it a fabricated PodInfoMap with populated annotations/labels/containers
-// whose cgroup_path points at a real fixture tree. No such test exists yet.
+// The Gating-*failure* path is likewise not covered end-to-end: identity resolution always fails
+// in this harness, so a pod's tracked container map is empty from creation and nothing can make it
+// non-empty -- asserting it is empty holds whether the Gating logic works, is deleted, or is
+// inverted (see RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved).
+//
+// Both paths ARE reachable without HTTP mocking, just not through PodMonitor -- see the
+// TrackedPodRegistry section below, which drives Refresh(const PodInfoMap&) directly.
 
-// FindContainersInPod tests (parallel to the ScanPodSliceDirectory/MatchPodSliceName coverage
-// above -- structural directory-name matching only, no PID/environ I/O involved). Public on
-// CgroupPodDiscovery, so called directly -- no test shim needed.
+// FindContainersInPod tests: structural directory-name matching only, no PID/environ I/O involved.
 TEST(CgroupPodDiscovery, FindContainersInPodMatchesCriContainerdScopes)
 {
     auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(
@@ -327,33 +317,29 @@ TEST(CgroupPodDiscovery, FindContainersInPodMatchesCriContainerdScopes)
 
 TEST(CgroupPodDiscovery, FindContainersInPodIgnoresNonMatchingEntries)
 {
-    // The fixture directory also contains a plain file (cgroup.procs) and a subdirectory
-    // (not-a-container-scope-dir) that doesn't carry the cri-containerd-*.scope shape.
-    //
-    // Scope of what this actually proves: BOTH decoys are rejected purely by NAME, at
-    // MatchPodSliceName's size guard / prefix check -- not by the is_directory() type guard in
-    // FindContainersInPod. "cgroup.procs" is 12 chars, below the 21-char prefix+suffix floor, so
-    // it is rejected identically whether or not that type guard exists. So this test does NOT
-    // cover the type guard; a regular file shaped like cri-containerd-<64 hex>.scope would be
-    // needed for that, and no fixture has one.
+    // The fixture also holds a plain file (cgroup.procs) and a subdirectory
+    // (not-a-container-scope-dir) lacking the cri-containerd-*.scope shape. This proves less than
+    // it looks: BOTH decoys are rejected by NAME at MatchPodSliceName's size guard / prefix check,
+    // not by FindContainersInPod's is_directory() type guard -- "cgroup.procs" is 12 chars, below
+    // the 21-char prefix+suffix floor, so it is rejected identically with or without that guard.
+    // Covering the type guard needs a regular file shaped like cri-containerd-<64 hex>.scope, and
+    // no fixture has one.
     auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(
         "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
         "kubepods-pod11111111_1111_1111_1111_111111111111.slice");
 
-    // Note this loop only catches a SPURIOUS entry with an unexpected id; it is blind to a
-    // MISSING entry (an empty map passes vacuously). The size()==1 assertion in
-    // FindContainersInPodMatchesCriContainerdScopes above is what pins the count.
+    // This loop catches only a SPURIOUS entry; it is blind to a MISSING one (an empty map passes
+    // vacuously). The size()==1 in FindContainersInPodMatchesCriContainerdScopes pins the count.
     for (const auto& [id, path] : containers)
     {
         EXPECT_EQ(id, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     }
 }
 
-// Accumulation: every existing fixture directory yields at most ONE match, so a stray break or
-// early return after either emplace would leave all of them passing. That matters most for
-// containers -- a real pod almost always has at least two scopes (pause plus application), and
-// dropping all but one happens before ReconcileContainers, so there is no log line to notice:
-// the metrics simply never appear.
+// Accumulation: every other fixture directory yields at most ONE match, so a stray break or early
+// return after either emplace would leave them all passing. Real pods almost always have at least
+// two scopes (pause plus application), and dropping all but one happens before ReconcileContainers
+// -- no log line to notice, the metrics simply never appear.
 TEST(CgroupPodDiscovery, FindContainersInPodReturnsAllMatchingScopes)
 {
     auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(Pod1SlicePath("systemd_pod_with_two_containers"));
@@ -381,10 +367,43 @@ TEST(CgroupPodDiscovery, FindContainersInPodMissingDirReturnsEmpty)
     EXPECT_TRUE(containers.empty());
 }
 
-// ResolvePodTags: the pure fallback-chain tag resolution, covering the primary (netflix.com/*
-// annotation) tier, the app.kubernetes.io/*/k8s-app/app label fallback tier, nf.cluster's
-// asymmetric primary-only gate, the redefined all-absent Gating case, and nf.node's now-purely-
-// structural sourcing.
+// KNOWN GAP, asserted deliberately. Under the CGROUPFS driver (this fixture) a container's cgroup
+// directory is the BARE id -- no "cri-containerd-" prefix, no ".scope" suffix -- so
+// FindContainersInPod, matching only the systemd+containerd spelling, finds nothing. Driver support
+// is ASYMMETRIC: FindActivePodCgroups handles both drivers (see FindActivePodCgroupsCgroupfs
+// above), FindContainersInPod one of six runtime x driver spellings. On such a node every pod is
+// tracked, every container silently skipped, and zero container metrics ship while it looks healthy.
+//
+// Bare ids are containerd's and docker's cgroupfs spelling, NOT a universal one -- CRI-O keeps its
+// crio- prefix and only drops .scope -- so passing this after a widening does not prove CRI-O
+// works; that needs its own fixture with a crio-conmon-<id> sibling, proving the monitor cgroup is
+// excluded rather than counted as a container. Full matrix in CgroupPodDiscovery's header.
+//
+// NOT currently reachable: measured on i-03d4c80b0030b1f6f, all 53 container-level directories
+// matched cri-containerd-<id>.scope with zero missed, and every node in the fleet runs containerd
+// (no CRI-O) with the systemd driver. A gating item before any CRI-O/cgroupfs migration.
+//
+// The is_directory assertions matter as much as the size check: the previous cgroupfs fixture had
+// NO container directories, so an empty result was indistinguishable from a correct one. Deleting
+// them must fail loudly. WHEN cgroupfs support lands, expect 2 and assert both ids resolve -- the
+// fixture already carries them, so the test flips from pinning the bug to pinning the fix.
+TEST(CgroupPodDiscovery, FindContainersInPodFindsNothingUnderCgroupfsDriverKnownGap)
+{
+    const std::string pod_dir =
+        std::string(kResources) + "/cgroupfs/kubepods/burstable/pod55555555-5555-5555-5555-555555555555";
+
+    // The fixture really does hold two container directories, named the cgroupfs way.
+    ASSERT_TRUE(std::filesystem::is_directory(pod_dir + "/" + ContainerId('e')));
+    ASSERT_TRUE(std::filesystem::is_directory(pod_dir + "/" + ContainerId('f')));
+
+    auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(pod_dir);
+
+    EXPECT_TRUE(containers.empty());
+}
+
+// ResolvePodTags: pure fallback-chain tag resolution -- the netflix.com/* primary tier, the
+// app.kubernetes.io/* / k8s-app / app label fallback tier, nf.cluster's asymmetric primary-only
+// gate, the all-absent Gating case, and nf.node's purely structural sourcing.
 TEST(PodTagResolver, ResolvePodTagsPrimaryTierOnly)
 {
     std::unordered_map<std::string, std::string> annotations{
@@ -398,13 +417,12 @@ TEST(PodTagResolver, ResolvePodTagsPrimaryTierOnly)
 
     EXPECT_EQ(result->at("nf.app"), "myapp");
     EXPECT_EQ(result->at("nf.stack"), "mystack");
-    // nf.detail's tag-emplace is currently disabled in ResolvePodTags (see its own "todo
-    // uncomment later" comment) -- nf.cluster's "-mydetail" suffix still comes through since
-    // BuildNfCluster reads the annotation directly, independent of this tag.
+    // nf.detail's tag-emplace is currently disabled in ResolvePodTags ("todo uncomment later");
+    // the "-mydetail" suffix still reaches nf.cluster because BuildNfCluster reads the annotation.
     EXPECT_FALSE(result->contains("nf.detail"));
     EXPECT_EQ(result->at("nf.cluster"), "myapp-mystack-mydetail");
     EXPECT_EQ(result->at("nf.node"), "my-pod-abc123");
-    // nf.platform's tag-emplace is likewise currently disabled -- see the same comment.
+    // nf.platform's tag-emplace is likewise currently disabled.
     EXPECT_FALSE(result->contains("nf.platform"));
     EXPECT_FALSE(result->contains("k8s.cluster.name"));
     // nf.process is per-container, applied by the caller (TrackedPodRegistry) -- never set here.
@@ -435,8 +453,7 @@ TEST(PodTagResolver, ResolvePodTagsLabelFallbackTierOnly)
 
     EXPECT_EQ(result->at("nf.app"), "labelapp");
     EXPECT_EQ(result->at("nf.stack"), "labelstack");
-    // nf.detail/nf.platform's tag-emplaces are currently disabled in ResolvePodTags (see its own
-    // "todo uncomment later" comment).
+    // nf.detail/nf.platform's tag-emplaces are currently disabled in ResolvePodTags.
     EXPECT_FALSE(result->contains("nf.detail"));
     EXPECT_FALSE(result->contains("nf.platform"));
     // Asymmetric gate: nf.app resolved (via the label fallback tier, not the netflix.com/app
@@ -445,10 +462,9 @@ TEST(PodTagResolver, ResolvePodTagsLabelFallbackTierOnly)
 }
 
 // Pins only that app.kubernetes.io/name wins when all three nf.app fallback labels are present.
-// It deliberately does NOT pin the relative order of k8s-app vs app: with all three seeded, only
-// the overall winner is observable, so swapping the last two entries of ResolvePodTags's fallback
-// list (or dropping "app" entirely) would still pass this. Pinning those needs one test per
-// label, each seeding that label alone.
+// It deliberately does NOT pin k8s-app vs app: with all three seeded only the overall winner is
+// observable, so swapping the last two entries of ResolvePodTags's fallback list -- or dropping
+// "app" -- would still pass. Pinning those needs one test per label, each seeding it alone.
 TEST(PodTagResolver, ResolvePodTagsLabelFallbackPrefersAppNameWhenAllPresent)
 {
     std::unordered_map<std::string, std::string> labels{
@@ -471,8 +487,7 @@ TEST(PodTagResolver, ResolvePodTagsEmptyAnnotationFallsThroughToLabelTier)
     auto result = atlasagent::ResolvePodTags(annotations, labels, "", "");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->at("nf.app"), "fallback-app");
-    // netflix.com/app was present-but-empty, not absent -- but primary_app is still unset per
-    // the "present and non-empty" rule, so nf.cluster (primary-only) must stay unset too.
+    // Present-but-empty still leaves primary_app unset, so nf.cluster (primary-only) stays unset.
     EXPECT_FALSE(result->contains("nf.cluster"));
 }
 
@@ -482,11 +497,10 @@ TEST(PodTagResolver, ResolvePodTagsAllAbsentReturnsNullopt)
     EXPECT_FALSE(atlasagent::ResolvePodTags({}, {}, "", "some-cluster").has_value());
 }
 
-// The single most important behavior change from the superseded environ-based design: nf.node
-// is now always structurally available once a pod's identity resolves at all (it's the pod's own
-// name, not read from environ/annotations), so it's deliberately excluded from the Gating
-// decision -- including it would make Gating vacuous (every pod would always pass). A pod with a
-// resolvable name but no matching netflix.com/*/app.kubernetes.io/* signal must still gate out.
+// nf.node is the pod's own name, not read from environ/annotations, so it is structurally
+// available whenever identity resolves at all -- which is why it is deliberately excluded from the
+// Gating decision: including it would make Gating vacuous (every pod would always pass). A pod
+// with a resolvable name but no netflix.com/* or app.kubernetes.io/* signal must still gate out.
 TEST(PodTagResolver, ResolvePodTagsPodNameAloneStillGatesOut)
 {
     auto result = atlasagent::ResolvePodTags({}, {}, "my-pod-abc123", "");
@@ -506,8 +520,8 @@ TEST(PodTagResolver, ResolvePodTagsSetsK8sClusterNameOnlyWhenNonEmpty)
     EXPECT_FALSE(withoutCluster->contains("k8s.cluster.name"));
 }
 
-// The unit's headline rule, and previously unpinned: no other test supplies a non-empty primary
-// annotation AND a competing label for the same key, so inverting any of the three
+// The unit's headline rule, and unpinned elsewhere: no other test supplies both a non-empty
+// primary annotation and a competing label for the same key, so inverting any of the three
 // primary-else-fallback selections would leave every other test in this file green.
 TEST(PodTagResolver, ResolvePodTagsPrimaryAnnotationsBeatCompetingLabelsForSameKey)
 {
@@ -534,10 +548,9 @@ TEST(PodTagResolver, ResolvePodTagsPrimaryAnnotationsBeatCompetingLabelsForSameK
 }
 
 // nf.cluster is built only from the PRIMARY netflix.com/{app,stack,detail} annotations, never
-// from label-fallback values -- the deliberate asymmetry the header documents at length. Every
-// pre-existing test has either empty labels or an unset primary app, so none of them has a
-// primary app engaged alongside a contributing label, which is the only shape that can catch a
-// change from the primary-only values to the post-fallback ones.
+// from label-fallback values -- the deliberate asymmetry the header documents. No other test has
+// a primary app engaged alongside a contributing label, the only shape that catches a switch from
+// the primary-only values to the post-fallback ones.
 TEST(PodTagResolver, ResolvePodTagsNfClusterOmitsLabelFallbackSuffixes)
 {
     // Primary app only; stack and detail resolve solely via label fallback.
@@ -550,8 +563,7 @@ TEST(PodTagResolver, ResolvePodTagsNfClusterOmitsLabelFallbackSuffixes)
     // EXACT equality: the whole point is what must be ABSENT from this string.
     EXPECT_EQ(fallbackSuffixes->at("nf.cluster"), "myapp");
 
-    // No primary app at all: nf.app resolves via label fallback, so there must be no nf.cluster
-    // even though nf.app itself is set.
+    // No primary app: nf.app resolves via label fallback, so nf.cluster must be absent even so.
     auto fallbackApp = atlasagent::ResolvePodTags({{"netflix.com/stack", "mystack"}},
                                                    {{"app.kubernetes.io/name", "labelapp"}}, "", "");
     ASSERT_TRUE(fallbackApp.has_value());
@@ -578,27 +590,24 @@ TEST(PodTagResolver, ResolvePodTagsStackAloneOrDetailAlonePassesGating)
     ASSERT_TRUE(detailOnly.has_value());
     EXPECT_EQ(detailOnly->at("nf.node"), "my-pod");
 
-    // The app.kubernetes.io/component fallback has no other observable effect anywhere, so this
-    // is the only test that makes it load-bearing: it is the sole reason this pod is not gated
-    // out, and the returned map is legitimately EMPTY (no app/stack, nf.detail disabled, no
-    // primary app so no cluster, no pod name, no K8S_CLUSTER).
+    // The only test that makes the app.kubernetes.io/component fallback load-bearing: it is the
+    // sole reason this pod is not gated out, and the returned map is legitimately EMPTY (no
+    // app/stack, nf.detail disabled, no primary app so no cluster, no pod name, no K8S_CLUSTER).
     auto componentLabelOnly = atlasagent::ResolvePodTags({}, {{"app.kubernetes.io/component", "labeldetail"}}, "", "");
     ASSERT_TRUE(componentLabelOnly.has_value());
     EXPECT_TRUE(componentLabelOnly->empty());
 }
 
-// End-to-end wiring test through RefreshTrackedPods(): the pod in systemd_pod_with_containers is
-// discovered structurally AND so is its container scope, but this file's hermetic setup means
-// FindActivePodInfo()'s identity lookup always fails closed -- so info.annotations/info.labels
-// are empty, ResolvePodTags returns nullopt, and the container is never tracked.
+// Wiring through RefreshTrackedPods(): the pod in systemd_pod_with_containers and its container
+// scope are both discovered structurally, but identity lookup always fails closed here, so
+// annotations/labels are empty, ResolvePodTags returns nullopt, and the container is never tracked.
 //
-// WHAT THIS DOES NOT PROVE: it is not a test of the Gating logic. Two independent causes produce
-// this same empty container map here -- Gating rejecting the pod, and the container simply not
-// being in the (always-empty) kubelet-reported info.containers -- and this assertion cannot tell
-// them apart. It passes with Gating's container-clearing statement working, deleted, or inverted.
-// It pins only the outer wiring: that a pod with an unresolved identity is still TRACKED as a pod
-// while emitting nothing for any container. See the NOTE above this test group for how to
-// actually cover Gating (drive TrackedPodRegistry::Refresh directly with a fabricated PodInfoMap).
+// WHAT THIS DOES NOT PROVE: it is not a test of the Gating logic. Two independent causes give the
+// same empty container map -- Gating rejecting the pod, and the container being absent from the
+// always-empty kubelet-reported info.containers -- and this assertion cannot tell them apart; it
+// passes with Gating's container-clearing statement working, deleted, or inverted. It pins only
+// the outer wiring: an unresolved-identity pod stays TRACKED as a pod while emitting nothing for
+// any container. See the NOTE above for how Gating is actually covered.
 TEST(PodMonitor, RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -615,8 +624,8 @@ TEST(PodMonitor, RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved)
 // container's CPU REQUEST -- the cgroup filesystem exposes cpu.max (the limit), never the request.
 TEST(CpuQuantity, ParseCpuQuantityAcceptsMillicpuAndDecimalCores)
 {
-    // EXPECT_DOUBLE_EQ rather than EXPECT_EQ: the millicpu path divides by 1000, and whether e.g.
-    // 100.0/1000.0 is bit-identical to the literal 0.1 is a subtlety no test should rest on.
+    // EXPECT_DOUBLE_EQ, not EXPECT_EQ: the millicpu path divides by 1000, and no test should rest
+    // on whether 100.0/1000.0 is bit-identical to the literal 0.1.
     auto expect_cores = [](std::string_view input, double expected) {
         auto result = atlasagent::ParseCpuQuantity(input);
         ASSERT_TRUE(result.has_value()) << "failed to parse: " << input;
@@ -643,11 +652,10 @@ TEST(CpuQuantity, ParseCpuQuantityRejectsMalformedInput)
     EXPECT_FALSE(atlasagent::ParseCpuQuantity("+2").has_value());
 }
 
-// These two are the reason ParseCpuQuantity checks that from_chars consumed the WHOLE input.
-// from_chars stops at the first character it cannot use instead of failing, so without that check
-// these parse as 0.5 and 5 -- wrong by 10x and 10x respectively, silently. A full-consumption
-// check is not used anywhere else in this repo, so it is easy to drop in a refactor; this test
-// exists to make that break loudly.
+// Why ParseCpuQuantity checks that from_chars consumed the WHOLE input: from_chars stops at the
+// first character it cannot use instead of failing, so without that check these silently parse as
+// 0.5 and 5. Nothing else in this repo does a full-consumption check, so it is easy to drop in a
+// refactor; this test exists to make that break loudly.
 TEST(CpuQuantity, ParseCpuQuantityRejectsTrailingJunkRatherThanTruncating)
 {
     EXPECT_FALSE(atlasagent::ParseCpuQuantity("0.5.1").has_value());
@@ -665,17 +673,17 @@ TEST(CpuQuantity, ParseCpuQuantityRejectsMemoryStyleSuffixes)
 
 // ---------------------------------------------------------------------------------------------
 // TrackedPodRegistry: the gated-IN path. Everything below drives Refresh(const PodInfoMap&)
-// directly with a fabricated PodInfoMap, which is what lets these tests exercise
-// ReconcileContainers / EvictUntrackedContainers / the Gating clear / SetExtraTags /
-// SetCpuCountOverride -- none of which any PodMonitor-routed test can reach, because
-// FindActivePodInfo()'s kubelet lookup always fails closed here (see the NOTE further up).
+// directly with a fabricated PodInfoMap, which is what lets them exercise ReconcileContainers /
+// EvictUntrackedContainers / the Gating clear / SetExtraTags / SetCpuCountOverride -- none of which
+// a PodMonitor-routed test can reach, since its kubelet lookup always fails closed here (see the
+// NOTE further up).
 //
-// WRITER DISCIPLINE, load-bearing: the writer reached by WriterTestHelper::GetImpl() is a
-// process-wide singleton shared by every test in this binary, so each test below Clear()s it
-// immediately before the Emit* call it asserts on -- never relying on it starting empty. GetImpl()
-// is also fetched only AFTER the Registry is constructed, matching cgroup_test.cpp's convention,
-// and these tests use ONE Registry each: where fresh tracking state is needed they construct a
-// second TrackedPodRegistry sharing that Registry rather than a second Registry.
+// WRITER DISCIPLINE, load-bearing: WriterTestHelper::GetImpl() returns a process-wide singleton
+// shared by every test in this binary, so each test below Clear()s it immediately before the Emit*
+// call it asserts on rather than relying on it starting empty. GetImpl() is fetched only AFTER the
+// Registry is constructed, matching cgroup_test.cpp's convention, and each test uses ONE Registry:
+// where fresh tracking state is needed it builds a second TrackedPodRegistry sharing that
+// Registry, never a second Registry.
 // ---------------------------------------------------------------------------------------------
 
 TEST(TrackedPodRegistry, GatingClearsTrackedContainersWhenIdentityLost)
@@ -692,11 +700,10 @@ TEST(TrackedPodRegistry, GatingClearsTrackedContainersWhenIdentityLost)
     ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
-    // Cycle 2: byte-identical input except the annotation is gone (a relabel/rollout), so
-    // ResolvePodTags returns nullopt. The pod must stay tracked while every container it was
-    // emitting for is evicted -- otherwise those containers keep publishing under the stale
-    // nf.app/nf.cluster tags SetExtraTags gave them, since SetExtraTags is only reached on the
-    // gated-in path. Deleting the container-clearing statement makes this assertion fail.
+    // Cycle 2: byte-identical input minus the annotation (a relabel/rollout), so ResolvePodTags
+    // returns nullopt. The pod stays tracked but its containers must be dropped -- otherwise they
+    // keep publishing under the stale nf.app/nf.cluster tags SetExtraTags gave them on the gated-in
+    // path. Deleting the container-clearing statement makes this assertion fail.
     registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, {{container_id, "main"}}, {}));
     ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
     EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
@@ -715,9 +722,9 @@ TEST(TrackedPodRegistry, EvictsContainerWhoseCgroupScopeDisappears)
     registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_pod_with_containers"), containers, annotations));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
-    // Cycle 2: same uid and same kubelet-reported container, but cgroup_path now points at a pod
-    // slice with NO container scopes at all -- i.e. the scope directory vanished. Gating still
-    // passes, so this isolates EvictUntrackedContainers rather than the Gating clear.
+    // Cycle 2: same uid and kubelet-reported container, but cgroup_path now points at a pod slice
+    // with NO container scopes -- the scope directory vanished. Gating still passes, so this
+    // isolates EvictUntrackedContainers rather than the Gating clear.
     registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd"), containers, annotations));
     ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
     EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
@@ -746,8 +753,8 @@ TEST(TrackedPodRegistry, SkipsWithoutEvictingContainerNotYetReportedByKubelet)
 // Both container scopes in this fixture carry real memory.current/max/stat/events/swap files ON
 // PURPOSE -- do not strip them. CGroup's memory readers use unordered_map::operator[], which
 // INSERTS a zero for any absent key, so a scope with no memory files still emits a full set of
-// fabricated zeroes. This test would therefore still "pass" with an empty fixture, but only by
-// leaning on that behavior; real values keep it honest and independent of it.
+// fabricated zeroes: this test would "pass" on an empty fixture, but only by leaning on that
+// behavior. Real values keep it independent of it.
 TEST(TrackedPodRegistry, PerContainerTagsReachEmittedLinesWithSharedPodTags)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -769,9 +776,9 @@ TEST(TrackedPodRegistry, PerContainerTagsReachEmittedLinesWithSharedPodTags)
     EXPECT_TRUE(AnyLineContains(messages, "nf.process=main"));
     EXPECT_TRUE(AnyLineContains(messages, "nf.process=sidecar"));
 
-    // ...while BOTH carry the pod-level tags. This is the assertion that matters: ReconcileContainers
-    // copies pod_tags per iteration and std::move()s that copy into SetExtraTags, so hoisting the
-    // copy out of the loop as an "optimization" would leave every container after the first with an
+    // ...while BOTH carry the pod-level tags -- the assertion that matters. ReconcileContainers
+    // copies pod_tags per iteration and std::move()s that copy into SetExtraTags: hoisting the copy
+    // out of the loop as an "optimization" would leave every container after the first with an
     // empty tag map -- metrics that still publish, but silently unattributable to any app.
     EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.process=main", "nf.app=myapp", "nf.stack=mystack"}));
     EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.process=sidecar", "nf.app=myapp", "nf.stack=mystack"}));
@@ -811,8 +818,7 @@ TEST(TrackedPodRegistry, InjectsK8sNamespaceNameOnlyWhenNamespaceKnown)
     }
 
     // The tag reads the SELF-HEALED identity, not this cycle's raw input: a cycle whose kubelet
-    // lookup failed (blank name/namespace) must keep publishing the namespace learned earlier
-    // rather than silently dropping the tag for a minute.
+    // lookup failed (blank name/namespace) must keep publishing the namespace learned earlier.
     {
         atlasagent::TrackedPodRegistry registry{&r};
         registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, containers, annotations, "pod-one", "ns-one"));
@@ -845,9 +851,9 @@ TEST(TrackedPodRegistry, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
         EXPECT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
     }
 
-    // cpu.max "max 100000" is the unlimited case: QuotaCpuCount returns nullopt and the count
-    // falls back to the node's online CPU count (an unquotaed container can burst across all of
-    // them). Computed here the same way ResolveCpuCountForPod does.
+    // cpu.max "max 100000" is the unlimited case: QuotaCpuCount returns nullopt and the count falls
+    // back to the node's online CPU count (an unquotaed container can burst across all of them),
+    // computed here the same way ResolveCpuCountForPod does.
     {
         const auto expected = ":" + std::to_string(static_cast<double>(sysconf(_SC_NPROCESSORS_ONLN)));
         atlasagent::TrackedPodRegistry registry{&r};
@@ -860,12 +866,11 @@ TEST(TrackedPodRegistry, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
     }
 }
 
-// k8s.cpu.requested must carry the DECLARED request, not the cpu.max limit. This is the whole
-// point of the request plumbing: before it, both gauges published the same limit-derived number,
-// so a container's request was indistinguishable from its limit. The fixture's cpu.max is
-// "50000 100000" (0.5 cores) while the declared request here is
-// 250m, so the two gauges MUST disagree -- if they ever print the same value again, the request
-// has stopped being threaded through.
+// k8s.cpu.requested must carry the DECLARED request, not the cpu.max limit -- before the request
+// plumbing both gauges published the same limit-derived number, so a container's request was
+// indistinguishable from its limit. The fixture's cpu.max is "50000 100000" (0.5 cores) against a
+// declared 250m request, so the two gauges MUST disagree: if they ever print the same value again,
+// the request has stopped being threaded through.
 TEST(TrackedPodRegistry, RequestedGaugeReportsDeclaredRequestNotTheLimit)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -922,10 +927,10 @@ TEST(TrackedPodRegistry, ReResolvesCpuCountEveryRefreshCycle)
     auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     atlasagent::TrackedPodRegistry registry{&r};
 
-    // A checked-in fixture cannot express this: the point is that an ALREADY-TRACKED container
-    // picks up a changed cpu.max. try_emplace won't rebuild the CGroup (its path is fixed at first
-    // insertion), so the quota has to be rewritten underneath the same path -- exactly what an
-    // in-place vertical resize does on a live node.
+    // An ALREADY-TRACKED container must pick up a changed cpu.max. try_emplace won't rebuild the
+    // CGroup (its path is fixed at first insertion), so the quota has to be rewritten underneath
+    // the same path -- what an in-place vertical resize does on a live node, and what a checked-in
+    // fixture cannot express.
     TempCgroupTree tree{"cpu_resize"};
     tree.WriteScopeFile("cpu.max", "50000 100000\n");
 
@@ -950,15 +955,15 @@ TEST(TrackedPodRegistry, ReResolvesCpuCountEveryRefreshCycle)
     EXPECT_FALSE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
 }
 
-// Regression guard for the noexcept/out-of-bounds defects fixed in cgroup.cpp: CpuUtilizationV2
-// and CpuPeakUtilizationV2 read cpu.stat keys, and GetAvailCpuTime indexes cpu.max's parsed
-// fields. Both are noexcept, and both are reachable with those files absent -- CollectCpuStats
-// runs every second while the tracked set is only refreshed every 60s, so a container that exits
-// stays tracked (with a vanished cgroup directory) for up to a minute.
+// Regression guard for the noexcept/out-of-bounds defects fixed in cgroup.cpp: CpuUtilizationV2 and
+// CpuPeakUtilizationV2 read cpu.stat keys, GetAvailCpuTime indexes cpu.max's parsed fields, both are
+// noexcept, and both are reachable with those files absent -- CollectCpuStats runs every second
+// while the tracked set refreshes every 60s, so an exited container stays tracked (cgroup directory
+// gone) for up to a minute.
 //
 // Deliberately NOT a death test: before the fix the cpu.max path was an out-of-bounds read (UB),
 // not a clean throw, and pinning a regression test to UB is not meaningful. This asserts the
-// post-fix contract instead -- return cleanly, and emit nothing that depends on the missing data.
+// post-fix contract -- return cleanly, emit nothing that depends on the missing data.
 TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -978,15 +983,15 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
         registry.EmitCpuStats(true, true);
 
         auto messages = memoryWriter->GetMessages();
-        // Emission still happened -- without these the absence assertions below would all be
-        // satisfied by "nothing ran at all", and a regression that hoisted the cpu.stat guard
-        // above these two gauges (silently killing them for every pod) would go unnoticed. They
-        // depend only on the resolved CPU count, not on cpu.stat, so they survive here by design.
+        // Non-vacuity: without this, every absence assertion below would also be satisfied by
+        // "nothing ran at all", and a regression hoisting the cpu.stat guard above this gauge
+        // (silently killing it for every pod) would go unnoticed. It depends only on the resolved
+        // CPU count, not on cpu.stat, so it survives here by design.
         EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.numProcessors"));
-        // No "requested" gauge at all: these PodInfoMaps declare no CPU request, and a pod
-        // container without one omits it rather than publishing the limit (or the node's core
-        // count) as though it were the request. titus.cpu.requested is asserted absent too --
-        // that name belongs to the Titus path and must never appear on pod metrics.
+        // No "requested" gauge at all: these PodInfoMaps declare no CPU request, and a container
+        // without one omits it rather than publishing the limit (or the node's core count) as
+        // though it were the request. titus.cpu.requested belongs to the Titus path and must never
+        // appear on pod metrics.
         EXPECT_FALSE(AnyLineContains(messages, "k8s.cpu.requested"));
         EXPECT_FALSE(AnyLineContains(messages, "titus.cpu.requested"));
         // The cpu.stat-derived metrics must be absent rather than garbage.
@@ -1011,10 +1016,7 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
 
         auto messages = memoryWriter->GetMessages();
         EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.numProcessors"));
-        // No "requested" gauge at all: these PodInfoMaps declare no CPU request, and a pod
-        // container without one omits it rather than publishing the limit (or the node's core
-        // count) as though it were the request. titus.cpu.requested is asserted absent too --
-        // that name belongs to the Titus path and must never appear on pod metrics.
+        // Same "requested"/titus reasoning as Case A.
         EXPECT_FALSE(AnyLineContains(messages, "k8s.cpu.requested"));
         EXPECT_FALSE(AnyLineContains(messages, "titus.cpu.requested"));
         EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.utilization"));
@@ -1022,13 +1024,11 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
         EXPECT_FALSE(AnyLineContains(messages, "cgroup.cpu.usageTime"));
     }
 
-    // Case C: cpu.stat is COMPLETE but cpu.max is absent, so GetAvailCpuTime returns 0. Cases A
-    // and B both bail out at the cpu.stat key guard and never reach the divide-by-zero gate, so
-    // without this case that third part of the fix has no coverage at all.
-    //
-    // TWO cycles are required: on the first, the prev_* baselines are still -1, so the gauges are
-    // skipped for an unrelated reason. Only on the second -- with a real delta available -- is the
-    // avail_cpu_time gate the deciding factor, and removing it would publish secs/0.
+    // Case C: cpu.stat COMPLETE but cpu.max absent, so GetAvailCpuTime returns 0. Cases A and B
+    // both bail out at the cpu.stat key guard and never reach the divide-by-zero gate, so without
+    // this case that third part of the fix is uncovered. TWO cycles are required: on the first the
+    // prev_* baselines are still -1, so the gauges are skipped for an unrelated reason -- only on
+    // the second is the avail_cpu_time gate the deciding factor, and removing it publishes secs/0.
     {
         TempCgroupTree tree{"complete_cpu_stat_no_cpu_max"};
         tree.WriteScopeFile("cpu.stat", "usage_usec 1000\nuser_usec 400\nsystem_usec 600\n");
@@ -1036,7 +1036,7 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
         atlasagent::TrackedPodRegistry registry{&r};
         registry.Refresh(OnePodInfoMap(kPod1Uid, tree.PodPath(), containers, annotations));
         ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
-        registry.EmitCpuStats(true, true);  // seeds the prev_* baselines; asserted on below
+        registry.EmitCpuStats(true, true);  // seeds the prev_* baselines
 
         // Advance the counters so the second cycle has a non-zero delta to divide.
         tree.WriteScopeFile("cpu.stat", "usage_usec 5000\nuser_usec 2400\nsystem_usec 2600\n");
@@ -1051,19 +1051,19 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
 }
 
 // The complement of EmitCpuStatsSurvivesMissingAndPartialCpuStat above: there the scope directory
-// exists with files missing; here the whole directory is gone, i.e. a container that terminated
-// since the last Refresh(). Refresh() does evict it (EvictUntrackedContainers), but Refresh() runs
-// on the 60s cadence while EmitCpuStats runs every second, so it stays tracked for up to a minute.
+// exists with files missing, here it is gone entirely -- a container that terminated since the last
+// Refresh(). Refresh() does evict it (EvictUntrackedContainers), but runs on the 60s cadence while
+// EmitCpuStats runs every second, so it stays tracked for up to a minute.
 //
-// Emitting for it is not harmless. nf.app/nf.cluster are POD-level, so a dead container's output
-// lands under the live app's tags -- and cgroup.cpu.processingCapacity is the real damage: it reads
-// no files at all (pure delta_t * cpuCount), so nothing about the vanished cgroup stops it, and it
-// is a Counter, so ~60s of phantom capacity is permanently accumulated into the pod's own
-// utilization denominator. sys.cpu.numProcessors and k8s.cpu.requested leak the same way, because
+// Emitting for it is not harmless: nf.app/nf.cluster are POD-level, so a dead container's output
+// lands under the live app's tags. cgroup.cpu.processingCapacity is the real damage -- it reads no
+// files at all (pure delta_t * cpuCount), so nothing about the vanished cgroup stops it, and being
+// a Counter it permanently accumulates ~60s of phantom capacity into the pod's own utilization
+// denominator. sys.cpu.numProcessors and k8s.cpu.requested leak the same way, because
 // CpuUtilizationV2 emits both BEFORE its cpu.stat guard.
 //
-// Asserting emission BEFORE the removal is what keeps this honest: without that baseline, every
-// absence assertion below would also be satisfied by "nothing ran at all".
+// Asserting emission BEFORE the removal keeps this honest: without that baseline every absence
+// assertion below would also be satisfied by "nothing ran at all".
 TEST(TrackedPodRegistry, SkipsEmissionForContainerWhoseCgroupVanishedSinceRefresh)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -1091,9 +1091,9 @@ TEST(TrackedPodRegistry, SkipsEmissionForContainerWhoseCgroupVanishedSinceRefres
         ASSERT_TRUE(AnyLineContains(messages, "cgroup.mem.used"));
     }
 
-    // The container terminates: containerd removes the entire scope directory. It stays TRACKED,
-    // since only Refresh() changes membership and it has not run again -- so this exercises the
-    // liveness skip, not eviction.
+    // The container terminates: containerd removes the scope directory. It stays TRACKED (only
+    // Refresh() changes membership, and it has not run again), so this exercises the liveness
+    // skip, not eviction.
     std::filesystem::remove_all(tree.ScopePath());
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
@@ -1108,22 +1108,22 @@ TEST(TrackedPodRegistry, SkipsEmissionForContainerWhoseCgroupVanishedSinceRefres
     EXPECT_FALSE(AnyLineContains(messages, "cgroup.cpu.processingCapacity"));
     EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.numProcessors"));
     EXPECT_FALSE(AnyLineContains(messages, "k8s.cpu.requested"));
-    // Memory would otherwise publish fabricated zeros from the now-absent files, since cgroup.cpp
-    // reads memory.stat/memory.events keys with operator[] rather than find().
+    // Memory would otherwise publish fabricated zeros from the now-absent files: cgroup.cpp reads
+    // memory.stat/memory.events keys with operator[] rather than find().
     //
-    // DO NOT trim the CPU assertions above on the grounds that these memory ones cover it. Once
-    // the operator[] reads are guarded, these two hold whether or not the liveness skip exists --
-    // the files are gone either way -- so they stop being evidence of anything. Only
-    // cgroup.cpu.processingCapacity can prove the skip: it reads NO files at all, so its absence
-    // is attributable to nothing but the guard.
+    // DO NOT trim the CPU assertions above on the grounds that these memory ones cover it. Once the
+    // operator[] reads are guarded, these two hold whether or not the liveness skip exists -- the
+    // files are gone either way -- so they stop being evidence. Only cgroup.cpu.processingCapacity
+    // can prove the skip: it reads NO files at all, so its absence is attributable to nothing but
+    // the guard.
     EXPECT_FALSE(AnyLineContains(messages, "cgroup.mem."));
     EXPECT_FALSE(AnyLineContains(messages, "mem.cached"));
     EXPECT_TRUE(messages.empty());
 
-    // NOTE: this does not independently cover EmitIOStats' guard. IOStats() emits nothing for a
-    // LIVE container here either (no io.stat in the tree, so ParseIOLines yields nothing), so its
-    // contribution to the emptiness assertion above would hold with or without the skip. The guard
-    // is there for the same reason as the other two; proving it needs an io.stat fixture.
+    // NOTE: EmitIOStats' guard is NOT independently covered. IOStats() emits nothing for a LIVE
+    // container here either (no io.stat in the tree, so ParseIOLines yields nothing), so its
+    // contribution to the emptiness assertion holds with or without the skip. Proving it needs an
+    // io.stat fixture.
 }
 
 TEST(TrackedPodRegistry, EmitMethodsAreNoOpsWithNothingTracked)
@@ -1348,10 +1348,9 @@ TEST(PodIdentityClient, ParsePodListSkipsNonStringAnnotationValues)
     EXPECT_FALSE(identity.annotations.contains("netflix.com/weird"));
 }
 
-// status.containerStatuses parsing had NO coverage at all -- "containerStatuses" appeared nowhere
-// in this file and no test asserted on PodIdentity::containers. That map is what
-// ReconcileContainers matches cgroup-discovered ids against, so a parsing regression here gates
-// out every container on the node while leaving pods tracked and every other test green.
+// status.containerStatuses parsing had NO coverage at all before this. PodIdentity::containers is
+// what ReconcileContainers matches cgroup-discovered ids against, so a parsing regression here
+// gates out every container on the node while leaving pods tracked and every other test green.
 TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
 {
     auto json = R"json(
@@ -1382,7 +1381,7 @@ TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
     ASSERT_TRUE(result.has_value());
     const auto& identity = result->at("11111111-1111-1111-1111-111111111111");
     ASSERT_EQ(identity.containers.size(), 4);
-    // The runtime scheme prefix must be stripped, so the key matches the bare hex id the cgroup
+    // The runtime scheme prefix must be stripped so the key matches the bare hex id the cgroup
     // scope directory name carries.
     EXPECT_EQ(identity.containers.at(ContainerId('a')), "main");
     EXPECT_EQ(identity.containers.at(ContainerId('b')), "sidecar");
@@ -1394,16 +1393,15 @@ TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
 }
 
 // A NATIVE SIDECAR -- an initContainer with restartPolicy=Always (k8s 1.28+) -- is reported in
-// status.initContainerStatuses, NOT status.containerStatuses, and runs for the pod's whole
-// lifetime with its own cgroup scope. While that array went unparsed, such a container was
-// discovered on disk every cycle and skipped every cycle: forever, and silently. Zero CPU, memory
-// and IO metrics for the entire mesh-proxy / log-forwarder tier, while the pod and its main
-// container looked perfectly healthy.
+// status.initContainerStatuses, NOT status.containerStatuses, yet runs for the pod's whole lifetime
+// with its own cgroup scope. While that array went unparsed, such a container was discovered on
+// disk and skipped every cycle, forever and silently: zero CPU/memory/IO metrics for the entire
+// mesh-proxy / log-forwarder tier while the pod and its main container looked perfectly healthy.
 //
-// Parsing spec.initContainers[] (which ParsePodListParsesCpuRequestsFromSpec covers) is NOT the
-// same fix and does not substitute for this one: spec carries container names but no ids, because
-// an id is assigned when the runtime creates the container. status is the only source of ids, and
-// ReconcileContainers resolves cgroup-discovered scopes by id.
+// Parsing spec.initContainers[] (which ParsePodListParsesCpuRequestsFromSpec covers) is NOT a
+// substitute: spec carries container names but no ids -- an id is assigned when the runtime creates
+// the container -- so status is the only source of ids, and ReconcileContainers resolves
+// cgroup-discovered scopes by id.
 TEST(PodIdentityClient, ParsePodListParsesInitContainerStatusesForNativeSidecars)
 {
     auto json = R"json(
@@ -1448,17 +1446,17 @@ TEST(PodIdentityClient, ParsePodListParsesInitContainerStatusesForNativeSidecars
     EXPECT_EQ(identity.containers.at(ContainerId('a')), "app");
     EXPECT_EQ(identity.containers.at(ContainerId('b')), "envoy");
 
-    // The sidecar's CPU request is now REACHABLE. It was already parsed from spec.initContainers[]
-    // before this fix, but ReconcileContainers looks cpu_requests up by NAME and obtains that name
-    // only via the id lookup above -- so a correctly-parsed 50m sat permanently unread.
+    // The sidecar's CPU request is now REACHABLE: spec.initContainers[] already parsed it before
+    // this fix, but ReconcileContainers looks cpu_requests up by NAME and gets that name only via
+    // the id lookup above -- so a correctly-parsed 50m sat permanently unread.
     EXPECT_DOUBLE_EQ(identity.cpu_requests.at("envoy"), 0.05);
     EXPECT_DOUBLE_EQ(identity.cpu_requests.at("app"), 0.5);
 }
 
-// A container still in `waiting` (ImagePullBackOff, CreateContainerError) is reported with an
-// EMPTY containerID rather than none at all, so it passes the IsString() check. Keying the map on
-// "" would break its documented contract of holding bare hex ids, and -- worse -- every
-// not-yet-started container in the pod would contend for that single "" entry.
+// A container still in `waiting` (ImagePullBackOff, CreateContainerError) is reported with an EMPTY
+// containerID rather than none at all, so it passes the IsString() check. Keying the map on "" would
+// break its documented contract of holding bare hex ids, and -- worse -- every not-yet-started
+// container in the pod would contend for that single "" entry.
 TEST(PodIdentityClient, ParsePodListSkipsContainerStatusWithEmptyContainerId)
 {
     auto json = R"json(
@@ -1498,13 +1496,10 @@ TEST(PodIdentityClient, ParsePodListSkipsContainerStatusWithEmptyContainerId)
     EXPECT_FALSE(identity.containers.contains(""));
 }
 
-// spec.containers[].resources.requests.cpu is the only source for a container's CPU request --
-// the cgroup filesystem carries cpu.max (the limit) instead. spec was fetched but never parsed
-// before this, so nothing here had coverage.
-//
-// Also covers initContainers[]: a native sidecar (restartPolicy=Always) runs for the pod's whole
-// lifetime and gets its own cgroup scope, so leaving that array unparsed would make exactly the
-// mesh-proxy / log-forwarder tier permanently unattributed.
+// spec.containers[].resources.requests.cpu is the only source for a container's CPU request -- the
+// cgroup filesystem carries cpu.max (the limit) instead. spec was fetched but never parsed before
+// this, so nothing here had coverage. Also covers initContainers[] -- see the native-sidecar note
+// above for why that array matters.
 TEST(PodIdentityClient, ParsePodListParsesCpuRequestsFromSpec)
 {
     auto json = R"json(
@@ -1679,10 +1674,10 @@ TEST(PodMonitor, FindActivePodInfoWithoutKubeletIsHermetic)
     }
 }
 
-// PodInfo::uid and PodInfo::containers were read by no test at all, so the two lines of
-// JoinCgroupAndIdentity that populate them could be deleted or mis-wired with everything else
-// still green. containers in particular is what ReconcileContainers matches against, so losing
-// it here gates out every container on the node.
+// No test read PodInfo::uid or PodInfo::containers, so the two JoinCgroupAndIdentity lines that
+// populate them could be deleted or mis-wired with everything else still green -- and containers
+// is what ReconcileContainers matches against, so losing it here gates out every container on the
+// node.
 TEST(PodMonitor, JoinCgroupAndIdentityCopiesContainersAndUid)
 {
     atlasagent::PodCgroupMap cgroup_pods;
@@ -1709,9 +1704,8 @@ TEST(PodMonitor, JoinCgroupAndIdentityCopiesContainersAndUid)
     EXPECT_EQ(matched.labels.at("k8s-app"), "mylabelapp");
 
     // Unmatched pod: discovered from cgroups but absent from identities, so it keeps its uid and
-    // cgroup path while every identity-sourced field stays empty. Asserting containers is empty
-    // here (not just that name is empty) is what would catch a merge that leaked another pod's
-    // container list into this one.
+    // cgroup path with every identity-sourced field empty. Asserting containers is empty (not just
+    // name) is what catches a merge leaking another pod's container list into this one.
     const auto& unmatched = result.at("uid-two");
     EXPECT_EQ(unmatched.uid, "uid-two");
     EXPECT_TRUE(unmatched.containers.empty());
@@ -1720,13 +1714,12 @@ TEST(PodMonitor, JoinCgroupAndIdentityCopiesContainersAndUid)
 }
 
 // CollectMemoryStats() is the agent's ONLY refresh driver in shipped code (k8s-agent.cpp calls it
-// once at startup to prime the tracked set, then on the 60s tick), yet it appeared nowhere in
-// this file. Moving RefreshTrackedPods() after EmitMemoryStats(), or dropping it, would mean a
-// newly-discovered container is never sampled on the cycle it appears.
+// once at startup to prime the tracked set, then on the 60s tick), yet had no coverage at all.
+// Moving RefreshTrackedPods() after EmitMemoryStats(), or dropping it, would mean a newly-discovered
+// container is never sampled on the cycle it appears.
 //
 // This pins the refresh, not the emission: routed through PodMonitor the container map is always
-// empty, so EmitMemoryStats writes nothing here. Emission is covered by the TrackedPodRegistry
-// tests above.
+// empty, so EmitMemoryStats writes nothing here (emission is covered by TrackedPodRegistry above).
 TEST(PodMonitor, CollectMemoryStatsRefreshesTrackedPods)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -1743,13 +1736,11 @@ TEST(PodMonitor, CollectMemoryStatsRefreshesTrackedPods)
     EXPECT_TRUE(podMonitor.TrackedPods().empty());
 }
 
-// Pins that an unreachable kubelet fails closed (nullopt) rather than throwing or hanging --
-// which is what makes every other test in this file hermetic.
-//
-// It does NOT cover FetchPodIdentities' `status != 200` guard: an unreachable host yields an
-// empty body that ParsePodList rejects at its JSON-parse check anyway, so deleting the status
-// check entirely would leave this test green. Covering that guard needs the response-handling
-// step split out behind a seam a test can feed a canned status/body to.
+// Pins that an unreachable kubelet fails closed (nullopt) rather than throwing or hanging -- the
+// premise every other test in this file rests on. It does NOT cover FetchPodIdentities'
+// `status != 200` guard: an unreachable host yields an empty body that ParsePodList rejects at its
+// JSON-parse check anyway, so deleting the status check entirely would leave this test green.
+// Covering that guard needs the response handling behind a seam fed a canned status/body.
 TEST(PodIdentityClient, FetchPodIdentitiesReturnsNulloptWhenKubeletUnreachable)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));

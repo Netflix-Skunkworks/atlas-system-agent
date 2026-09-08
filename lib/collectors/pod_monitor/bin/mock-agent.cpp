@@ -1,13 +1,12 @@
-// Standalone debug tool: mirrors AtlasAgent/src/k8s-agent.cpp's 1s/5s/60s polling loop, but
-// constructs only PodMonitor (no Aws/CpuFreq/Disk/Ethtool/Ntp/PerfMetrics/PressureStall/Proc/GPU/
-// ServiceMonitor/EBS) and stops after two 60-second cadence intervals instead of running forever,
-// so PodMonitor's real per-pod cadence wiring can be exercised by hand over a couple of full
-// collection cycles without pulling in the rest of k8s-agent.cpp's collectors. Not part of the
-// atlas_system_agent binary and not run by ctest.
+// Standalone debug tool, not part of the atlas_system_agent binary and not run by ctest: mirrors
+// AtlasAgent/src/k8s-agent.cpp's 1s/5s/60s polling loop, but constructs only PodMonitor and stops
+// after a bounded number of 60-second cadence intervals instead of running forever, so PodMonitor's
+// real per-pod cadence wiring can be exercised by hand over full collection cycles without the rest
+// of k8s-agent.cpp's collectors.
 //
 // Uses a plain sleep_for instead of k8s-agent.cpp's runner.wait_for(): that helper's backing
-// "terminator" object lives in the AtlasAgent target (atlas-agent.cpp), which this standalone
-// tool doesn't link against.
+// "terminator" object lives in the AtlasAgent target (atlas-agent.cpp), which this tool doesn't
+// link against.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/logger/src/logger.h>
@@ -41,8 +40,8 @@ namespace
 int main(int argc, char** argv)
 {
     // Matches AtlasAgent/src/atlas-agent.cpp's VERBOSE_AGENT convention -- set it to see the
-    // Logger()->debug(...) lines PodMonitor emits per pod (e.g. "Collecting IO stats for pod
-    // ..."), which are otherwise suppressed at spdlog's default info level.
+    // per-pod Logger()->debug(...) lines PodMonitor emits, suppressed at spdlog's default info
+    // level.
     if (std::getenv("VERBOSE_AGENT") != nullptr)
     {
         atlasagent::Logger()->set_level(spdlog::level::debug);
@@ -51,12 +50,12 @@ int main(int argc, char** argv)
     std::string path_prefix = argc > 1 ? argv[1] : "/sys/fs/cgroup";
 
     // Same socket real PodMonitor instances publish through when built with AGENT_FLAVOR_K8S
-    // (AtlasAgent/src/atlas-agent.h's K8sAgentConstants::SpectatordSocket) -- kept as a literal
-    // here since this standalone tool's CMake target doesn't link against AtlasAgent at all, so
-    // it can't reference that constant directly. No common_tags, mirroring
-    // AtlasAgent/src/k8s-agent.cpp's own dedicated PodMonitor Registry: PodMonitor tags every
-    // metric itself, per pod/container, from that pod's own annotations (see ResolvePodTags in
-    // pod_monitor.cpp), so this node's own identity must never be merged onto them.
+    // (AtlasAgent/src/atlas-agent.h's K8sAgentConstants::SpectatordSocket) -- a literal here since
+    // this tool's CMake target doesn't link against AtlasAgent, so it can't reference the constant.
+    // No node-identity common_tags, mirroring AtlasAgent/src/k8s-agent.cpp's own dedicated
+    // PodMonitor Registry: PodMonitor tags every metric itself, per pod/container, from that pod's
+    // own annotations (see ResolvePodTags in pod_tag_resolver.cpp), so this node's own identity
+    // must never be merged onto them.
     std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", "mock-agent"}};
     auto config = Config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"), common_tags);
     auto registry = Registry(config);
@@ -64,9 +63,8 @@ int main(int argc, char** argv)
 
     // auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 
-    // Both cadence flags below are false on the very first loop tick, so without this call the
-    // tracked-pod set would stay empty for up to 60 seconds after process startup -- mirrors
-    // k8s-agent.cpp's own pre-loop call exactly.
+    // Mirrors k8s-agent.cpp's own pre-loop call: both cadence flags below are false on the very
+    // first tick, so without this the tracked-pod set stays empty for up to 60s after startup.
     podMonitor.CollectMemoryStats();
 
     auto now = std::chrono::system_clock::now();

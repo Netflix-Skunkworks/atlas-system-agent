@@ -19,9 +19,8 @@ PodInfoMap PodMonitor::JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
     result.reserve(cgroup_pods.size());
     for (const auto& [uid, cgroup_path] : cgroup_pods)
     {
-        // Positional aggregate init, and several adjacent members share a type -- keep this in the
-        // same order as PodInfo's declaration (uid, cgroup_path, name, pod_namespace, containers,
-        // annotations, labels, cpu_requests) or a mix-up compiles silently.
+        // Positional aggregate init, with several adjacent members sharing a type -- keep this in
+        // PodInfo's declaration order (pod_info.h) or a mix-up compiles silently.
         PodInfo info{uid, cgroup_path, "", "", {}, {}, {}, {}};
         if (identities.has_value())
         {

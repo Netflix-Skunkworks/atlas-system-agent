@@ -99,6 +99,31 @@ void CgroupPodDiscovery::ScanPodSliceDirectory(const std::filesystem::path& dir,
     }
 }
 
+// The two driver layouts this walks. Every prefix/suffix literal below is one edge of these trees,
+// so the diagram is what makes those eight string arguments checkable at a glance.
+//
+//   systemd driver                                cgroupfs driver
+//   kubepods.slice/                               kubepods/
+//   |-- kubepods-pod<uid>.slice/                  |-- pod<uid>/
+//   |   `-- cri-containerd-<id>.scope             |   `-- <id>            <-- NOT matched
+//   `-- kubepods-burstable.slice/                 `-- burstable/
+//       `-- kubepods-burstable-pod<uid>.slice/        `-- pod<uid>/
+//           `-- cri-containerd-<id>.scope                 `-- <id>        <-- NOT matched
+//
+// The leaves above are containerd's spelling; other runtimes differ, and NOT uniformly by driver
+// (CRI-O is prefixed under cgroupfs too). The header's matrix has all six.
+//
+// besteffort is shaped exactly like burstable. Guaranteed-QoS pods get NO tier directory -- the
+// tiers exist only for burstable and besteffort -- so they sit directly under the root, which the
+// first scan below covers: same ".slice" suffix, prefix with no tier name.
+//
+// The uid SEPARATOR also differs by driver: systemd underscores
+// (kubepods-pod11111111_1111_1111_1111_111111111111.slice), cgroupfs dashes
+// (pod11111111-1111-1111-1111-111111111111). NormalizePodUid accepts either and normalizes to
+// dashes, so only the QoS prefixes below vary by driver. A fixture spelled the "wrong" way still
+// resolves -- do not "fix" one to match the other.
+//
+// The container level (the leaves above) is NOT symmetric -- see FindContainersInPod in the header.
 PodCgroupMap CgroupPodDiscovery::FindActivePodCgroups() const noexcept
 {
     PodCgroupMap pods;
@@ -136,9 +161,8 @@ ContainerCgroupMap CgroupPodDiscovery::FindContainersInPod(const std::filesystem
 {
     ContainerCgroupMap containers;
 
-    // Lighter validation than NormalizePodUid's strict UUID check -- a runtime-assigned
-    // container id is an arbitrary hex string, not a UUID, so just require a plausible
-    // non-trivial length rather than an exact one.
+    // A runtime-assigned container id is an arbitrary hex string, not a UUID like a pod uid, so
+    // require a plausible non-trivial length rather than NormalizePodUid's exact one.
     constexpr size_t kMinContainerIdLength = 12;
 
     std::error_code ec;

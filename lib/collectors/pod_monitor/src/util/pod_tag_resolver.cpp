@@ -6,8 +6,8 @@ namespace atlasagent
 namespace
 {
 
-// A key present in `values` with a non-empty value; nullopt otherwise (missing, or present but
-// empty -- both treated as "not set" per the fallback-chain wording).
+// A key present in `values` with a non-empty value; nullopt otherwise -- missing and
+// present-but-empty both count as "not set".
 std::optional<std::string> NonEmptyValue(const std::unordered_map<std::string, std::string>& values,
                                          std::string_view key) noexcept
 {
@@ -19,9 +19,9 @@ std::optional<std::string> NonEmptyValue(const std::unordered_map<std::string, s
     return std::nullopt;
 }
 
-// The first non-empty value among `keys`, in order; nullopt if none of them are set. The
-// label-fallback half of ResolvePodTags's primary-annotation-else-label-fallback pattern, shared
-// across nf.app (3 candidate keys)/nf.stack/nf.detail (1 each).
+// The first non-empty value among `keys`, in order; nullopt if none are set. The label-fallback
+// half of ResolvePodTags's primary-else-fallback pattern, shared across nf.app (3 candidate keys),
+// nf.stack, and nf.detail (1 each).
 std::optional<std::string> FirstNonEmptyValue(const std::unordered_map<std::string, std::string>& values,
                                                std::initializer_list<std::string_view> keys) noexcept
 {
@@ -35,11 +35,10 @@ std::optional<std::string> FirstNonEmptyValue(const std::unordered_map<std::stri
     return std::nullopt;
 }
 
-// nf.cluster is gated on the *primary* netflix.com/app annotation specifically -- NOT on
-// whatever nf_app ended up resolving to. A pod whose nf.app only resolved via a label fallback
-// must not get an nf.cluster tag; this mirrors the Netflix K8s-native observability design's own
-// `where resource.attributes["netflix.app"] != nil` guards, which all key off the primary
-// attribute, not the transform's own output.
+// nf.cluster is gated on the *primary* netflix.com/app annotation, NOT on whatever nf_app resolved
+// to: a pod whose nf.app came only from a label fallback must not get an nf.cluster tag. Mirrors the
+// Netflix K8s-native observability design's own `where resource.attributes["netflix.app"] != nil`
+// guards, which all key off the primary attribute, not the transform's own output.
 std::optional<std::string> BuildNfCluster(const std::optional<std::string>& primary_app,
                                            const std::optional<std::string>& primary_stack,
                                            const std::optional<std::string>& primary_detail) noexcept
@@ -73,9 +72,8 @@ std::optional<std::unordered_map<std::string, std::string>> ResolvePodTags(
     auto primary_stack = NonEmptyValue(annotations, PodTagKeys::kAnnotationStack);
     auto primary_detail = NonEmptyValue(annotations, PodTagKeys::kAnnotationDetail);
 
-    // primary_app/primary_stack/primary_detail are kept separate from nf_app/nf_stack/nf_detail
-    // below -- nf.cluster (see BuildNfCluster) needs the primary-only values specifically, not
-    // whatever the label fallback resolved.
+    // primary_* stay separate from nf_* below because nf.cluster needs the primary-only values
+    // specifically -- see BuildNfCluster.
     auto nf_app = primary_app.has_value()
                       ? primary_app
                       : FirstNonEmptyValue(labels, {PodTagKeys::kLabelAppName, PodTagKeys::kLabelK8sApp, PodTagKeys::kLabelApp});
@@ -84,10 +82,9 @@ std::optional<std::unordered_map<std::string, std::string>> ResolvePodTags(
 
     if (!nf_app.has_value() && !nf_stack.has_value() && !nf_detail.has_value())
     {
-        // Gating: none of the three identity-bearing keys resolved (annotation or label
-        // fallback) -- no metrics for any container in this pod. nf.node/nf.process are
-        // deliberately NOT part of this check -- they're always structurally available once a
-        // pod's identity resolves at all, so including them would make Gating vacuous.
+        // Gating: none of the three identity-bearing keys resolved (annotation or label fallback)
+        // -- no metrics for any container in this pod. nf.node/nf.process are deliberately NOT part
+        // of this check; see this function's declaration for why.
         return std::nullopt;
     }
 

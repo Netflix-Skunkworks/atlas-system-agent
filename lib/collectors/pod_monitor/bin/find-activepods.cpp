@@ -1,28 +1,25 @@
-// Standalone debug tool: runs PodMonitor::FindActivePodInfo() against a real (or
-// overridden) cgroup root, plus a live call to kubelet's own local API for pod
-// Name/Namespace/annotations/labels, and prints what it discovers, so behavior can be
-// checked by hand against `kubectl get pods` on a live node. Not part of the
-// atlas_system_agent binary itself.
+// Standalone debug tool, not part of the atlas_system_agent binary: runs
+// PodMonitor::FindActivePodInfo() against a real (or overridden) cgroup root plus a live kubelet
+// identity call, and prints what it discovers, so behavior can be checked by hand against
+// `kubectl get pods` on a live node.
 //
-// Identity resolution issues one plain HTTP GET to kubelet's own local, unauthenticated
-// /pods endpoint (http://localhost:10255/pods by default) -- no kubeconfig, no bearer
-// token, no node-name lookup needed, since kubelet only ever knows about pods on its own
-// node. If that port isn't reachable (e.g. disabled by cluster hardening), every pod
-// still appears (from the cgroup walk) but with empty name/namespace/annotations/labels.
+// Identity resolution is one plain HTTP GET to kubelet's own local, unauthenticated /pods endpoint
+// (http://localhost:10255/pods by default) -- no kubeconfig, bearer token, or node-name lookup,
+// since kubelet only ever knows pods on its own node. If that port isn't reachable (e.g. disabled
+// by cluster hardening), every pod still appears (from the cgroup walk) but with empty
+// name/namespace/annotations/labels.
 //
 // Usage: find-activepods [cgroup_path_prefix] [filtered]  (either order; both optional)
-// Pass "filtered" as one of the arguments to see the same PASS/FAIL decision
-// RefreshTrackedPods() makes for every pod and container, always with a reason:
+// "filtered" prints the same PASS/FAIL decision RefreshTrackedPods() makes for every pod and
+// container, always with a reason:
 //   - Pod-level Gating (ResolvePodTags, in pod_tag_resolver.{h,cpp}): if none of
-//     nf.app/nf.stack/nf.detail resolve (from either the primary netflix.com/{app,stack,detail}
-//     annotations or their label fallbacks), the whole pod is GATED OUT -- printed with exactly
-//     which annotation/label keys were checked and found missing, and every one of its
-//     containers listed as excluded for that reason.
-//   - Container-level mismatch (TrackedPodRegistry::ReconcileContainers's real matching): even
-//     in a PASSED pod, a container only gets tracked if its cgroup-discovered id
-//     (CgroupPodDiscovery::FindContainersInPod) is also present in kubelet's reported container
-//     list, and vice versa -- a container visible on only one side is excluded independently of
-//     Gating, printed with that reason.
+//     nf.app/nf.stack/nf.detail resolve -- from the primary netflix.com/{app,stack,detail}
+//     annotations or their label fallbacks -- the whole pod is GATED OUT, printed with exactly
+//     which keys were checked and found missing, and every container excluded for that reason.
+//   - Container-level mismatch (TrackedPodRegistry::ReconcileContainers's real matching): even in
+//     a PASSED pod, a container is tracked only if its cgroup-discovered id
+//     (CgroupPodDiscovery::FindContainersInPod) is also in kubelet's reported container list, and
+//     vice versa -- a container visible on only one side is excluded independently of Gating.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/collectors/pod_monitor/src/util/cgroup_pod_discovery.h>
@@ -54,10 +51,9 @@ void PrintSortedMap(const std::unordered_map<std::string, std::string>& values, 
 }
 
 // Mirrors ResolvePodTags's own per-tag fallback check (primary annotation, else the first
-// non-empty fallback label, in the exact order ResolvePodTags checks them) against the same
-// PodTagKeys constants it uses, so this can never name a key ResolvePodTags doesn't actually
-// check. Returns a one-line explanation of which key resolved this tag, or every key that was
-// checked and found missing.
+// non-empty fallback label, in its exact order) against the same PodTagKeys constants it uses, so
+// this can never name a key ResolvePodTags doesn't actually check. Returns which key resolved the
+// tag, or every key checked and found missing.
 std::string DescribeTagResolution(const std::unordered_map<std::string, std::string>& annotations,
                                    const std::unordered_map<std::string, std::string>& labels, const char* tag_name,
                                    std::string_view annotation_key,
@@ -87,13 +83,11 @@ std::string DescribeTagResolution(const std::unordered_map<std::string, std::str
     return fmt::format("{}: UNRESOLVED (checked {})", tag_name, checked);
 }
 
-// The three outcomes TrackedPodRegistry::ReconcileContainers's real loop produces when it iterates
-// cgroup-discovered containers and looks each one up by id in kubelet's reported container
-// list: matched (both sides agree -- this is what actually gets tracked), cgroup_only (a cgroup
-// scope exists but kubelet hasn't reported that id -- ReconcileContainers skips it this cycle),
-// and kubelet_only (kubelet reports an id with no matching cgroup scope -- ReconcileContainers
-// never even visits it, since its loop is driven by the cgroup-discovered set). Sorted for
-// deterministic output.
+// The three outcomes of TrackedPodRegistry::ReconcileContainers's real loop over cgroup-discovered
+// containers, each looked up by id in kubelet's reported container list: matched (both sides agree
+// -- what actually gets tracked), cgroup_only (cgroup scope exists but kubelet hasn't reported the
+// id -- skipped this cycle), kubelet_only (kubelet reports an id with no cgroup scope -- never even
+// visited, since the loop is driven by the cgroup-discovered set). Sorted for deterministic output.
 struct ContainerClassification
 {
     std::vector<std::string> matched;
@@ -131,8 +125,8 @@ ContainerClassification ClassifyContainers(const atlasagent::ContainerCgroupMap&
     return result;
 }
 
-// Used only for a GATED OUT pod, where every container is excluded for the same pod-level
-// reason regardless of which ContainerClassification bucket it's in.
+// For a GATED OUT pod only: every container is excluded for the same pod-level reason, whatever
+// its ContainerClassification bucket.
 void PrintAllExcluded(const ContainerClassification& classification,
                        const std::unordered_map<std::string, std::string>& kubelet_containers, const char* reason)
 {
@@ -179,8 +173,8 @@ void PrintClassifiedContainers(const ContainerClassification& classification,
 int main(int argc, char** argv)
 {
     // Scanned rather than fixed-positional, so "filtered" is recognized wherever it appears
-    // (including as the only argument, defaulting path_prefix) instead of being misread as a
-    // literal cgroup path override.
+    // (including as the only argument, leaving path_prefix default) instead of being misread as a
+    // cgroup path override.
     std::string path_prefix = "/sys/fs/cgroup";
     bool filtered = false;
     for (int i = 1; i < argc; ++i)
@@ -196,9 +190,8 @@ int main(int argc, char** argv)
     }
 
     // Read the same way TrackedPodRegistry's own constructor does (ResolveK8sClusterEnv in
-    // tracked_pod_registry.cpp), purely for the filtered-mode ResolvePodTags call below -- this
-    // tool doesn't have access to the private k8s_cluster_ member TrackedPodRegistry resolved
-    // internally.
+    // tracked_pod_registry.cpp), purely for the filtered-mode ResolvePodTags call below -- the
+    // k8s_cluster_ it resolved internally is private.
     const auto* k8s_cluster_env = std::getenv("K8S_CLUSTER");
     std::string k8s_cluster = k8s_cluster_env != nullptr ? std::string(k8s_cluster_env) : std::string();
 

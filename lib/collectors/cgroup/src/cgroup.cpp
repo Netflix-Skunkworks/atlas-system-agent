@@ -77,12 +77,11 @@ std::unordered_map<std::string, std::string> CGroup::MergeTags(const std::unorde
 
 void CGroup::CpuThrottleV2(const std::unordered_map<std::string, int64_t>& stats) noexcept
 {
-    // stats.at() below would throw std::out_of_range -- and since this function is noexcept,
-    // terminate the whole process -- if cpu.stat could not be read this tick (e.g. a pod's
-    // cgroup directory was removed between discovery and this call, which parse_kv_from_file()
-    // handles by silently leaving `stats` empty rather than throwing). Bail out instead of
-    // touching prev_throttled_time_, so a single missing read is skipped cleanly and the next
-    // successful read still computes a correct delta from the last real baseline.
+    // stats.at() would throw std::out_of_range out of this noexcept function -- terminating the
+    // process -- when cpu.stat could not be read this tick (e.g. a pod's cgroup directory removed
+    // between discovery and this call; parse_kv_from_file() then just leaves `stats` empty). Bail
+    // out without touching prev_throttled_time_, so the next successful read still computes a
+    // correct delta from the last real baseline.
     auto throttled_it = stats.find("throttled_usec");
     auto nr_throttled_it = stats.find("nr_throttled");
     if (throttled_it == stats.end() || nr_throttled_it == stats.end())
@@ -103,8 +102,7 @@ void CGroup::CpuThrottleV2(const std::unordered_map<std::string, int64_t>& stats
 
 void CGroup::CpuTimeV2(const std::unordered_map<std::string, int64_t>& stats) noexcept
 {
-    // See CpuThrottleV2() above: bail out instead of letting .at() throw out of a noexcept
-    // function (and terminate the process) when cpu.stat couldn't be read this tick.
+    // Same noexcept .at() hazard as CpuThrottleV2() above -- bail out when cpu.stat is unreadable.
     auto usage_it = stats.find("usage_usec");
     auto system_it = stats.find("system_usec");
     auto user_it = stats.find("user_usec");
@@ -139,10 +137,11 @@ double CGroup::GetAvailCpuTime(const double delta_t, const double cpuCount) noex
 {
     auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
     // read_num_vector_from_file() returns an EMPTY vector when cpu.max can't be opened (see
-    // util.cpp) -- e.g. a pod/container cgroup directory removed since it was discovered, which
-    // for PodMonitor is routine: CollectCpuStats() runs every second while the tracked set is
-    // only refreshed every 60s. Without this guard cpu_max[1] is an out-of-bounds read on an
-    // empty vector, out of a noexcept function. 0 means "unknown"; callers must not divide by it.
+    // util.cpp) -- routine for PodMonitor, whose CollectCpuStats() runs every second while the
+    // tracked set refreshes only every 60s, so a discovered cgroup may already be gone. Without this
+    // guard cpu_max[1] reads out of bounds, out of a noexcept function. 0 means "unknown"; callers
+    // must not divide by it. Note cfs_period cancels algebraically in the return below, so reading
+    // cpu.max is mostly a probe for whether the file is still readable.
     if (cpu_max.size() < 2)
     {
         return 0.0;
@@ -221,19 +220,23 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
     {
         utilization_last_updated_ = now - interval;
     }
+    // NOTE: utilization_last_updated_ is deliberately NOT advanced here -- it advances past the
+    // cpu.stat guard below, in lockstep with the utilization_prev_*_time_ baselines; see that
+    // assignment for why splitting them publishes a wrong number. The epoch bootstrap above is the
+    // sole write preceding the guard, and it is benign: it fires at most once (nothing resets the
+    // clock to the epoch) and only before the first guard-passing call, when prev_*_time_ is still
+    // -1 and no utilization gauge is published whatever delta_t came out as.
     auto delta_t = absl::ToDoubleSeconds(now - utilization_last_updated_);
-    utilization_last_updated_ = now;
 
     auto avail_cpu_time = GetAvailCpuTime(delta_t, cpuCount);
     // numProcessors is capacity, so cpuCount (the cpu.max limit, or the node's core count when
     // unlimited) is the right value for it on both agents.
     registry_->CreateGauge("sys.cpu.numProcessors", MergeTags({})).Set(cpuCount);
 
-    // "requested" is NOT capacity -- it is what the workload asked for, which on Kubernetes is a
-    // different number from the limit. The two agents publish it under DIFFERENT NAMES on purpose,
-    // because the quantity itself differs: Titus reports a fixed allocation, Kubernetes reports a
-    // declared request that its limit may exceed. Sharing one name would put two different
-    // meanings on one series, distinguishable only by tags.
+    // "requested" is NOT capacity -- it is what the workload asked for, which on Kubernetes differs
+    // from the limit. The two agents use DIFFERENT NAMES on purpose, because the quantity itself
+    // differs: Titus reports a fixed allocation, Kubernetes a declared request its limit may exceed.
+    // One shared name would put two meanings on one series, distinguishable only by tags.
     if (!cpu_count_override_.has_value())
     {
         // Titus: one fixed allocation (TITUS_NUM_CPU), for which request == limit == count.
@@ -242,17 +245,15 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
     }
     else if (cpu_request_override_.has_value())
     {
-        // A pod container that declares resources.requests.cpu, matching the k8s.* prefix already
+        // A pod container that declares resources.requests.cpu; k8s.* matches the prefix already
         // used for the pod-scoped tags (k8s.namespace.name, k8s.cluster.name).
         registry_->CreateGauge("k8s.cpu.requested", MergeTags({})).Set(*cpu_request_override_);
     }
-    // else: a pod container with no declared CPU request (BestEffort). Omit the gauge entirely --
-    // publishing cpuCount would report the limit (or the whole node) as if it were the request,
-    // and publishing 0 would turn every utilization/requested division into inf.
+    // else: a pod container with no declared CPU request (BestEffort). Omit the gauge -- cpuCount
+    // would report the limit (or the whole node) as if it were the request, and 0 would turn every
+    // utilization/requested division into inf.
 
-    // See CpuThrottleV2()/CpuTimeV2(), which already guard this: stats.at() would throw
-    // std::out_of_range out of this noexcept function -- terminating the process -- when cpu.stat
-    // couldn't be read this tick (parse_kv_from_file() silently leaves `stats` empty).
+    // Same noexcept .at() hazard as CpuThrottleV2()/CpuTimeV2() -- see CpuThrottleV2().
     auto system_it = stats.find("system_usec");
     auto user_it = stats.find("user_usec");
     if (system_it == stats.end() || user_it == stats.end())
@@ -260,9 +261,17 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
         return;
     }
 
-    // avail_cpu_time == 0 means cpu.max was unreadable (see GetAvailCpuTime) or cpuCount is 0;
-    // dividing by it would publish inf. Skip the utilization gauges in that case, but still
-    // refresh the baselines below so the next successful cycle computes a correct delta.
+    // Safe to advance the clock only here, past the guard, because this tick also refreshes the
+    // prev_*_time_ baselines below: utilization = (usage delta) / (delta_t * cpuCount), so baseline
+    // and clock must span the SAME window. Advancing above the guard leaves them out of step on any
+    // tick where cpu.stat is unreadable -- clock moves, baseline does not -- and the next good tick
+    // would divide a two-interval usage delta by one interval of capacity, publishing ~200% for a
+    // container at 100%. Here, delta_t spans both intervals on recovery, which is the correct ratio.
+    utilization_last_updated_ = now;
+
+    // avail_cpu_time == 0 means cpu.max was unreadable (see GetAvailCpuTime) or cpuCount is 0, and
+    // dividing would publish inf. Skip the gauges, but still refresh the baselines below so the next
+    // successful cycle computes a correct delta.
     if (avail_cpu_time > 0 && utilization_prev_system_time_ >= 0)
     {
         auto secs = (system_it->second - utilization_prev_system_time_) / MICROS;
@@ -280,18 +289,23 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
 
 void CGroup::CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_map<std::string, int64_t>& stats, const double cpuCount) noexcept
 {
+    // peak_last_updated_ advances past the guard below, not here -- in lockstep with the
+    // peak_prev_*_time_ baselines; see CpuUtilizationV2() for the reasoning. The consequence is
+    // worse here: peakUtilization is a MaxGauge, so one inflated sample latches as the reported
+    // peak for the whole publishing interval.
     auto delta_t = absl::ToDoubleSeconds(now - peak_last_updated_);
-    peak_last_updated_ = now;
 
     auto avail_cpu_time = GetAvailCpuTime(delta_t, cpuCount);
 
-    // Same noexcept hazard as CpuUtilizationV2() above -- see its comment.
+    // Same noexcept .at() hazard as CpuThrottleV2() -- see its comment.
     auto system_it = stats.find("system_usec");
     auto user_it = stats.find("user_usec");
     if (system_it == stats.end() || user_it == stats.end())
     {
         return;
     }
+
+    peak_last_updated_ = now;
 
     if (avail_cpu_time > 0 && peak_prev_system_time_ >= 0)
     {
@@ -332,18 +346,8 @@ void CGroup::CpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecon
     CpuPeakUtilizationV2(absl::Now(), stats, cpuCount);
 }
 
-// Pod-scoped entry point. sys.cpu.*/titus.cpu.* are not actually node/Titus-only: Titus already
-// emits them per-container today via CpuStats(), because titus-agent runs one process per
-// container (a sidecar) with zero per-container tagging in this code -- container identity comes
-// entirely from which spectatord instance that sidecar talks to. k8s-agent's PodMonitor is the
-// one architecturally different case, multiplexing N pods through a single Registry in one
-// process -- which is exactly why the extra_tags_/SetExtraTags()/MergeTags() mechanism exists, and
-// it is already wired into every CpuUtilizationV2/CpuPeakUtilizationV2 call site. So once
-// SetExtraTags() has given a pod's CGroup instance a disambiguating tag, sys.cpu.*/titus.cpu.* are
-// just as meaningful per-pod as they are per-container for Titus. PodCpuStats() therefore
-// delegates straight to CpuStats() for full Titus-name parity; it stays a separate, distinctly
-// named method purely so PodMonitor's call site remains self-documenting about intent, even
-// though the two bodies are now identical.
+// Pod-scoped entry point; the body is deliberately identical to CpuStats(). See the declaration in
+// cgroup.h for why full Titus-name parity is right for pods and why this stays a separate method.
 void CGroup::PodCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
 {
     CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
@@ -666,8 +670,7 @@ void CGroup::UpdateIOMetrics(const std::unordered_map<std::string, atlasagent::I
                         currentStat.rBytes.value(), currentStat.rOperations.value(), currentStat.wBytes.value(),
                         currentStat.wOperations.value());
 
-        // Check if we have previous data (from this instance's own last reading) for a delta
-        // calculation
+        // Delta calculation needs previous data from this instance's own last reading
         auto prev_it = io_previous_stats_.find(deviceKey);
         if (prev_it != io_previous_stats_.end())
         {

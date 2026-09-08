@@ -55,16 +55,14 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     atlasagent::Ntp<> ntp{registry};
     atlasagent::PerfMetrics perf_metrics{registry, ""};
 
-    // PodMonitor gets its own Registry, deliberately NOT the shared `registry` above. PodMonitor
-    // tags every metric itself, per pod/container, from that pod's own annotations (see
-    // ResolvePodTags in pod_tag_resolver.cpp) -- this node's own common_tags (this node's identity,
-    // from get_common_tags() in atlas-agent.cpp's main()) must never be merged onto them, or
-    // every pod's metrics would also carry this node's own nf.app/nf.node/etc., unrelated to
-    // (and colliding with) the per-pod identity PodMonitor exists to attach instead. Same
-    // spectatord socket as the shared registry above, so metrics from both still land in the
-    // same place -- just no common_tags. Declared here (not threaded down from main()) since
-    // PodMonitor is the only collector that needs this; every other collector here legitimately
-    // wants this node's own identity on its metrics.
+    // PodMonitor gets its own Registry, deliberately NOT the shared `registry` above: it tags every
+    // metric itself, per pod/container, from that pod's own annotations (see ResolvePodTags in
+    // pod_tag_resolver.cpp). Merging this node's common_tags (nf.app/nf.node/etc. from
+    // get_common_tags() in atlas-agent.cpp's main()) onto those would stamp the node's identity on
+    // every pod's metrics, colliding with the per-pod identity PodMonitor exists to attach.
+    // Declared here rather than threaded down from main() because PodMonitor is the only collector
+    // that must not carry the node's identity. Same spectatord socket, so metrics from both
+    // registries still land in the same place.
     std::unordered_map<std::string, std::string> common_tags{{"metric-type", "pod-container"}};
     Config pod_monitor_config(WriterConfig(K8sAgentConstants::SpectatordSocket), common_tags);
     Registry pod_monitor_registry(pod_monitor_config);

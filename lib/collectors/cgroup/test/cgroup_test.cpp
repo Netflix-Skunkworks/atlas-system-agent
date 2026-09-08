@@ -4,6 +4,9 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
+#include <algorithm>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 class CGroupTest : public atlasagent::CGroup
@@ -136,6 +139,111 @@ TEST(CGroup, CpuUtilizationV2)
     EXPECT_EQ(messages.at(4), "g:sys.cpu.utilization,id=user:33.333333\n");
 }
 
+// utilization = (usage delta) / (delta_t * cpuCount), so the counter baseline
+// (utilization_prev_*_time_) and the clock (utilization_last_updated_) MUST span the same window.
+// CpuUtilizationV2 updates the two on either side of its unreadable-cpu.stat guard, so advancing
+// the clock before that guard would leave the baseline behind, and the next successful tick would
+// divide a two-interval usage delta by ONE interval of capacity.
+//
+// sample1 -> sample2 is a fixed 40s system / 20s user delta: 33.333333% / 16.666667% over the real
+// 120s window, but 66.666667% / 33.333333% if delta_t were 60s -- exactly double, and exactly what
+// CGroup.CpuUtilizationV2 above asserts for a genuine 60s window. So a regression here does not
+// merely change a number, it reproduces a plausible-looking one.
+TEST(CGroup, CpuUtilizationV2ClockDoesNotAdvanceOnUnreadableCpuStat)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    setenv("TITUS_NUM_CPU", "1", 1);
+
+    std::unordered_map<std::string, int64_t> stats;
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+
+    auto baseTime = absl::FromUnixSeconds(1000000000);
+    auto cpuCount = cGroup.GetNumCpu();
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    // t=0: seeds the baselines. No utilization yet (prev_*_time_ is still -1).
+    cGroup.CpuUtilizationV2(baseTime, cpuCount, stats, absl::Seconds(60));
+
+    // t=60: cpu.stat unreadable, which parse_kv_from_file reports as an EMPTY map. The guard must
+    // bail without publishing utilization AND without advancing the clock.
+    memoryWriter->Clear();
+    std::unordered_map<std::string, int64_t> unreadable;
+    cGroup.CpuUtilizationV2(baseTime + absl::Seconds(60), cpuCount, unreadable, absl::Seconds(60));
+    {
+        auto skipped = memoryWriter->GetMessages();
+        // Exactly the three pre-guard emissions: cgroup.cpu.weight (cpu.weight on disk is still
+        // present) plus numProcessors/titus.cpu.requested (from cpuCount alone). Pinning the COUNT,
+        // not just the needles below, is what makes a spurious extra emission on the bail-out path
+        // visible.
+        EXPECT_EQ(skipped.size(), 3);
+        EXPECT_TRUE(std::any_of(skipped.begin(), skipped.end(),
+                                 [](const std::string& m) { return m.find("sys.cpu.numProcessors") != std::string::npos; }));
+        EXPECT_FALSE(std::any_of(skipped.begin(), skipped.end(),
+                                  [](const std::string& m) { return m.find("sys.cpu.utilization") != std::string::npos; }));
+    }
+
+    // t=120: readable again. delta_t must span the FULL 120s, not the 60s since the skipped tick.
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+    memoryWriter->Clear();
+    cGroup.CpuUtilizationV2(baseTime + absl::Seconds(120), cpuCount, stats, absl::Seconds(60));
+
+    auto messages = memoryWriter->GetMessages();
+    auto has = [&messages](const std::string& needle) {
+        return std::any_of(messages.begin(), messages.end(),
+                            [&needle](const std::string& m) { return m.find(needle) != std::string::npos; });
+    };
+    // weight, numProcessors, titus.cpu.requested, utilization system, utilization user.
+    EXPECT_EQ(messages.size(), 5);
+    EXPECT_TRUE(has("g:sys.cpu.utilization,id=system:33.333333\n"));
+    EXPECT_TRUE(has("g:sys.cpu.utilization,id=user:16.666667\n"));
+    // What a clock advanced BEFORE the guard would produce -- see the doubling note above.
+    EXPECT_FALSE(has("g:sys.cpu.utilization,id=system:66.666667\n"));
+    EXPECT_FALSE(has("g:sys.cpu.utilization,id=user:33.333333\n"));
+}
+
+// Same defect and fix in CpuPeakUtilizationV2, where the consequence is worse: peakUtilization is a
+// MaxGauge, so one inflated sample latches as the reported peak for the whole publishing interval
+// instead of being averaged away.
+TEST(CGroup, CpuPeakUtilizationV2ClockDoesNotAdvanceOnUnreadableCpuStat)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    setenv("TITUS_NUM_CPU", "1", 1);
+
+    std::unordered_map<std::string, int64_t> stats;
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+
+    auto baseTime = absl::FromUnixSeconds(1000000000);
+    auto cpuCount = cGroup.GetNumCpu();
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    cGroup.CpuPeakUtilizationV2(baseTime, stats, cpuCount);
+
+    std::unordered_map<std::string, int64_t> unreadable;
+    cGroup.CpuPeakUtilizationV2(baseTime + absl::Seconds(60), unreadable, cpuCount);
+
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+    memoryWriter->Clear();
+    cGroup.CpuPeakUtilizationV2(baseTime + absl::Seconds(120), stats, cpuCount);
+
+    auto messages = memoryWriter->GetMessages();
+    auto has = [&messages](const std::string& needle) {
+        return std::any_of(messages.begin(), messages.end(),
+                            [&needle](const std::string& m) { return m.find(needle) != std::string::npos; });
+    };
+    // Peak emits only its two lines -- it reads no cpu.weight and no cpuCount gauges.
+    EXPECT_EQ(messages.size(), 2);
+    EXPECT_TRUE(has("sys.cpu.peakUtilization,id=system:33.333333\n"));
+    EXPECT_TRUE(has("sys.cpu.peakUtilization,id=user:16.666667\n"));
+    EXPECT_FALSE(has("sys.cpu.peakUtilization,id=system:66.666667\n"));
+    EXPECT_FALSE(has("sys.cpu.peakUtilization,id=user:33.333333\n"));
+}
+
 TEST(CGroup, CpuTimeV2)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -187,14 +295,11 @@ TEST(CGroup, ProcessingTime)
     EXPECT_EQ(messages.at(0), "c:cgroup.cpu.processingCapacity:30.000000\n");
 }
 
-// Regression test for the CGroup refactor that turned CpuThrottleV2/CpuTimeV2/etc.'s hidden
-// `static` delta-tracking locals into per-instance members. Two independent CGroup instances
-// must track their own prev_* baselines without clobbering each other's -- which is exactly
-// what the old shared statics did not guarantee. This test fails against the pre-refactor code
-// (shared statics): step 2 below would spuriously emit a 60/40/20s delta instead of nothing
-// (because instance A's call in step 1 already primed the shared static), and step 3 would
-// compute a zero delta instead of the expected 60/40/20 (because instance B's call in step 2
-// would have clobbered the shared static baseline with sample2's own values).
+// Regression test for the refactor that turned CpuTimeV2's (and its siblings') `static` delta
+// locals into per-instance members: two CGroup instances must keep independent prev_* baselines.
+// Against the old shared statics this fails twice -- step 2 would emit a 60/40/20 delta instead of
+// nothing (A's step-1 call already primed the shared static), and step 3 would compute zero instead
+// of 60/40/20 (B's step-2 call having clobbered the baseline with sample2's values).
 TEST(CGroup, TwoInstancesIndependentCpuTimeState)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -216,15 +321,15 @@ TEST(CGroup, TwoInstancesIndependentCpuTimeState)
     EXPECT_EQ(messages.size(), 0);
     memoryWriter->Clear();
 
-    // Step 2: instance B's first-ever call (baseline from sample2). B must also see no delta,
-    // proving B's prev_* state starts independent of whatever A just recorded.
+    // Step 2: B's first-ever call (baseline from sample2) -- also no delta, so B's prev_* state
+    // starts independent of what A just recorded.
     cGroupB.CpuTimeV2(stats2);
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 0);
     memoryWriter->Clear();
 
-    // Step 3: instance A's second call must reproduce the exact known-good delta from the
-    // single-instance CpuTimeV2 test above (60/40/20), unaffected by B's call in between.
+    // Step 3: A's second call reproduces the known-good delta from the single-instance CpuTimeV2
+    // test above (60/40/20), unaffected by B's call in between.
     cGroupA.CpuTimeV2(stats2);
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 3);
@@ -233,19 +338,17 @@ TEST(CGroup, TwoInstancesIndependentCpuTimeState)
     EXPECT_EQ(messages.at(2), "c:cgroup.cpu.usageTime,id=user:20.000000\n");
     memoryWriter->Clear();
 
-    // Step 4: instance B's second call, still against its own sample2 baseline -- delta is
-    // zero by design, unaffected by A's calls in between. spectator::Counter::Increment()
-    // (counter.h) only writes when delta > 0, so a genuinely zero delta on all three counters
-    // means nothing gets written at all, not three zero-valued messages.
+    // Step 4: B's second call against its own sample2 baseline -- delta is zero by design.
+    // spectator::Counter::Increment() (counter.h) writes only when delta > 0, so a genuinely zero
+    // delta on all three counters means no messages at all, not three zero-valued ones.
     cGroupB.CpuTimeV2(stats2);
     messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 0);
 }
 
-// Regression coverage for the exact "max" -> 0 parsing pitfall QuotaCpuCount() is designed to
-// avoid: sample1/sample2's cpu.max ("max 100000") is the unlimited-quota case, which must come
-// back as nullopt rather than silently being parsed as a quota of 0 (which read_num_vector_from_
-// file()'s strtoul-based parsing would do, since strtoul("max", ...) == 0).
+// The "max" -> 0 parsing pitfall QuotaCpuCount() exists to avoid: sample1/sample2's cpu.max
+// ("max 100000") is the unlimited case and must come back as nullopt, not a quota of 0 -- which is
+// what read_num_vector_from_file()'s strtoul parsing would yield, since strtoul("max", ...) == 0.
 TEST(CGroup, QuotaCpuCountUnlimitedReturnsNullopt)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -258,8 +361,8 @@ TEST(CGroup, QuotaCpuCountUnlimitedReturnsNullopt)
     EXPECT_FALSE(cGroup.QuotaCpuCount().has_value());
 }
 
-// Pins down the numeric-quota branch (quota/period), which -- unlike the unlimited case above --
-// had no fixture or test anywhere in the repo prior to this test.
+// Pins down the numeric-quota branch (quota/period), which had no fixture or test in the repo
+// before this one.
 TEST(CGroup, QuotaCpuCountNumericQuotaReturnsQuotaOverPeriod)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -316,15 +419,14 @@ TEST(CGroup, SetExtraTagsMergesWithLocalTags)
     auto messages = memoryWriter->GetMessages();
     ASSERT_EQ(messages.size(), 3);
 
-    // processingTime has no local tags at all, so extra_tags_ passes through untouched. Note:
-    // we deliberately do NOT assert a full line here, since the relative order multiple tags
-    // serialize in is driven by hash-bucket iteration, not insertion order.
+    // processingTime has no local tags, so extra_tags_ passes through untouched. Not asserting the
+    // full line on purpose -- multi-tag order follows hash-bucket iteration, not insertion order.
     EXPECT_NE(messages.at(0).find("cgroup.cpu.processingTime"), std::string::npos);
     EXPECT_NE(messages.at(0).find("pod=my-pod"), std::string::npos);
     EXPECT_NE(messages.at(0).find("id=OVERRIDE_ME"), std::string::npos);
 
-    // usageTime,id=system: local "id=system" must win over extra_tags_'s "id=OVERRIDE_ME",
-    // while "pod" (no local collision) still comes through from extra_tags_.
+    // usageTime,id=system: local "id=system" must win over extra_tags_'s "id=OVERRIDE_ME", while
+    // "pod" (no collision) still comes through.
     EXPECT_NE(messages.at(1).find("cgroup.cpu.usageTime"), std::string::npos);
     EXPECT_NE(messages.at(1).find("pod=my-pod"), std::string::npos);
     EXPECT_NE(messages.at(1).find("id=system"), std::string::npos);
@@ -337,15 +439,13 @@ TEST(CGroup, SetExtraTagsMergesWithLocalTags)
     EXPECT_EQ(messages.at(2).find("OVERRIDE_ME"), std::string::npos);
 }
 
-// PodCpuStats() now delegates straight to CpuStats() (see cgroup.cpp), so a pod's sys.cpu.* /
-// titus.cpu.* output is byte-for-byte the same shape Titus already emits per-container -- the
-// only difference is that a pod's CGroup instance has SetExtraTags() applied, so MergeTags()
-// disambiguates which pod each line belongs to. These tests pin down that sys.cpu.utilization /
-// sys.cpu.numProcessors / titus.cpu.requested DO appear (gated by sixtySecondMetricsEnabled,
-// since they come from CpuUtilizationV2), that sys.cpu.peakUtilization DOES appear on every call
-// regardless of either cadence flag (CpuStats() calls CpuPeakUtilizationV2 unconditionally), and
-// that the emitted lines carry the pod's tag -- replacing the old (incorrect) assertions that
-// these series could never appear from PodCpuStats().
+// PodCpuStats() delegates straight to CpuStats() (see cgroup.cpp for why), so a pod's sys.cpu.* /
+// titus.cpu.* lines have the same shape Titus already emits per-container, disambiguated per pod by
+// SetExtraTags()/MergeTags(). These tests pin down that sys.cpu.utilization / sys.cpu.numProcessors
+// / titus.cpu.requested DO appear (gated by sixtySecondMetricsEnabled, via CpuUtilizationV2), that
+// sys.cpu.peakUtilization appears on every call regardless of either flag (CpuStats() calls
+// CpuPeakUtilizationV2 unconditionally), and that the lines carry the pod's tag -- replacing the old
+// (incorrect) assertions that these series could never appear from PodCpuStats().
 
 TEST(CGroup, PodCpuStatsBothCadencesEnabled)
 {
@@ -359,16 +459,15 @@ TEST(CGroup, PodCpuStatsBothCadencesEnabled)
 
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     auto messages = memoryWriter->GetMessages();
-    // First-ever call: CpuThrottleV2 emits only numThrottled (1); CpuUtilizationV2 emits
-    // CpuWeight + sys.cpu.numProcessors + titus.cpu.requested (3) -- sys.cpu.utilization itself
-    // needs a prior reading, so it doesn't fire yet; CpuTimeV2 emits nothing yet (1st call);
-    // CpuProcessingCapacity always emits one counter (1); CpuPeakUtilizationV2 (unconditional)
-    // emits nothing on its first-ever call -- 5 total.
+    // First-ever call: CpuThrottleV2's numThrottled (1) + CpuUtilizationV2's CpuWeight /
+    // sys.cpu.numProcessors / titus.cpu.requested (3) + CpuProcessingCapacity's counter (1) = 5.
+    // sys.cpu.utilization, CpuTimeV2 and the unconditional CpuPeakUtilizationV2 all need a prior
+    // reading, so none of them fire yet.
     EXPECT_EQ(messages.size(), 5);
 
-    // sys.cpu.numProcessors / titus.cpu.requested are already present on the very first call
-    // (unlike the delta-based sys.cpu.utilization), and already carry the pod's tag.
-    int otherMetricCount = 0;  // messages not asserted on in this loop (numThrottled/weight/processingCapacity)
+    // numProcessors / titus.cpu.requested are present on this very first call (unlike delta-based
+    // sys.cpu.utilization) and already carry the pod's tag.
+    int otherMetricCount = 0;  // the messages this loop does not assert on
     for (const auto& msg : messages)
     {
         if (msg.find("sys.cpu.numProcessors") != std::string::npos || msg.find("titus.cpu.requested") != std::string::npos)
@@ -388,8 +487,8 @@ TEST(CGroup, PodCpuStatsBothCadencesEnabled)
     cGroup.PodCpuStats(true, true);
     messages = memoryWriter->GetMessages();
     // CpuThrottleV2 (2) + CpuUtilizationV2's weight/numProcessors/titus.requested/utilization
-    // system+user (5) + CpuTimeV2's three deltas (3) + CpuProcessingCapacity (1) +
-    // CpuPeakUtilizationV2's system+user (2, now that it has a prior reading) -- 13 total.
+    // system+user (5) + CpuTimeV2 (3) + CpuProcessingCapacity (1) + CpuPeakUtilizationV2 (2, now
+    // that it has a prior reading) = 13.
     EXPECT_EQ(messages.size(), 13);
 
     auto countContaining = [&messages](const std::string& needle)
@@ -402,8 +501,7 @@ TEST(CGroup, PodCpuStatsBothCadencesEnabled)
         return count;
     };
 
-    // The node/Titus-scoped metrics PodCpuStats() used to never emit are now present, per pod,
-    // exactly as Titus already emits them per-container via CpuStats().
+    // The metrics PodCpuStats() was previously asserted never to emit, now present per pod.
     EXPECT_EQ(countContaining("sys.cpu.utilization"), 2);      // id=system, id=user
     EXPECT_EQ(countContaining("sys.cpu.numProcessors"), 1);
     EXPECT_EQ(countContaining("titus.cpu.requested"), 1);
@@ -489,10 +587,10 @@ TEST(CGroup, PodCpuStatsOnlyFiveSecondCadence)
     cGroup.PodCpuStats(true, false);
     auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     auto messages = memoryWriter->GetMessages();
-    // sixtySecondMetricsEnabled=false skips CpuThrottleV2 AND all of CpuUtilizationV2 (so no
-    // sys.cpu.numProcessors/titus.cpu.requested/sys.cpu.utilization/cgroup.cpu.weight at all).
-    // CpuTimeV2 emits nothing on its first call; CpuProcessingCapacity always emits one counter;
-    // the always-called CpuPeakUtilizationV2 emits nothing on its first-ever call -- 1 total.
+    // sixtySecondMetricsEnabled=false skips CpuThrottleV2 and all of CpuUtilizationV2 (so no
+    // numProcessors/titus.cpu.requested/sys.cpu.utilization/cgroup.cpu.weight at all); CpuTimeV2
+    // and the always-called CpuPeakUtilizationV2 have no prior reading yet, leaving only
+    // CpuProcessingCapacity's counter -- 1 total.
     EXPECT_EQ(messages.size(), 1);
     memoryWriter->Clear();
 
@@ -548,9 +646,8 @@ TEST(CGroup, PodCpuStatsNeitherCadenceEnabled)
     cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
     cGroup.PodCpuStats(false, false);
     messages = memoryWriter->GetMessages();
-    // Even with BOTH cadence flags off, CpuPeakUtilizationV2 still runs unconditionally, and now
-    // has a prior reading to diff against -- this is the crux of the fix: sys.cpu.peakUtilization
-    // is not gated behind either cadence flag, it fires on every single call.
+    // The crux of the fix: CpuPeakUtilizationV2 runs even with BOTH cadence flags off, and now has
+    // a prior reading to diff against -- sys.cpu.peakUtilization fires on every single call.
     EXPECT_EQ(messages.size(), 2);
     EXPECT_NE(messages.at(0).find("sys.cpu.peakUtilization"), std::string::npos);
     EXPECT_NE(messages.at(0).find("nf.node=test-pod"), std::string::npos);
@@ -632,16 +729,12 @@ TEST(CGroup, ParseMemoryV2)
     EXPECT_EQ(messages.at(16), "g:mem.totalFree:1296650240.000000\n");
 }
 
-// Regression test for MemoryStatsStdV2()'s tag-parity bug: all 8 of its CreateGauge call sites
-// used to pass zero tag arguments at all (not even MergeTags({})), even though it reads
-// genuinely per-cgroup values (memory.max/memory.current/memory.swap.max/memory.swap.current/
-// memory.stat, all under path_prefix_) exactly like MemoryStatsV2() does just above it. That
-// meant a pod-scoped caller (PodMonitor) calling this today would have every tracked pod's
-// mem.* series collide under identical untagged names. This test pins down the fix: once
-// SetExtraTags() has given this CGroup instance a disambiguating tag, every one of the 8
-// emitted mem.* messages carries it -- mirroring the substring-check style of
-// SetExtraTagsMergesWithLocalTags/PodCpuStatsBothCadencesEnabled above, since (as in those
-// tests) the exact numeric values aren't the point here.
+// Regression test for MemoryStatsStdV2()'s tag-parity bug: all 8 of its CreateGauge call sites used
+// to pass no tag argument at all (not even MergeTags({})), even though it reads genuinely
+// per-cgroup values under path_prefix_ (memory.max/current/swap.max/swap.current/memory.stat) just
+// as MemoryStatsV2() does above it. For a pod-scoped caller (PodMonitor) that meant every tracked
+// pod's mem.* series colliding under identical untagged names. Substring checks only: the tag is
+// the point here, not the numbers (ParseMemoryV2 above already pins those).
 TEST(CGroup, MemoryStatsStdV2EmitsWithPodTags)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));

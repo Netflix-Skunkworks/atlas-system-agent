@@ -25,8 +25,8 @@ class PodMonitor
     // Forwards to CgroupPodDiscovery::FindActivePodCgroups(); see there for detail.
     [[nodiscard]] PodCgroupMap FindActivePodCgroups() const noexcept { return discovery_.FindActivePodCgroups(); }
 
-    // Like FindActivePodCgroups(), but also resolves each pod's name, namespace, annotations,
-    // labels, and container id -> name map via a live kubelet API call. Slower and
+    // Like FindActivePodCgroups(), but also resolves each pod's identity (name, namespace,
+    // containers, annotations, labels, cpu_requests) via a live kubelet API call. Slower and
     // network-dependent; prefer FindActivePodCgroups() when only cgroup paths are needed.
     [[nodiscard]] PodInfoMap FindActivePodInfo() const noexcept;
 
@@ -41,10 +41,9 @@ class PodMonitor
     // Forwards to TrackedPodRegistry::EmitIOStats(); see there for detail.
     void CollectIOStats() noexcept { tracked_registry_.EmitIOStats(); }
 
-    // Refreshes the tracked pod/container set (RefreshTrackedPods()) before emitting memory
-    // metrics (TrackedPodRegistry::EmitMemoryStats()), so a newly-discovered container is
+    // Refreshes the tracked pod/container set before emitting, so a newly-discovered container is
     // sampled the same cycle it appears and an evicted container's already-destroyed CGroup is
-    // never touched. See EmitMemoryStats() for the metrics themselves.
+    // never touched. See TrackedPodRegistry::EmitMemoryStats() for the metrics themselves.
     void CollectMemoryStats() noexcept
     {
         RefreshTrackedPods();
@@ -52,9 +51,9 @@ class PodMonitor
     }
 
    protected:
-    // For testing access. Facade-level glue joining CgroupPodDiscovery's cgroup-path output with
-    // PodIdentityClient's kubelet-sourced identity output into one PodInfoMap -- kept here since
-    // it isn't naturally owned by either collaborator alone.
+    // For testing access. Joins CgroupPodDiscovery's cgroup paths with PodIdentityClient's
+    // kubelet-sourced identities into one PodInfoMap -- lives here since neither collaborator
+    // alone naturally owns it.
     [[nodiscard]] static PodInfoMap JoinCgroupAndIdentity(const PodCgroupMap& cgroup_pods,
                                                            const std::optional<PodIdentityMap>& identities) noexcept;
 

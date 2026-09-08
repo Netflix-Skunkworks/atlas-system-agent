@@ -24,15 +24,15 @@ std::optional<double> ParseCpuQuantity(std::string_view value) noexcept
     const auto* const end = value.data() + value.size();
     auto [ptr, ec] = std::from_chars(value.data(), end, parsed);
 
-    // ptr != end rejects trailing junk. from_chars stops at the first character it cannot use
-    // rather than failing, so without this "0.5.1" would parse as 0.5 and "5x0m" as 5.
+    // from_chars stops at the first character it cannot use rather than failing, so ptr != end is
+    // what rejects trailing junk ("0.5.1" would otherwise be 0.5, "5x0m" would be 5).
     if (ec != std::errc() || ptr != end)
     {
         return std::nullopt;
     }
 
-    // from_chars's general format accepts "inf" and "nan", neither of which is a CPU quantity, and
-    // a negative request is meaningless. Reject both rather than propagating them into a gauge.
+    // from_chars's general format accepts "inf" and "nan", and a negative request is meaningless
+    // -- reject both rather than propagate them into a gauge.
     if (!std::isfinite(parsed) || parsed < 0.0)
     {
         return std::nullopt;
