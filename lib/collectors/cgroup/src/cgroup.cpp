@@ -62,48 +62,74 @@ void CGroup::PressureStall() noexcept
 
 void CGroup::CpuThrottleV2(const std::unordered_map<std::string, int64_t>& stats) noexcept
 {
-    static auto prev_throttled_time = static_cast<int64_t>(-1);
-    auto cur_throttled_time = stats.at("throttled_usec");
-    if (prev_throttled_time >= 0)
+    // stats.at() would throw std::out_of_range out of this noexcept function -- terminating the
+    // process -- when cpu.stat could not be read this tick (the cgroup directory having been removed
+    // between one sample and the next, say; parse_kv_from_file() then just leaves `stats` empty).
+    // Bail out without touching prev_throttled_time_, so the next successful read still computes a
+    // correct delta from the last real baseline.
+    auto throttled_it = stats.find("throttled_usec");
+    auto nr_throttled_it = stats.find("nr_throttled");
+    if (throttled_it == stats.end() || nr_throttled_it == stats.end())
     {
-        auto seconds = (cur_throttled_time - prev_throttled_time) / MICROS;
+        return;
+    }
+
+    auto cur_throttled_time = throttled_it->second;
+    if (prev_throttled_time_ >= 0)
+    {
+        auto seconds = (cur_throttled_time - prev_throttled_time_) / MICROS;
         registry_->CreateCounter("cgroup.cpu.throttledTime").Increment(seconds);
     }
-    prev_throttled_time = cur_throttled_time;
+    prev_throttled_time_ = cur_throttled_time;
 
-    registry_->CreateMonotonicCounter("cgroup.cpu.numThrottled").Set(stats.at("nr_throttled"));
+    registry_->CreateMonotonicCounter("cgroup.cpu.numThrottled").Set(nr_throttled_it->second);
 }
 
 void CGroup::CpuTimeV2(const std::unordered_map<std::string, int64_t>& stats) noexcept
 {
-    static auto prev_proc_time = static_cast<int64_t>(-1);
-    if (prev_proc_time >= 0)
+    // Same noexcept .at() hazard as CpuThrottleV2() above -- bail out when cpu.stat is unreadable.
+    auto usage_it = stats.find("usage_usec");
+    auto system_it = stats.find("system_usec");
+    auto user_it = stats.find("user_usec");
+    if (usage_it == stats.end() || system_it == stats.end() || user_it == stats.end())
     {
-        auto secs = (stats.at("usage_usec") - prev_proc_time) / MICROS;
+        return;
+    }
+
+    if (prev_proc_time_ >= 0)
+    {
+        auto secs = (usage_it->second - prev_proc_time_) / MICROS;
         registry_->CreateCounter("cgroup.cpu.processingTime").Increment(secs);
     }
-    prev_proc_time = stats.at("usage_usec");
+    prev_proc_time_ = usage_it->second;
 
-    static auto prev_sys_usage = static_cast<int64_t>(-1);
-    if (prev_sys_usage >= 0)
+    if (prev_sys_usage_ >= 0)
     {
-        auto secs = (stats.at("system_usec") - prev_sys_usage) / MICROS;
+        auto secs = (system_it->second - prev_sys_usage_) / MICROS;
         registry_->CreateCounter("cgroup.cpu.usageTime", {{"id", "system"}}).Increment(secs);
     }
-    prev_sys_usage = stats.at("system_usec");
+    prev_sys_usage_ = system_it->second;
 
-    static auto prev_user_usage = static_cast<int64_t>(-1);
-    if (prev_user_usage >= 0)
+    if (prev_user_usage_ >= 0)
     {
-        auto secs = (stats.at("user_usec") - prev_user_usage) / MICROS;
+        auto secs = (user_it->second - prev_user_usage_) / MICROS;
         registry_->CreateCounter("cgroup.cpu.usageTime", {{"id", "user"}}).Increment(secs);
     }
-    prev_user_usage = stats.at("user_usec");
+    prev_user_usage_ = user_it->second;
 }
 
 double CGroup::GetAvailCpuTime(const double delta_t, const double cpuCount) noexcept
 {
     auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
+    // read_num_vector_from_file() returns an EMPTY vector when cpu.max can't be opened (see
+    // util.cpp) -- reachable whenever the cgroup directory is removed between one sample and the
+    // next. Without this guard cpu_max[1] reads out of bounds, out of a noexcept function. 0 means
+    // "unknown"; callers must not divide by it. Note cfs_period cancels algebraically in the return
+    // below, so reading cpu.max is mostly a probe for whether the file is still readable.
+    if (cpu_max.size() < 2)
+    {
+        return 0.0;
+    }
     auto cfs_period = cpu_max[1];
     auto cfs_quota = cfs_period * cpuCount;
     return (delta_t / cfs_period) * cfs_quota;
@@ -122,76 +148,111 @@ double CGroup::GetNumCpu() noexcept
 
 void CGroup::CpuProcessingCapacity(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept
 {
-    static absl::Time last_updated;
-    if (last_updated == absl::UnixEpoch())
+    if (capacity_last_updated_ == absl::UnixEpoch())
     {
-        last_updated = now - interval;
+        capacity_last_updated_ = now - interval;
     }
-    auto delta_t = absl::ToDoubleSeconds(now - last_updated);
-    last_updated = now;
+    auto delta_t = absl::ToDoubleSeconds(now - capacity_last_updated_);
+    capacity_last_updated_ = now;
     registry_->CreateCounter("cgroup.cpu.processingCapacity").Increment(delta_t * cpuCount);
 }
 
-void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, const std::unordered_map<std::string, int64_t>& stats, const absl::Duration& interval) noexcept
+void CGroup::CpuWeight() noexcept
 {
-    static absl::Time last_updated;
-    if (last_updated == absl::UnixEpoch())
-    {
-        last_updated = now - interval;
-    }
-    auto delta_t = absl::ToDoubleSeconds(now - last_updated);
-    last_updated = now;
-
     auto weight = read_num_from_file(path_prefix_, "cpu.weight");
     if (weight >= 0)
     {
         registry_->CreateGauge("cgroup.cpu.weight").Set(weight);
     }
+}
+
+void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, const std::unordered_map<std::string, int64_t>& stats, const absl::Duration& interval) noexcept
+{
+    CpuWeight();
+
+    if (utilization_last_updated_ == absl::UnixEpoch())
+    {
+        utilization_last_updated_ = now - interval;
+    }
+    // NOTE: utilization_last_updated_ is deliberately NOT advanced here -- it advances past the
+    // cpu.stat guard below, in lockstep with the utilization_prev_*_time_ baselines; see that
+    // assignment for why splitting them publishes a wrong number. The epoch bootstrap above is the
+    // sole write preceding the guard, and it is benign: it fires at most once (nothing resets the
+    // clock to the epoch) and only before the first guard-passing call, when prev_*_time_ is still
+    // -1 and no utilization gauge is published whatever delta_t came out as.
+    auto delta_t = absl::ToDoubleSeconds(now - utilization_last_updated_);
 
     auto avail_cpu_time = GetAvailCpuTime(delta_t, cpuCount);
     registry_->CreateGauge("sys.cpu.numProcessors").Set(cpuCount);
     registry_->CreateGauge("titus.cpu.requested").Set(cpuCount);
 
-    static auto prev_system_time = static_cast<int64_t>(-1);
-    if (prev_system_time >= 0)
+    // Same noexcept .at() hazard as CpuThrottleV2()/CpuTimeV2() -- see CpuThrottleV2().
+    auto system_it = stats.find("system_usec");
+    auto user_it = stats.find("user_usec");
+    if (system_it == stats.end() || user_it == stats.end())
     {
-        auto secs = (stats.at("system_usec") - prev_system_time) / MICROS;
+        return;
+    }
+
+    // Safe to advance the clock only here, past the guard, because this tick also refreshes the
+    // prev_*_time_ baselines below: utilization = (usage delta) / (delta_t * cpuCount), so baseline
+    // and clock must span the SAME window. Advancing above the guard leaves them out of step on any
+    // tick where cpu.stat is unreadable -- clock moves, baseline does not -- and the next good tick
+    // would divide a two-interval usage delta by one interval of capacity, publishing ~200% for a
+    // container at 100%. Here, delta_t spans both intervals on recovery, which is the correct ratio.
+    utilization_last_updated_ = now;
+
+    // avail_cpu_time == 0 means cpu.max was unreadable (see GetAvailCpuTime) or cpuCount is 0, and
+    // dividing would publish inf. Skip the gauges, but still refresh the baselines below so the next
+    // successful cycle computes a correct delta.
+    if (avail_cpu_time > 0 && utilization_prev_system_time_ >= 0)
+    {
+        auto secs = (system_it->second - utilization_prev_system_time_) / MICROS;
         registry_->CreateGauge("sys.cpu.utilization", {{"id", "system"}}).Set((secs / avail_cpu_time) * 100);
     }
-    prev_system_time = stats.at("system_usec");
+    utilization_prev_system_time_ = system_it->second;
 
-    static auto prev_user_time = static_cast<int64_t>(-1);
-    if (prev_user_time >= 0)
+    if (avail_cpu_time > 0 && utilization_prev_user_time_ >= 0)
     {
-        auto secs = (stats.at("user_usec") - prev_user_time) / MICROS;
+        auto secs = (user_it->second - utilization_prev_user_time_) / MICROS;
         registry_->CreateGauge("sys.cpu.utilization", {{"id", "user"}}).Set((secs / avail_cpu_time) * 100);
     }
-    prev_user_time = stats.at("user_usec");
+    utilization_prev_user_time_ = user_it->second;
 }
 
 void CGroup::CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_map<std::string, int64_t>& stats, const double cpuCount) noexcept
 {
-    static absl::Time last_updated;
-    auto delta_t = absl::ToDoubleSeconds(now - last_updated);
-    last_updated = now;
+    // peak_last_updated_ advances past the guard below, not here -- in lockstep with the
+    // peak_prev_*_time_ baselines; see CpuUtilizationV2() for the reasoning. The consequence is
+    // worse here: peakUtilization is a MaxGauge, so one inflated sample latches as the reported
+    // peak for the whole publishing interval.
+    auto delta_t = absl::ToDoubleSeconds(now - peak_last_updated_);
 
     auto avail_cpu_time = GetAvailCpuTime(delta_t, cpuCount);
 
-    static auto prev_system_time = static_cast<int64_t>(-1);
-    if (prev_system_time >= 0)
+    // Same noexcept .at() hazard as CpuThrottleV2() -- see its comment.
+    auto system_it = stats.find("system_usec");
+    auto user_it = stats.find("user_usec");
+    if (system_it == stats.end() || user_it == stats.end())
     {
-        auto secs = (stats.at("system_usec") - prev_system_time) / MICROS;
+        return;
+    }
+
+    peak_last_updated_ = now;
+
+    if (avail_cpu_time > 0 && peak_prev_system_time_ >= 0)
+    {
+        auto secs = (system_it->second - peak_prev_system_time_) / MICROS;
         registry_->CreateMaxGauge("sys.cpu.peakUtilization", {{"id", "system"}}).Set((secs / avail_cpu_time) * 100);
     }
-    prev_system_time = stats.at("system_usec");
+    peak_prev_system_time_ = system_it->second;
 
-    static auto prev_user_time = static_cast<int64_t>(-1);
-    if (prev_user_time >= 0)
+    if (avail_cpu_time > 0 && peak_prev_user_time_ >= 0)
     {
-        auto secs = (stats.at("user_usec") - prev_user_time) / MICROS;
+        auto secs = (user_it->second - peak_prev_user_time_) / MICROS;
         registry_->CreateMaxGauge("sys.cpu.peakUtilization", {{"id", "user"}}).Set((secs / avail_cpu_time) * 100);
     }
-    prev_user_time = stats.at("user_usec");
+    peak_prev_user_time_ = user_it->second;
 }
 
 void CGroup::CpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
@@ -522,10 +583,8 @@ catch (const std::exception& ex)
     return {};
 }
 
-void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, const std::unordered_map<std::string, IOThrottle>& ioThrottles, Registry* registry)
+void CGroup::UpdateIOMetrics(const std::unordered_map<std::string, atlasagent::IOStats>& ioStats, const std::unordered_map<std::string, IOThrottle>& ioThrottles)
 {
-    // Static map to hold previous IOStats for delta calculations
-    static std::unordered_map<std::string, IOStats> previousStats;
     constexpr double INTERVAL_SECONDS = 5.0;
     constexpr double PERCENT_MULTIPLIER = 100.0;
 
@@ -537,9 +596,9 @@ void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, co
                         currentStat.rBytes.value(), currentStat.rOperations.value(), currentStat.wBytes.value(),
                         currentStat.wOperations.value());
 
-        // Check if we have previous data for a delta calculation
-        auto prev_it = previousStats.find(deviceKey);
-        if (prev_it != previousStats.end())
+        // Delta calculation needs previous data from this instance's own last reading
+        auto prev_it = io_previous_stats_.find(deviceKey);
+        if (prev_it != io_previous_stats_.end())
         {
             const auto& prevStat = prev_it->second;
 
@@ -553,10 +612,10 @@ void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, co
                             delta_rbytes, delta_rios, delta_wbytes, delta_wios);
 
             // Update byte and operation counters
-            registry->CreateCounter("disk.io.bytes", {{"dev", currentStat.deviceName}, {"id", "read"}}).Increment(delta_rbytes);
-            registry->CreateCounter("disk.io.bytes", {{"dev", currentStat.deviceName}, {"id", "write"}}).Increment(delta_wbytes);
-            registry->CreateCounter("disk.io.ops", {{"dev", currentStat.deviceName}, {"id", "read"}, {"statistic", "count"}}).Increment(delta_rios);
-            registry->CreateCounter("disk.io.ops", {{"dev", currentStat.deviceName}, {"id", "write"}, {"statistic", "count"}}).Increment(delta_wios);
+            registry_->CreateCounter("disk.io.bytes", {{"dev", currentStat.deviceName}, {"id", "read"}}).Increment(delta_rbytes);
+            registry_->CreateCounter("disk.io.bytes", {{"dev", currentStat.deviceName}, {"id", "write"}}).Increment(delta_wbytes);
+            registry_->CreateCounter("disk.io.ops", {{"dev", currentStat.deviceName}, {"id", "read"}, {"statistic", "count"}}).Increment(delta_rios);
+            registry_->CreateCounter("disk.io.ops", {{"dev", currentStat.deviceName}, {"id", "write"}, {"statistic", "count"}}).Increment(delta_wios);
 
             // Calculate throttle utilization if throttle data is available
             auto throttle_it = ioThrottles.find(deviceKey);
@@ -575,7 +634,7 @@ void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, co
                     {
                         // Utilization = (delta / (limit * interval)) * 100
                         const auto utilization = (delta / (limit.value() * INTERVAL_SECONDS)) * PERCENT_MULTIPLIER;
-                        registry->CreateDistributionSummary(metric_name, {{"dev", currentStat.deviceName}, {"id", operation}}).Record(utilization);
+                        registry_->CreateDistributionSummary(metric_name, {{"dev", currentStat.deviceName}, {"id", operation}}).Record(utilization);
                     }
                 };
 
@@ -586,7 +645,7 @@ void UpdateIOMetrics(const std::unordered_map<std::string, IOStats>& ioStats, co
             }
         }
         // Update previous stats for next iteration
-        previousStats[deviceKey] = currentStat;
+        io_previous_stats_[deviceKey] = currentStat;
     }
 }
 
@@ -611,7 +670,7 @@ void CGroup::IOStats()
     auto ioThrottles = ParseIOThrottleLines(throttleLines);
 
     // Update metrics based on parsed IO statistics and throttling information
-    UpdateIOMetrics(ioStats, ioThrottles, registry_);
+    UpdateIOMetrics(ioStats, ioThrottles);
 }
 
 }  // namespace atlasagent
