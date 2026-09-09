@@ -13,8 +13,10 @@ namespace atlasagent
 // Pod UID (canonical dashed form) -> that pod's cgroup v2 directory.
 using PodCgroupMap = absl::flat_hash_map<std::string, std::filesystem::path>;
 
-// Container id (bare hex, no runtime scheme prefix) -> that container's cgroup v2 scope
-// directory, one level below its pod's own cgroup directory.
+// Runtime container-id suffix extracted from the cgroup directory name -> that container's cgroup
+// v2 scope directory, one level below its pod's own cgroup directory. The current matcher strips
+// the systemd/containerd prefix and suffix but validates only the id's minimum length, not its
+// contents.
 using ContainerCgroupMap = absl::flat_hash_map<std::string, std::filesystem::path>;
 
 // Pure cgroup-v2 filesystem discovery of pod- and container-level cgroup directories under a
@@ -38,9 +40,9 @@ using ContainerCgroupMap = absl::flat_hash_map<std::string, std::filesystem::pat
 // cgroupfs are byte-for-byte indistinguishable from each other.
 //
 // Pod discovery (FindActivePodCgroups) handles BOTH drivers; container discovery handles ONE row.
-// The asymmetry is the dangerous shape: pods are tracked while every container is silently missed,
-// so the node publishes no container metrics while looking healthy -- a pod-discovery failure would
-// announce itself. FindContainersInPodFindsNothingUnderCgroupfsDriverKnownGap pins it, with evidence.
+// The asymmetry is the dangerous shape: pod directories are still discovered while every container
+// is silently missed, so the node publishes no container metrics without an explicit discovery
+// error. FindContainersInPodFindsNothingUnderCgroupfsDriverKnownGap pins that behavior.
 //
 // Before widening: CRI-O also creates a sibling crio-conmon-<id>[.scope] cgroup per container for
 // its monitor process. That is NOT a container, and any matcher loose enough to accept crio-<id>
@@ -48,9 +50,8 @@ using ContainerCgroupMap = absl::flat_hash_map<std::string, std::filesystem::pat
 //
 // See FindActivePodCgroups in the .cpp for the pod-level layouts drawn side by side.
 //
-// As of 2026-09 unreachable: the whole fleet runs containerd (no CRI-O) with the systemd driver.
-// Point-in-time, not an invariant -- RE-VERIFY before relying on it, and gate any CRI-O/cgroupfs
-// migration on it.
+// Deployment constraint: container metrics require containerd with the systemd driver. Re-verify
+// that constraint before enabling this collector on CRI-O or cgroupfs nodes.
 class CgroupPodDiscovery
 {
    public:
@@ -58,14 +59,15 @@ class CgroupPodDiscovery
     {
     }
 
-    // Every pod-level cgroup directory on this node, keyed by pod UID in canonical (dashed) form.
-    // Re-detects the cgroup v2 driver (systemd vs cgroupfs) on each call, and walks at most two
-    // levels deep, so it only ever finds pod-aggregate cgroups, never per-container leaves.
+    // Every pod-level cgroup directory found under the configured root, keyed by pod UID in
+    // canonical (dashed) form. Chooses the systemd or cgroupfs layout on each call and scans pod
+    // directories directly under the Kubernetes root or one QoS directory below it; it does not
+    // recurse into pod directories or return per-container leaves.
     [[nodiscard]] PodCgroupMap FindActivePodCgroups() const noexcept;
 
     void SetPrefix(std::string new_prefix) noexcept { path_prefix_ = std::move(new_prefix); }
 
-    // pod_cgroup_dir's immediate subdirectories matching "cri-containerd-<hex-id>.scope"
+    // pod_cgroup_dir's immediate subdirectories matching "cri-containerd-<runtime-id>.scope"
     // (containerd + systemd driver), keyed by the stripped id. The id is validated on LENGTH ONLY,
     // never on its characters, so a long enough non-hex id is accepted as-is. Never throws: an
     // unopenable dir yields an empty map, an error mid-iteration yields whatever matched so far.
@@ -73,14 +75,13 @@ class CgroupPodDiscovery
     // This is ONE of the six runtime x driver spellings above; the other five yield an empty map,
     // not an error. A widening cannot treat cgroupfs as meaning "bare id" -- see the trap above.
     //
-    // INCLUDES THE POD SANDBOX (pause) container: containerd's sandbox setup calls the identical
-    // path builder, so the sandbox carries the very same cri-containerd-<id>.scope shape and
-    // nothing in the path distinguishes it. Its id is in none of kubelet's status arrays, so
-    // ReconcileContainers skips it downstream -- expected, not a fault. Measured on a live node as
-    // exactly one such scope per pod (55 scopes == 35 running containers + 20 live sandboxes).
+    // For the supported systemd/containerd layout, the result INCLUDES THE POD SANDBOX (pause)
+    // scope: containerd's sandbox setup uses the same cri-containerd-<id>.scope shape, so nothing in
+    // the path distinguishes it. Its id is in none of the parsed kubelet status arrays, so
+    // ReconcileContainers skips it downstream -- expected, not a fault.
     //
-    // Runtime-specific, so do not generalize: containerd creates the sandbox cgroup under BOTH
-    // drivers, while modern CRI-O generally does not create one at all.
+    // Containerd can also create a sandbox cgroup under cgroupfs, but this function does not match
+    // that driver. Modern CRI-O generally does not create a sandbox cgroup at all.
     [[nodiscard]] static ContainerCgroupMap FindContainersInPod(const std::filesystem::path& pod_cgroup_dir) noexcept;
 
    protected:

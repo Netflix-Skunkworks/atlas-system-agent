@@ -3,23 +3,23 @@
 // identity call, and prints what it discovers, so behavior can be checked by hand against
 // `kubectl get pods` on a live node.
 //
-// Identity resolution is one plain HTTP GET to kubelet's own local, unauthenticated /pods endpoint
-// (http://localhost:10255/pods by default) -- no kubeconfig, bearer token, or node-name lookup,
-// since kubelet only ever knows pods on its own node. If that port isn't reachable (e.g. disabled
-// by cluster hardening), every pod still appears (from the cgroup walk) but with empty
-// name/namespace/annotations/labels.
+// Identity resolution performs one logical synchronous GET to kubelet's own local, unauthenticated
+// /pods endpoint (http://localhost:10255/pods by default), subject to HttpClient's retry policy. It
+// uses no kubeconfig, bearer token, or node-name lookup because kubelet only knows pods on its own
+// node. If that endpoint is unavailable, cgroup-discovered pods still appear, but their
+// name/namespace/containers/annotations/labels/cpu_requests fields are empty.
 //
 // Usage: find-activepods [cgroup_path_prefix] [filtered]  (either order; both optional)
-// "filtered" prints the same PASS/FAIL decision RefreshTrackedPods() makes for every pod and
-// container, always with a reason:
+// "filtered" reproduces the pod-gating and container-match decisions that a fresh
+// RefreshTrackedPods() would make for this one snapshot, always with a reason:
 //   - Pod-level Gating (ResolvePodTags, in pod_tag_resolver.{h,cpp}): if none of
 //     nf.app/nf.stack/nf.detail resolve -- from the primary netflix.com/{app,stack,detail}
 //     annotations or their label fallbacks -- the whole pod is GATED OUT, printed with exactly
 //     which keys were checked and found missing, and every container excluded for that reason.
-//   - Container-level mismatch (TrackedPodRegistry::ReconcileContainers's real matching): even in
-//     a PASSED pod, a container is tracked only if its cgroup-discovered id
-//     (CgroupPodDiscovery::FindContainersInPod) is also in kubelet's reported container list, and
-//     vice versa -- a container visible on only one side is excluded independently of Gating.
+//   - Container-level mismatch (TrackedPodRegistry::ReconcileContainers's matching): for a fresh
+//     registry, a container is admitted only if its cgroup-discovered id is also in the parsed
+//     kubelet status map. An existing tracked entry can remain eligible when a later snapshot lacks
+//     its status entry, but this one-shot tool has no prior registry state to represent that case.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
 #include <lib/collectors/pod_monitor/src/util/cgroup_pod_discovery.h>
@@ -50,10 +50,8 @@ void PrintSortedMap(const std::unordered_map<std::string, std::string>& values, 
     }
 }
 
-// Mirrors ResolvePodTags's own per-tag fallback check (primary annotation, else the first
-// non-empty fallback label, in its exact order) against the same PodTagKeys constants it uses, so
-// this can never name a key ResolvePodTags doesn't actually check. Returns which key resolved the
-// tag, or every key checked and found missing.
+// Uses the same PodTagKeys constants and currently mirrors ResolvePodTags's fallback lists and
+// order. Returns which key resolved the tag, or every key checked and found missing.
 std::string DescribeTagResolution(const std::unordered_map<std::string, std::string>& annotations,
                                    const std::unordered_map<std::string, std::string>& labels, const char* tag_name,
                                    std::string_view annotation_key,
@@ -83,11 +81,11 @@ std::string DescribeTagResolution(const std::unordered_map<std::string, std::str
     return fmt::format("{}: UNRESOLVED (checked {})", tag_name, checked);
 }
 
-// The three outcomes of TrackedPodRegistry::ReconcileContainers's real loop over cgroup-discovered
-// containers, each looked up by id in kubelet's reported container list: matched (both sides agree
-// -- what actually gets tracked), cgroup_only (cgroup scope exists but kubelet hasn't reported the
-// id -- skipped this cycle), kubelet_only (kubelet reports an id with no cgroup scope -- never even
-// visited, since the loop is driven by the cgroup-discovered set). Sorted for deterministic output.
+// The three outcomes for a fresh reconciliation snapshot, with each cgroup-discovered container
+// looked up by id in the parsed kubelet status map: matched (what a fresh registry would admit),
+// cgroup_only (a scope has no parsed status entry, as with a pod sandbox, an ephemeral container, or
+// a transient status race), and kubelet_only (a status id has no cgroup scope and is never visited by
+// ReconcileContainers, whose loop is driven by cgroup discovery). Sorted for deterministic output.
 struct ContainerClassification
 {
     std::vector<std::string> matched;

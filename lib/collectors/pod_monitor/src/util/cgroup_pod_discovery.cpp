@@ -161,8 +161,8 @@ ContainerCgroupMap CgroupPodDiscovery::FindContainersInPod(const std::filesystem
 {
     ContainerCgroupMap containers;
 
-    // A runtime-assigned container id is an arbitrary hex string, not a UUID like a pod uid, so
-    // require a plausible non-trivial length rather than NormalizePodUid's exact one.
+    // Treat the runtime-assigned id as an opaque suffix. Require a plausible non-trivial length
+    // rather than NormalizePodUid's exact UUID shape; this does not validate hexadecimal content.
     constexpr size_t kMinContainerIdLength = 12;
 
     std::error_code ec;

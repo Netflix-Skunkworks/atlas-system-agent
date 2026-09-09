@@ -59,7 +59,7 @@ target_link_libraries(find-activepods
 )
 
 # Standalone debug tool: a trimmed copy of AtlasAgent/src/k8s-agent.cpp's polling loop that
-# constructs only PodMonitor and stops after two 60-second cadence intervals, for exercising
+# constructs only PodMonitor and stops after 60 cadence intervals (about one hour), for exercising
 # PodMonitor's real cadence wiring by hand without the rest of k8s-agent.cpp's collectors; not
 # part of the atlas_system_agent binary and not run by ctest.
 add_executable(mock-agent

@@ -71,8 +71,8 @@ TrackedPod& TrackedPodRegistry::UpsertPodIdentity(const std::string& uid, const 
     // try_emplace leaves an already-tracked uid untouched: info.name/info.pod_namespace are used
     // as constructor args only for a *new* TrackedPod, hence the self-heal below.
     auto [it, inserted] = tracked_pods_.try_emplace(uid, info.name, info.pod_namespace);
-    // Self-heal in place, but only if the fresh info carries a resolved (non-blank) identity --
-    // see the header doc for why blank input must never overwrite an already-tracked identity.
+    // Update the stored pair only when both incoming name and namespace are non-blank. Partial or
+    // blank input leaves the previous pair unchanged; container Gating is handled separately below.
     if (!inserted && !info.name.empty() && !info.pod_namespace.empty())
     {
         it->second.name = info.name;
@@ -105,21 +105,16 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const PodInfo& inf
         auto container_name_it = info.containers.find(container_id);
         if (container_name_it == info.containers.end())
         {
-            // DOMINANT case: the pod sandbox (pause) container, permanent by design. Containerd
-            // gives the sandbox its own cri-containerd-<id>.scope under the pod slice, but that id
-            // appears in neither containerStatuses nor initContainerStatuses, so every pod
-            // contributes exactly one scope that can never resolve. Skipping is correct -- the
-            // pause container's usage is noise and there is no name to tag it with. Measured on a
-            // live node: 55 scopes == 35 running containers + 20 live sandboxes. Also landing here:
-            // a genuinely transient race (a scope can appear slightly before kubelet reports it, or
-            // vice versa, and resolves on a later cycle), and an ephemeral (kubectl debug)
-            // container, which PodIdentityClient deliberately does not resolve.
+            // Common case: a pod sandbox (pause) scope. Containerd gives the sandbox the same
+            // cri-containerd-<id>.scope shape, but that id appears in neither parsed status array,
+            // so it cannot resolve to a container name and is intentionally skipped. Also landing
+            // here: a cgroup scope that appears before its kubelet status entry, and an ephemeral
+            // (kubectl debug) container, whose status array PodIdentityClient does not parse.
             //
-            // Skip without evicting, so an already-tracked container survives a blip. DEBUG rather
-            // than warn because this is mostly expected traffic: a sandbox is indistinguishable
-            // from an unresolved container by cgroup path alone (identical name shape, and
-            // kubelet's /pods never reports a sandbox id), so the volume is roughly one line per
-            // pod per refresh and carries no fault signal on its own.
+            // Do not insert or update this id. Eviction above is based only on cgroup discovery, so
+            // an existing tracked entry with the same id remains eligible for later Emit* calls.
+            // DEBUG rather than warn because a sandbox is indistinguishable from another unmatched
+            // scope by path alone, and kubelet's /pods never reports a sandbox id.
             atlasagent::Logger()->debug("Pod {} container {} has a cgroup scope but no kubelet-reported name; skipping",
                                         info.uid, container_id);
             continue;
@@ -142,10 +137,11 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const PodInfo& inf
         // later.
         cit->second.cgroup.SetCpuCountOverride(ResolveCpuCountForPod(cit->second.cgroup));
 
-        // The declared CPU request, keyed by container name because that is how the pod spec
-        // identifies containers. Absent means no declared request (BestEffort); CGroup then omits
-        // k8s.cpu.requested rather than reporting the limit as if it were the request. Also
-        // re-resolved every cycle, so an in-place resize is picked up.
+        // The parsed declared CPU request, keyed by container name because that is how the pod spec
+        // identifies containers. Absent means no usable request was parsed (for example, a
+        // BestEffort or limits-only container); CGroup then omits k8s.cpu.requested rather than
+        // reporting the limit as if it were the request. Re-resolve every cycle so an in-place
+        // resize is picked up.
         auto request_it = info.cpu_requests.find(container_name);
         cit->second.cgroup.SetCpuRequestOverride(
             request_it != info.cpu_requests.end() ? std::optional<double>{request_it->second} : std::nullopt);
@@ -161,17 +157,19 @@ void TrackedPodRegistry::Refresh(const PodInfoMap& discovered) noexcept
         TrackedPod& pod = UpsertPodIdentity(uid, info);
 
         // Resolve ONCE -- annotations/labels are pod-level, so every container in this pod shares
-        // the same nf.app/nf.stack/nf.detail/nf.cluster. Also the single Gating decision for all of
-        // them (see ResolvePodTags for why nf.node/nf.process are excluded from it).
+        // the same emitted nf.app/nf.stack/nf.cluster tags. nf.detail can affect Gating and cluster
+        // construction but is not currently emitted. This is also the single Gating decision for
+        // all containers (see ResolvePodTags for why nf.node/nf.process are excluded from it).
         auto pod_tags = ResolvePodTags(info.annotations, info.labels, pod.name, k8s_cluster_);
         auto discovered_containers = CgroupPodDiscovery::FindContainersInPod(info.cgroup_path);
         EvictUntrackedContainers(pod, discovered_containers);
 
         if (!pod_tags.has_value())
         {
-            // Gating: this pod's identity didn't resolve -- no metrics for ANY of its containers.
-            // Evict everything still tracked; a pod can lose its resolved identity across a
-            // relabel/rollout.
+            // Gating: none of this pod's app-identity annotations or label fallbacks resolved, so
+            // emit no metrics for any of its containers. This also covers a failed kubelet lookup,
+            // because JoinCgroupAndIdentity leaves all identity-derived maps empty in that case.
+            // Clear everything still tracked to avoid publishing under previously resolved tags.
             pod.containers.clear();
             continue;
         }

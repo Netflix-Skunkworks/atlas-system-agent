@@ -1,6 +1,6 @@
 // Standalone debug tool, not part of the atlas_system_agent binary and not run by ctest: mirrors
 // AtlasAgent/src/k8s-agent.cpp's 1s/5s/60s polling loop, but constructs only PodMonitor and stops
-// after a bounded number of 60-second cadence intervals instead of running forever, so PodMonitor's
+// after 60 60-second cadence intervals (about one hour) instead of running forever, so PodMonitor's
 // real per-pod cadence wiring can be exercised by hand over full collection cycles without the rest
 // of k8s-agent.cpp's collectors.
 //
@@ -27,7 +27,7 @@ namespace
 // void PrintAndClearMessages(MemoryWriter* writer, int intervalNumber)
 // {
 //     auto messages = writer->GetMessages();
-//     fmt::print("=== 60s interval {}/2 complete: {} message(s) emitted ===\n", intervalNumber, messages.size());
+//     fmt::print("=== 60s interval {}/60 complete: {} message(s) emitted ===\n", intervalNumber, messages.size());
 //     for (const auto& message : messages)
 //     {
 //         fmt::print("{}", message);
@@ -52,10 +52,9 @@ int main(int argc, char** argv)
     // Same socket real PodMonitor instances publish through when built with AGENT_FLAVOR_K8S
     // (AtlasAgent/src/atlas-agent.h's K8sAgentConstants::SpectatordSocket) -- a literal here since
     // this tool's CMake target doesn't link against AtlasAgent, so it can't reference the constant.
-    // No node-identity common_tags, mirroring AtlasAgent/src/k8s-agent.cpp's own dedicated
-    // PodMonitor Registry: PodMonitor tags every metric itself, per pod/container, from that pod's
-    // own annotations (see ResolvePodTags in pod_tag_resolver.cpp), so this node's own identity
-    // must never be merged onto them.
+    // This tool adds xatlas.process only to identify its debug output. The shipped PodMonitor
+    // Registry uses metric-type=pod-container instead; neither Registry is given the node identity
+    // tags used by the other k8s-agent collectors.
     std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", "mock-agent"}};
     auto config = Config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"), common_tags);
     auto registry = Registry(config);

@@ -12,8 +12,9 @@ namespace atlasagent
 namespace
 {
 
-// containerID is "containerd://<64-hex-id>" (scheme varies by runtime); strip through the first
-// "://" to match the bare hex id the cgroup scope directory itself carries.
+// containerID commonly looks like "containerd://<runtime-id>" (scheme varies by runtime). Remove
+// everything through the first "://"; normal runtime values then match the id in the cgroup scope
+// name. An additional delimiter in the remainder is intentionally left untouched.
 std::string StripContainerIdScheme(const std::string& container_id) noexcept
 {
     auto pos = container_id.find("://");
@@ -41,10 +42,10 @@ std::unordered_map<std::string, std::string> ParseStringMap(const rapidjson::Val
 
 // Container name -> resources.requests.cpu (in cores) out of one spec container array. Called for
 // BOTH spec.containers[] and spec.initContainers[] so the two cannot drift: a native sidecar gets
-// its own cgroup scope and runs the pod's whole lifetime, so omitting initContainers would leave
-// those permanently unattributed. Every level is optional and skipped rather than failing the pod's
-// parse -- no resources at all (BestEffort), only limits, or a value ParseCpuQuantity cannot
-// represent all leave the container ABSENT from the map, never present with a fabricated zero.
+// its own cgroup scope and runs the pod's whole lifetime, so omitting initContainers would leave its
+// CPU request unavailable. Every level is optional and skipped rather than failing the pod's parse:
+// no resources, only limits, or a value ParseCpuQuantity cannot represent all leave the container
+// ABSENT from the map, never present with a fabricated zero.
 void CollectCpuRequests(const rapidjson::Value& containers,
                         std::unordered_map<std::string, double>* cpu_requests) noexcept
 {
@@ -81,7 +82,7 @@ void CollectCpuRequests(const rapidjson::Value& containers,
     }
 }
 
-// Container id (bare hex) -> container name out of one status array. Called for BOTH
+// containerID after first-delimiter stripping -> container name out of one status array. Called for BOTH
 // status.containerStatuses[] and status.initContainerStatuses[] so the two cannot drift; keyed by
 // id, unique per container, so merging them into one map cannot collide.
 //
@@ -206,8 +207,9 @@ std::optional<PodIdentityMap> PodIdentityClient::ParsePodList(const std::string&
         }
 
         // status is the only source of runtime ids -- see CollectContainerNames, including for why
-        // initContainerStatuses matters. Both arrays are optional: a pod with no container started
-        // yet has neither, leaving `containers` empty rather than failing the whole pod's parse.
+        // initContainerStatuses matters. Both arrays are optional, and entries with missing or empty
+        // ids are skipped. If neither array yields a usable id, `containers` remains empty without
+        // failing the whole pod's parse.
         if (entry.HasMember("status") && entry["status"].IsObject())
         {
             const auto& status = entry["status"];

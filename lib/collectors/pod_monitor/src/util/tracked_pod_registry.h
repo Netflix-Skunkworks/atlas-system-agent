@@ -16,9 +16,9 @@
 namespace atlasagent
 {
 
-// One tracked container: owns a private CGroup so its CPU/IO/memory delta-tracking baselines
-// never collide with another container's or with Titus's node-level CGroup. Erasing the map
-// entry destroys the CGroup -- and its baselines -- in one step; there is no separate reset.
+// One tracked container: owns a private CGroup so its CPU/IO/memory delta-tracking baselines do not
+// collide with another CGroup instance's state. Erasing the map entry destroys the CGroup and its
+// baselines in one step; there is no separate reset.
 struct TrackedContainer
 {
     CGroup cgroup;
@@ -40,14 +40,18 @@ struct TrackedContainer
     }
 };
 
-// Container id (bare hex) -> that container's tracked CGroup + identity.
+// Runtime container-id key matched between cgroup discovery and PodIdentity -> that container's
+// tracked CGroup and identity.
 using ContainerTrackedMap = absl::flat_hash_map<std::string, TrackedContainer>;
 
 // One tracked pod. Holds no CGroup of its own -- only a container's own cgroup gives independent
 // delta-tracking baselines, so per-container is the sole emission granularity.
-// nf.app/nf.stack/nf.detail/nf.cluster are pod-level (see ResolvePodTags), shared by every
-// container; only nf.process varies. `name` feeds nf.node, `pod_namespace` feeds the
-// k8s.namespace.name tag Refresh() adds; `containers` holds only containers gated in for metrics.
+// nf.app/nf.stack/nf.cluster are pod-level emitted tags (see ResolvePodTags), shared by every
+// container; nf.detail can affect Gating and nf.cluster construction but is not currently emitted.
+// Among these identity tags, only nf.process varies by container. `name` feeds nf.node and
+// `pod_namespace` feeds the k8s.namespace.name tag Refresh() adds. `containers` holds entries
+// admitted during a successful pod-level gate; a later missing container-status entry does not by
+// itself evict an existing entry.
 struct TrackedPod
 {
     std::string name;
@@ -90,9 +94,9 @@ class TrackedPodRegistry
 
     // Emits CGroup::MemoryStatsV2 (cgroup.mem.*) and CGroup::MemoryStatsStdV2 (mem.*, NOT
     // cgroup.mem.*, despite both reading memory.current/memory.max/memory.stat) for every LIVE
-    // tracked container (see ContainerIsLive), tagged with the nf.*/k8s.* tags ResolvePodTags
-    // resolved for its pod plus its own nf.process. Never changes tracked membership; call
-    // Refresh() first to include a pod/container discovered this same cycle.
+    // tracked container (see ContainerIsLive), tagged with the pod tags assembled by Refresh()
+    // (ResolvePodTags plus k8s.namespace.name when known) and its own nf.process. Never changes
+    // tracked membership; call Refresh() first to include a pod/container discovered this cycle.
     void EmitMemoryStats() noexcept;
 
    private:
@@ -101,12 +105,12 @@ class TrackedPodRegistry
     // the .cpp for the absl::flat_hash_map post-increment erase idiom it needs.
     void EvictUntrackedPods(const PodInfoMap& discovered) noexcept;
 
-    // Refresh() step 2: try_emplace's a fresh TrackedPod for this uid, else self-heals
-    // name/pod_namespace in place -- but only when info carries a non-blank identity. Blank means
-    // "identity unknown this cycle" (a failed kubelet lookup -- see PodMonitor::JoinCgroupAndIdentity),
-    // not "this pod's identity became blank", so ignoring it keeps a transient kubelet failure from
-    // wiping an already-tracked identity. The returned reference is valid only for the current loop
-    // iteration -- absl::flat_hash_map gives no reference stability across insert/erase.
+    // Refresh() step 2: try_emplace's a fresh TrackedPod for this uid, else updates name and
+    // pod_namespace together when both incoming fields are non-blank. Blank fields leave the stored
+    // name/namespace unchanged. This preserves those two display/tag inputs only; if annotations or
+    // labels do not pass Gating later in Refresh(), the pod's tracked containers are still cleared.
+    // The returned reference is valid only for the current loop iteration -- absl::flat_hash_map
+    // gives no reference stability across insert/erase.
     [[nodiscard]] TrackedPod& UpsertPodIdentity(const std::string& uid, const PodInfo& info) noexcept;
 
     // Refresh() step 3 (container pass 1 of 2): evicts pod's tracked containers whose id is no
@@ -117,29 +121,29 @@ class TrackedPodRegistry
     // passed): for every discovered container, applies pod_tags plus its own name for nf.process
     // and tracks/updates it. pod_tags may already include k8s.namespace.name (added by Refresh()
     // when the pod's namespace is known); every container shares it verbatim aside from
-    // nf.process. Skips (without evicting) a container not in info.containers, and re-resolves the
-    // CPU count override every cycle rather than only at first insertion -- see the .cpp for why
-    // in both cases.
+    // nf.process. If a discovered id is absent from info.containers, it is not inserted or updated;
+    // an existing tracked entry with that id remains eligible for emission. Re-resolves the CPU
+    // count override every cycle rather than only at first insertion -- see the .cpp for details.
     void ReconcileContainers(TrackedPod& pod, const PodInfo& info, const ContainerCgroupMap& discovered_containers,
                               const std::unordered_map<std::string, std::string>& pod_tags) noexcept;
 
-    // The CPU count to configure on a container's CGroup: its own cgroup quota (cpu.max) when set,
-    // otherwise the node's logical CPU count -- a container with no quota can burst across every
-    // core on the node.
+    // The CPU count configured on a container's CGroup: the value returned by QuotaCpuCount() when
+    // present, otherwise the online processor count returned by sysconf(_SC_NPROCESSORS_ONLN).
     [[nodiscard]] static double ResolveCpuCountForPod(const CGroup& cgroup) noexcept;
 
-    // Whether a tracked container's cgroup scope still exists. EvictUntrackedContainers runs only
-    // on Refresh()'s 60s cadence while EmitCpuStats() runs every second, so a container stays
-    // tracked for up to a minute after containerd removed its scope directory. Emitting then
-    // publishes wrong data under the POD's live nf.app/nf.cluster tags: CpuProcessingCapacity reads
-    // no files, so nothing stops it accumulating phantom capacity into a Counter, and
-    // sys.cpu.numProcessors / k8s.cpu.requested leak because CpuUtilizationV2 emits both BEFORE its
+    // Whether a tracked container's cgroup scope still exists. In the shipped k8s-agent caller,
+    // Refresh() normally runs on the 60-second memory cadence while EmitCpuStats() runs every
+    // second, so an entry can remain tracked until the next refresh after containerd removes its
+    // scope directory. Without this check,
+    // emitting during that interval would publish wrong data under the POD's live nf.app/nf.cluster
+    // tags: CpuProcessingCapacity reads no files, so it could accumulate phantom capacity into a
+    // Counter, and sys.cpu.numProcessors / k8s.cpu.requested are emitted before CpuUtilizationV2's
     // cpu.stat guard.
     //
-    // Tests the scope DIRECTORY, not a file inside it: containerd removes the whole directory on
-    // termination, the unambiguous signal. Keying on a file would conflate "container gone" with
-    // "that file unreadable", and would gate out every fixture-driven test in pod_monitor_test.cpp
-    // (no fixture carries cpu.stat).
+    // Tests only whether the scope DIRECTORY exists; it does not inspect cgroup.events or verify that
+    // the cgroup is populated. Keying on one metric file would conflate "container gone" with "that
+    // file unreadable", and would gate out every fixture-driven test in pod_monitor_test.cpp (no
+    // checked-in fixture carries cpu.stat).
     //
     // Skipping, not evicting: membership changes belong to Refresh() alone (see the Emit* docs
     // above), and erasing mid-iteration would invalidate the loop's own iterator.

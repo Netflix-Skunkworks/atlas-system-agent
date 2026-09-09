@@ -25,8 +25,9 @@ class PodMonitor
     // Forwards to CgroupPodDiscovery::FindActivePodCgroups(); see there for detail.
     [[nodiscard]] PodCgroupMap FindActivePodCgroups() const noexcept { return discovery_.FindActivePodCgroups(); }
 
-    // Like FindActivePodCgroups(), but also resolves each pod's identity (name, namespace,
-    // containers, annotations, labels, cpu_requests) via a live kubelet API call. Slower and
+    // Joins FindActivePodCgroups() with identities returned by a live kubelet API call. If the call
+    // fails or a discovered UID is absent from the response, that pod remains in the result with
+    // empty name/namespace/containers/annotations/labels/cpu_requests fields. Slower and
     // network-dependent; prefer FindActivePodCgroups() when only cgroup paths are needed.
     [[nodiscard]] PodInfoMap FindActivePodInfo() const noexcept;
 
@@ -41,9 +42,10 @@ class PodMonitor
     // Forwards to TrackedPodRegistry::EmitIOStats(); see there for detail.
     void CollectIOStats() noexcept { tracked_registry_.EmitIOStats(); }
 
-    // Refreshes the tracked pod/container set before emitting, so a newly-discovered container is
-    // sampled the same cycle it appears and an evicted container's already-destroyed CGroup is
-    // never touched. See TrackedPodRegistry::EmitMemoryStats() for the metrics themselves.
+    // Refreshes the tracked pod/container set, then emits memory metrics. A newly seen container is
+    // tracked only when cgroup discovery, kubelet identity matching, and pod-level tag Gating all
+    // succeed; it is then eligible for the immediately following memory pass. Entries removed by
+    // Refresh() are gone before emission, and EmitMemoryStats() performs another liveness check.
     void CollectMemoryStats() noexcept
     {
         RefreshTrackedPods();

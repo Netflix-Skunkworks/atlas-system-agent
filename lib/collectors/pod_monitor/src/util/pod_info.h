@@ -9,23 +9,25 @@
 namespace atlasagent
 {
 
-// Pod UID (canonical dashed form) -> cgroup path plus identity resolved from kubelet's local API.
+// Pod UID (canonical dashed form) -> cgroup path plus any identity fields joined from kubelet's
+// local API. Identity fields remain empty when the fetch fails or has no entry for this UID.
 struct PodInfo
 {
     std::string uid;
     std::filesystem::path cgroup_path;
     std::string name;
     std::string pod_namespace;
-    // Container id (bare hex) -> container name (see PodIdentity::containers). Empty if identity
-    // resolution didn't resolve this uid this cycle, or the pod has no containers reported yet.
+    // containerID key produced by PodIdentity::containers -> container name. Empty if
+    // identity resolution did not resolve this uid or parsed no usable container status entries.
     std::unordered_map<std::string, std::string> containers;
-    // Pod annotations/labels (see PodIdentity::annotations/labels). Empty if unresolved this
-    // cycle, or the pod genuinely has none. Feed ResolvePodTags's fallback chain.
+    // String-valued pod annotations/labels (see PodIdentity::annotations/labels). Empty if identity
+    // is unresolved, the fields are absent or malformed, or they contain no string values. Feed
+    // ResolvePodTags's fallback chain.
     std::unordered_map<std::string, std::string> annotations;
     std::unordered_map<std::string, std::string> labels;
-    // Container NAME -> declared CPU request in cores (see PodIdentity::cpu_requests). A container
-    // is absent when it declares no request, which is NOT the same as a request of zero -- the
-    // absence is what makes k8s.cpu.requested omit the gauge rather than publish a wrong value.
+    // Container NAME -> parsed declared CPU request in cores (see PodIdentity::cpu_requests). A
+    // container is absent when it declares no request or its quantity is unparseable; absence makes
+    // k8s.cpu.requested omit the gauge rather than publish a fabricated value.
     std::unordered_map<std::string, double> cpu_requests;
 };
 using PodInfoMap = absl::flat_hash_map<std::string, PodInfo>;

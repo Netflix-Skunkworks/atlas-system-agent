@@ -7,11 +7,11 @@ namespace atlasagent
 {
 
 // Parses the CPU subset of a Kubernetes resource Quantity into a count of cores: "500m" -> 0.5,
-// "1500m" -> 1.5, "2" -> 2.0, "0.5" -> 0.5. Deliberately NOT the general Quantity grammar -- no
-// binary/decimal SI suffixes (Ki/Mi/Gi/k/M/G), because a CPU quantity is only ever millicpu or
-// decimal cores, so a memory quantity returns nullopt rather than a wrong number.
+// "1500m" -> 1.5, "2" -> 2.0, "0.5" -> 0.5. Deliberately NOT the general Quantity grammar: it
+// accepts decimal cores and the millicpu `m` suffix, but no other binary/decimal SI suffixes such as
+// Ki/Mi/Gi/k/M/G. A memory quantity therefore returns nullopt rather than a wrong number.
 //
-// Returns nullopt for: empty input, a bare "m", a negative value, a leading '+', a non-finite
+// Returns nullopt for: empty input, a bare "m", a value less than zero, a leading '+', a non-finite
 // value, and -- importantly -- any input not FULLY consumed, so "0.5.1" and "5x0m" are rejected
 // rather than silently truncated to 0.5 and 5.
 //
