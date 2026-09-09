@@ -87,8 +87,9 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
     Logger()->info("Published slow system metrics (first iteration)");
 
-    // Both cadence flags below are false on the very first loop tick, so without this call the
-    // tracked-pod set would stay empty for up to 60 seconds after process startup.
+    // Prime the pod snapshot before the first emission. Refresh is explicit so a failed identity or
+    // cgroup probe suspends every pod metric before any cadence-driven collector runs.
+    static_cast<void>(podMonitor.Refresh());
     podMonitor.CollectMemoryStats();
 
     auto now = std::chrono::system_clock::now();
@@ -102,6 +103,13 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
         auto start = std::chrono::system_clock::now();
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
+
+        // Refresh before every pod emission on the 60-second boundary. This makes a failed identity
+        // check fail closed for CPU and I/O in the same cycle, rather than after they emit once.
+        if (sixtySecondMetricsEnabled)
+        {
+            static_cast<void>(podMonitor.Refresh());
+        }
 
         // Gather one second metrics
         // Proc has been modified to optionally gather 5 second and 60 second metrics during this call

@@ -10,8 +10,7 @@ namespace atlasagent
 
 // Annotation/label keys ResolvePodTags() checks. The netflix.com/{app,stack,detail} annotations are
 // primary (stamped by a mutating admission webhook). The exact fallback labels are
-// app.kubernetes.io/{name,instance,component}, k8s-app, and app. Public so find-activepods's
-// "filtered" mode can report which keys it checked without duplicating the list.
+// app.kubernetes.io/{name,instance,component}, k8s-app, and app.
 struct PodTagKeys
 {
     static constexpr std::string_view kAnnotationApp = "netflix.com/app";

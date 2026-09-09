@@ -4,41 +4,76 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <absl/container/flat_hash_map.h>
 
+#include <cstddef>
+#include <expected>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace atlasagent
 {
+
+// A container's kubelet identity joined with its declared CPU request. The map containing this
+// value is keyed by the runtime id from the parsed status arrays, because that is the id that can
+// be joined with a cgroup scope. The request is optional: absent means the spec did not declare a
+// usable requests.cpu value.
+struct ContainerIdentity
+{
+    std::string name;
+    std::optional<double> cpu_request;
+};
 
 // What the kubelet's local API knows about a pod; nothing about cgroups.
 struct PodIdentity
 {
     std::string name;
     std::string pod_namespace;  // "namespace" is a reserved C++ keyword, cannot be a field name
-    // containerID after removing everything through its first "://" delimiter (or unchanged when
-    // there is no delimiter) -> container name, merged from status.containerStatuses[] and
-    // status.initContainerStatuses[]. The latter is where a native sidecar is reported. Empty when
-    // neither parsed status array yields a usable non-empty id. Ephemeral-container statuses are
-    // intentionally not included; see ParsePodList and ReconcileContainers. Never holds an
+    // ContainerIdentity keyed by containerID after removing everything through its first "://"
+    // delimiter (or unchanged when there is no delimiter), merged from status.containerStatuses[]
+    // and status.initContainerStatuses[]. The latter is where a native sidecar is reported. Empty
+    // when neither parsed status array yields a usable non-empty id. Ephemeral-container statuses
+    // are intentionally not included; see ParsePodList and BuildActivePods. Never holds an
     // empty-string key.
-    std::unordered_map<std::string, std::string> containers;
+    std::unordered_map<std::string, ContainerIdentity> containers;
     // String-valued pod annotations from metadata.annotations. Empty when the field is absent or not
     // an object, or when it contains no string-valued entries.
     std::unordered_map<std::string, std::string> annotations;
     // String-valued pod labels from metadata.labels. Empty under the same conditions as annotations.
     std::unordered_map<std::string, std::string> labels;
-    // Container NAME -> its resources.requests.cpu in cores, from spec.containers[] and
-    // spec.initContainers[]. Keyed by name because that is how the pod spec identifies containers,
-    // and the caller (TrackedPodRegistry::ReconcileContainers) already holds it. A container is
-    // ABSENT rather than present with zero when it declares no request or its quantity cannot be
-    // parsed by ParseCpuQuantity().
-    std::unordered_map<std::string, double> cpu_requests;
 };
 
 // Pod UID string exactly as returned by kubelet -> that pod's identity. ParsePodList does not
 // normalize or validate the UID; joining succeeds only when it matches the cgroup-discovered key.
 using PodIdentityMap = absl::flat_hash_map<std::string, PodIdentity>;
+
+enum class PodIdentityErrorKind
+{
+    UnavailableSource,
+    Http,
+    Parse,
+    Envelope,
+};
+
+struct PodIdentityError
+{
+    PodIdentityErrorKind kind;
+    int http_status = 0;
+    std::size_t response_size = 0;
+    std::size_t parse_offset = 0;
+};
+
+using PodIdentityResult = std::expected<PodIdentityMap, PodIdentityError>;
+
+[[nodiscard]] std::string_view ToString(PodIdentityErrorKind error) noexcept;
+
+class PodIdentitySource
+{
+   public:
+    virtual ~PodIdentitySource() = default;
+
+    [[nodiscard]] virtual PodIdentityResult FetchPodIdentities() const noexcept = 0;
+};
 
 struct PodIdentityClientConstants
 {
@@ -47,7 +82,7 @@ struct PodIdentityClientConstants
     static constexpr auto KubeletUrl = "http://localhost:10255";
 };
 
-class PodIdentityClient
+class PodIdentityClient : public PodIdentitySource
 {
    public:
     // Performs no I/O: stores the URL and constructs the HTTP client used by later fetches.
@@ -55,12 +90,13 @@ class PodIdentityClient
                                 std::string kubelet_url = PodIdentityClientConstants::KubeletUrl) noexcept;
 
     // One synchronous, uncached logical GET to kubelet's local /pods, subject to HttpClient's retry
-    // policy. Reports HTTP failures and invalid top-level pod-list envelopes as nullopt; malformed
-    // individual pod/status entries are skipped, so a successful result may be partial or empty.
-    [[nodiscard]] std::optional<PodIdentityMap> FetchPodIdentities() const noexcept;
+    // policy. HTTP failures, malformed JSON, and invalid top-level pod-list envelopes are distinct
+    // errors; malformed individual pod/status entries are skipped, so a successful result may be
+    // partial or empty.
+    [[nodiscard]] PodIdentityResult FetchPodIdentities() const noexcept override;
 
    protected:  // exposed to tests via a PodIdentityClientTest subclass
-    static std::optional<PodIdentityMap> ParsePodList(const std::string& json) noexcept;
+    static PodIdentityResult ParsePodList(const std::string& json) noexcept;
 
    private:
     std::string kubelet_url_;

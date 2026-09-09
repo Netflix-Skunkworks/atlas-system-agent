@@ -3,9 +3,10 @@ add_library(pod_monitor
     src/pod_monitor.cpp
     src/util/pod_identity_client.h
     src/util/pod_identity_client.cpp
-    src/util/pod_info.h
     src/util/cgroup_pod_discovery.h
     src/util/cgroup_pod_discovery.cpp
+    src/util/active_pod_builder.h
+    src/util/active_pod_builder.cpp
     src/util/pod_tag_resolver.h
     src/util/pod_tag_resolver.cpp
     src/util/cpu_quantity.h
@@ -24,6 +25,7 @@ target_link_libraries(pod_monitor
     fmt::fmt
     spectator-registry
     HttpClient
+    logger
     rapidjson
     util
 )
@@ -45,9 +47,8 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-# Standalone debug tool for manually exercising FindActivePodInfo() (cgroup discovery
-# plus a live call to kubelet's own local API for identity resolution) on a real node;
-# not part of the atlas_system_agent binary and not run by ctest.
+# Standalone debug tool for printing PodMonitor's admitted pods and containers on a real node; not
+# part of the atlas_system_agent binary and not run by ctest.
 add_executable(find-activepods
     bin/find-activepods.cpp
 )
@@ -55,6 +56,7 @@ add_executable(find-activepods
 target_link_libraries(find-activepods
     pod_monitor
     fmt::fmt
+    logger
     spectator-registry
 )
 
@@ -69,5 +71,6 @@ add_executable(mock-agent
 target_link_libraries(mock-agent
     pod_monitor
     fmt::fmt
+    logger
     spectator-registry
 )

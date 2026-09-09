@@ -1,37 +1,20 @@
-// Standalone debug tool, not part of the atlas_system_agent binary: runs
-// PodMonitor::FindActivePodInfo() against a real (or overridden) cgroup root plus a live kubelet
-// identity call, and prints what it discovers, so behavior can be checked by hand against
-// `kubectl get pods` on a live node.
-//
-// Identity resolution performs one logical synchronous GET to kubelet's own local, unauthenticated
-// /pods endpoint (http://localhost:10255/pods by default), subject to HttpClient's retry policy. It
-// uses no kubeconfig, bearer token, or node-name lookup because kubelet only knows pods on its own
-// node. If that endpoint is unavailable, cgroup-discovered pods still appear, but their
-// name/namespace/containers/annotations/labels/cpu_requests fields are empty.
+// Standalone debug tool, not part of atlas_system_agent. It runs the same cgroup discovery,
+// kubelet identity fetch, and reconciliation planner as PodMonitor, then prints admitted pods and
+// containers. Excluded entries are available through PodMonitor's debug logging.
 //
 // Usage: find-activepods [cgroup_path_prefix] [filtered]  (either order; both optional)
-// "filtered" reproduces the pod-gating and container-match decisions that a fresh
-// RefreshTrackedPods() would make for this one snapshot, always with a reason:
-//   - Pod-level Gating (ResolvePodTags, in pod_tag_resolver.{h,cpp}): if none of
-//     nf.app/nf.stack/nf.detail resolve -- from the primary netflix.com/{app,stack,detail}
-//     annotations or their label fallbacks -- the whole pod is GATED OUT, printed with exactly
-//     which keys were checked and found missing, and every container excluded for that reason.
-//   - Container-level mismatch (TrackedPodRegistry::ReconcileContainers's matching): for a fresh
-//     registry, a container is admitted only if its cgroup-discovered id is also in the parsed
-//     kubelet status map. An existing tracked entry can remain eligible when a later snapshot lacks
-//     its status entry, but this one-shot tool has no prior registry state to represent that case.
+// "filtered" enables debug logging so excluded entries are visible.
 
 #include <lib/collectors/pod_monitor/src/pod_monitor.h>
-#include <lib/collectors/pod_monitor/src/util/cgroup_pod_discovery.h>
-#include <lib/collectors/pod_monitor/src/util/pod_tag_resolver.h>
+#include <lib/logger/src/logger.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
 #include <fmt/format.h>
 
 #include <algorithm>
-#include <cstdlib>
-#include <optional>
+#include <cstddef>
+#include <cstdio>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -42,144 +25,64 @@ namespace
 
 void PrintSortedMap(const std::unordered_map<std::string, std::string>& values, const char* indent)
 {
-    std::vector<std::pair<std::string, std::string>> sorted_entries(values.begin(), values.end());
-    std::sort(sorted_entries.begin(), sorted_entries.end());
-    for (const auto& [key, value] : sorted_entries)
+    std::vector<std::pair<std::string, std::string>> entries(values.begin(), values.end());
+    std::sort(entries.begin(), entries.end());
+    for (const auto& [key, value] : entries)
     {
         fmt::print("{}{}={}\n", indent, key, value);
     }
 }
 
-// Uses the same PodTagKeys constants and currently mirrors ResolvePodTags's fallback lists and
-// order. Returns which key resolved the tag, or every key checked and found missing.
-std::string DescribeTagResolution(const std::unordered_map<std::string, std::string>& annotations,
-                                   const std::unordered_map<std::string, std::string>& labels, const char* tag_name,
-                                   std::string_view annotation_key,
-                                   std::initializer_list<std::string_view> fallback_label_keys)
-{
-    auto has_value = [](const std::unordered_map<std::string, std::string>& values, std::string_view key) {
-        auto it = values.find(std::string(key));
-        return it != values.end() && !it->second.empty();
-    };
-
-    if (has_value(annotations, annotation_key))
-    {
-        return fmt::format("{}: resolved from annotation {}", tag_name, annotation_key);
-    }
-    for (auto key : fallback_label_keys)
-    {
-        if (has_value(labels, key))
-        {
-            return fmt::format("{}: resolved from label {} (fallback)", tag_name, key);
-        }
-    }
-    std::string checked = fmt::format("annotation {}", annotation_key);
-    for (auto key : fallback_label_keys)
-    {
-        checked += fmt::format(", label {}", key);
-    }
-    return fmt::format("{}: UNRESOLVED (checked {})", tag_name, checked);
-}
-
-// The three outcomes for a fresh reconciliation snapshot, with each cgroup-discovered container
-// looked up by id in the parsed kubelet status map: matched (what a fresh registry would admit),
-// cgroup_only (a scope has no parsed status entry, as with a pod sandbox, an ephemeral container, or
-// a transient status race), and kubelet_only (a status id has no cgroup scope and is never visited by
-// ReconcileContainers, whose loop is driven by cgroup discovery). Sorted for deterministic output.
-struct ContainerClassification
-{
-    std::vector<std::string> matched;
-    std::vector<std::string> cgroup_only;
-    std::vector<std::string> kubelet_only;
-};
-
-ContainerClassification ClassifyContainers(const atlasagent::ContainerCgroupMap& discovered_containers,
-                                            const std::unordered_map<std::string, std::string>& kubelet_containers)
-{
-    ContainerClassification result;
-    for (const auto& entry : discovered_containers)
-    {
-        const std::string& container_id = entry.first;
-        if (kubelet_containers.find(container_id) != kubelet_containers.end())
-        {
-            result.matched.push_back(container_id);
-        }
-        else
-        {
-            result.cgroup_only.push_back(container_id);
-        }
-    }
-    for (const auto& entry : kubelet_containers)
-    {
-        const std::string& container_id = entry.first;
-        if (discovered_containers.find(container_id) == discovered_containers.end())
-        {
-            result.kubelet_only.push_back(container_id);
-        }
-    }
-    std::sort(result.matched.begin(), result.matched.end());
-    std::sort(result.cgroup_only.begin(), result.cgroup_only.end());
-    std::sort(result.kubelet_only.begin(), result.kubelet_only.end());
-    return result;
-}
-
-// For a GATED OUT pod only: every container is excluded for the same pod-level reason, whatever
-// its ContainerClassification bucket.
-void PrintAllExcluded(const ContainerClassification& classification,
-                       const std::unordered_map<std::string, std::string>& kubelet_containers, const char* reason)
+void PrintContainers(const atlasagent::ActiveContainerMap& containers)
 {
     std::vector<std::string> ids;
-    ids.insert(ids.end(), classification.matched.begin(), classification.matched.end());
-    ids.insert(ids.end(), classification.cgroup_only.begin(), classification.cgroup_only.end());
-    ids.insert(ids.end(), classification.kubelet_only.begin(), classification.kubelet_only.end());
+    ids.reserve(containers.size());
+    for (const auto& entry : containers)
+    {
+        ids.push_back(entry.first);
+    }
     std::sort(ids.begin(), ids.end());
+
     for (const auto& id : ids)
     {
-        auto name_it = kubelet_containers.find(id);
-        std::string name = name_it != kubelet_containers.end() ? name_it->second : "(name unknown)";
-        fmt::print("    {} -> {} (excluded: {})\n", id, name, reason);
+        const auto& container = containers.at(id);
+        fmt::print("    {} -> {} [{}]\n", id, container.name, container.cgroup_path.string());
     }
 }
 
-// Used for a PASSED pod: matched containers are genuinely tracked; cgroup_only/kubelet_only are
-// excluded independently of Gating, for the container-level mismatch reason.
-void PrintClassifiedContainers(const ContainerClassification& classification,
-                                const std::unordered_map<std::string, std::string>& kubelet_containers)
+std::vector<std::string> SortedPodUids(const atlasagent::ActivePodMap& pods)
 {
-    for (const auto& id : classification.matched)
+    std::vector<std::string> uids;
+    uids.reserve(pods.size());
+    for (const auto& entry : pods)
     {
-        fmt::print("    {} -> {} (tracked)\n", id, kubelet_containers.at(id));
+        uids.push_back(entry.first);
     }
-    for (const auto& id : classification.cgroup_only)
+    std::sort(uids.begin(), uids.end());
+    return uids;
+}
+
+std::size_t CountActiveContainers(const atlasagent::ActivePodMap& pods)
+{
+    std::size_t count = 0;
+    for (const auto& entry : pods)
     {
-        fmt::print(
-            "    {} -> (name unknown -- cgroup scope found, kubelet hasn't reported this container id yet) "
-            "(excluded: container-level mismatch)\n",
-            id);
+        count += entry.second.containers.size();
     }
-    for (const auto& id : classification.kubelet_only)
-    {
-        fmt::print(
-            "    {} -> {} (kubelet reports this container, but no matching cgroup scope was found under this "
-            "pod) (excluded: container-level mismatch)\n",
-            id, kubelet_containers.at(id));
-    }
+    return count;
 }
 
 }  // namespace
 
 int main(int argc, char** argv)
 {
-    // Scanned rather than fixed-positional, so "filtered" is recognized wherever it appears
-    // (including as the only argument, leaving path_prefix default) instead of being misread as a
-    // cgroup path override.
     std::string path_prefix = "/sys/fs/cgroup";
-    bool filtered = false;
+    bool show_excluded = false;
     for (int i = 1; i < argc; ++i)
     {
         if (std::string(argv[i]) == "filtered")
         {
-            filtered = true;
+            show_excluded = true;
         }
         else
         {
@@ -187,90 +90,56 @@ int main(int argc, char** argv)
         }
     }
 
-    // Read the same way TrackedPodRegistry's own constructor does (ResolveK8sClusterEnv in
-    // tracked_pod_registry.cpp), purely for the filtered-mode ResolvePodTags call below -- the
-    // k8s_cluster_ it resolved internally is private.
-    const auto* k8s_cluster_env = std::getenv("K8S_CLUSTER");
-    std::string k8s_cluster = k8s_cluster_env != nullptr ? std::string(k8s_cluster_env) : std::string();
-
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto registry = Registry(config);
-    atlasagent::PodMonitor podMonitor{&registry, path_prefix};
+    atlasagent::PodMonitor pod_monitor{&registry, path_prefix};
 
-    auto pods = podMonitor.FindActivePodInfo();
+    if (show_excluded)
+    {
+        atlasagent::Logger()->set_level(spdlog::level::debug);
+    }
 
+    const auto refresh = pod_monitor.Refresh();
     fmt::print("Scanned cgroup root: {}\n", path_prefix);
-    if (filtered)
+    if (refresh.state == atlasagent::PodMonitorState::kCgroupUnavailable)
     {
-        fmt::print(
-            "Filtering: showing the PASS/FAIL decision RefreshTrackedPods() makes for every pod and\n"
-            "container, always with a reason. {} pod(s) discovered in total.\n",
-            pods.size());
+        const auto& error = *refresh.cgroup_error;
+        fmt::print(stderr, "Cgroup discovery failed: kind=");
+        fmt::print(stderr, "{}", atlasagent::ToString(error.kind));
+        if (!error.path.empty())
+        {
+            fmt::print(stderr, " path={}", error.path.string());
+        }
+        if (error.cause)
+        {
+            fmt::print(stderr, " cause={}", error.cause.message());
+        }
+        fmt::print(stderr, "\n");
+        return 1;
     }
-    else
+    if (refresh.state == atlasagent::PodMonitorState::kIdentityUnavailable)
     {
-        fmt::print("Found {} pod(s):\n", pods.size());
+        const auto& error = *refresh.identity_error;
+        fmt::print(stderr, "Kubelet identity fetch failed: kind={} status={} response_bytes={} parse_offset={}\n",
+                   atlasagent::ToString(error.kind), error.http_status, error.response_size, error.parse_offset);
+        return 1;
     }
 
-    int passed = 0;
-    int gated_out = 0;
-    for (const auto& [uid, info] : pods)
+    const auto& active_pods = refresh.active_pods;
+    fmt::print("Admitted pods: {}, admitted containers: {}\n", active_pods.size(), CountActiveContainers(active_pods));
+
+    for (const auto& uid : SortedPodUids(active_pods))
     {
+        const auto& pod = active_pods.at(uid);
         fmt::print("Pod {}\n", uid);
-        fmt::print("  uid:           {}\n", info.uid);
-        fmt::print("  cgroup_path:   {}\n", info.cgroup_path.string());
-        fmt::print("  name:          {}\n", info.name);
-        fmt::print("  pod_namespace: {}\n", info.pod_namespace);
-        fmt::print("  annotations:   {} total\n", info.annotations.size());
-        PrintSortedMap(info.annotations, "    ");
-        fmt::print("  labels:        {} total\n", info.labels.size());
-        PrintSortedMap(info.labels, "    ");
+        fmt::print("  name:          {}\n", pod.name);
+        fmt::print("  pod_namespace: {}\n", pod.pod_namespace);
 
-        if (filtered)
-        {
-            auto pod_tags = atlasagent::ResolvePodTags(info.annotations, info.labels, info.name, k8s_cluster);
-            auto discovered_containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(info.cgroup_path);
-            auto classification = ClassifyContainers(discovered_containers, info.containers);
+        fmt::print("  resolved tags: {}\n", pod.tags.size());
+        PrintSortedMap(pod.tags, "    ");
 
-            if (pod_tags.has_value())
-            {
-                ++passed;
-                fmt::print("  PASSED -- resolved tags (every tracked container below carries these, plus its own nf.process):\n");
-                PrintSortedMap(*pod_tags, "    ");
-                fmt::print("  containers:\n");
-                PrintClassifiedContainers(classification, info.containers);
-            }
-            else
-            {
-                ++gated_out;
-                fmt::print("  GATED OUT -- none of nf.app/nf.stack/nf.detail resolved:\n");
-                fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.app", atlasagent::PodTagKeys::kAnnotationApp,
-                                                               {atlasagent::PodTagKeys::kLabelAppName,
-                                                                atlasagent::PodTagKeys::kLabelK8sApp,
-                                                                atlasagent::PodTagKeys::kLabelApp}));
-                fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.stack",
-                                                               atlasagent::PodTagKeys::kAnnotationStack,
-                                                               {atlasagent::PodTagKeys::kLabelAppInstance}));
-                fmt::print("    {}\n", DescribeTagResolution(info.annotations, info.labels, "nf.detail",
-                                                               atlasagent::PodTagKeys::kAnnotationDetail,
-                                                               {atlasagent::PodTagKeys::kLabelAppComponent}));
-                fmt::print("  containers (all excluded -- pod gated out):\n");
-                PrintAllExcluded(classification, info.containers, "pod gated out");
-            }
-        }
-        else
-        {
-            fmt::print("  containers (kubelet-known, {} total):\n", info.containers.size());
-            for (const auto& [container_id, container_name] : info.containers)
-            {
-                fmt::print("    {} -> {}\n", container_id, container_name);
-            }
-        }
-    }
-
-    if (filtered)
-    {
-        fmt::print("Passed {}, gated out {}, of {} discovered pod(s).\n", passed, gated_out, pods.size());
+        fmt::print("  containers:\n");
+        PrintContainers(pod.containers);
     }
 
     return 0;

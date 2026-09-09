@@ -11,10 +11,15 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
+#include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <unistd.h>
 #include <unordered_map>
 #include <utility>
@@ -23,28 +28,14 @@
 class PodMonitorTest : public atlasagent::PodMonitor
 {
    public:
-    // The default URL points at an unbound loopback port. FetchPodIdentities() still attempts a
-    // local HTTP connection, but connection refusal makes identity resolution return nullopt with
-    // no external network or kubelet dependency. This is what keeps these tests hermetic.
-    explicit PodMonitorTest(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
-                             std::string kubelet_url = "http://127.0.0.1:1") noexcept
-        : PodMonitor(registry, std::move(path_prefix), std::move(kubelet_url))
-    {
-    }
-
-    // Expose protected members and methods for testing
-    using PodMonitor::JoinCgroupAndIdentity;
-    using PodMonitor::RefreshTrackedPods;
+    using PodMonitor::PodMonitor;
     using PodMonitor::TrackedPods;
 };
 
-// Exposes CgroupPodDiscovery's protected helpers -- same thin-subclass-with-`using` convention as
-// PodMonitorTest above. FindActivePodCgroups()/FindContainersInPod() are public, so their tests
-// call atlasagent::CgroupPodDiscovery directly and skip this shim.
+// Exposes CgroupPodDiscovery's protected parsing helpers.
 class CgroupPodDiscoveryTest : public atlasagent::CgroupPodDiscovery
 {
    public:
-    using CgroupPodDiscovery::ScanPodSliceDirectory;
     using CgroupPodDiscovery::MatchPodSliceName;
     using CgroupPodDiscovery::NormalizePodUid;
 };
@@ -79,23 +70,80 @@ std::string Pod1SlicePath(const std::string& tree)
     return std::string(kResources) + "/" + tree + "/kubepods.slice/" + kPod1Dir;
 }
 
-// Builds a one-pod PodInfoMap for driving TrackedPodRegistry::Refresh() DIRECTLY -- the seam that
-// makes the gated-in path testable, since a test can supply resolved annotations and a non-empty
-// container list, which PodMonitor's always-failing kubelet lookup never can. `cgroup_path` must
-// still point at a real fixture tree: Refresh() discovers container scopes from the filesystem.
-atlasagent::PodInfoMap OnePodInfoMap(const std::string& uid, const std::string& cgroup_path,
-                                      std::unordered_map<std::string, std::string> containers,
-                                      std::unordered_map<std::string, std::string> annotations,
-                                      const std::string& name = "pod-one",
-                                      const std::string& pod_namespace = "ns-one",
-                                      std::unordered_map<std::string, double> cpu_requests = {})
+atlasagent::ContainerCgroupMap ContainerScopes(const std::string& pod_path,
+                                                std::initializer_list<std::string> container_ids)
 {
-    atlasagent::PodInfoMap pods;
-    // Positional aggregate init -- keep in sync with PodInfo's declaration order (uid,
-    // cgroup_path, name, pod_namespace, containers, annotations, labels, cpu_requests).
-    pods.emplace(uid, atlasagent::PodInfo{uid, cgroup_path, name, pod_namespace, std::move(containers),
-                                           std::move(annotations), {}, std::move(cpu_requests)});
-    return pods;
+    atlasagent::ContainerCgroupMap result;
+    for (const auto& container_id : container_ids)
+    {
+        result.emplace(container_id, std::filesystem::path(pod_path) /
+                                      ("cri-containerd-" + container_id + ".scope"));
+    }
+    return result;
+}
+
+class FakePodCgroupSource final : public atlasagent::PodCgroupSource
+{
+   public:
+    explicit FakePodCgroupSource(atlasagent::CgroupDiscoveryResult result) : result_(std::move(result)) {}
+
+    [[nodiscard]] atlasagent::CgroupDiscoveryResult Discover() const noexcept override
+    {
+        ++calls_;
+        return result_;
+    }
+    void SetResult(atlasagent::CgroupDiscoveryResult result) { result_ = std::move(result); }
+    [[nodiscard]] std::size_t Calls() const noexcept { return calls_; }
+
+   private:
+    atlasagent::CgroupDiscoveryResult result_;
+    mutable std::size_t calls_ = 0;
+};
+
+class FakePodIdentitySource final : public atlasagent::PodIdentitySource
+{
+   public:
+    explicit FakePodIdentitySource(atlasagent::PodIdentityResult result) : result_(std::move(result)) {}
+
+    [[nodiscard]] atlasagent::PodIdentityResult FetchPodIdentities() const noexcept override
+    {
+        ++calls_;
+        return result_;
+    }
+    void SetResult(atlasagent::PodIdentityResult result) { result_ = std::move(result); }
+    [[nodiscard]] std::size_t Calls() const noexcept { return calls_; }
+
+   private:
+    atlasagent::PodIdentityResult result_;
+    mutable std::size_t calls_ = 0;
+};
+
+// The path and cgroup_containers supply the cgroup side; identity_containers supplies the
+// independent kubelet side. Keeping them separate lets tests exercise matched and cgroup-only IDs.
+atlasagent::ActivePodMap OnePodPlan(const std::string& uid, const std::string& cgroup_path,
+                                     atlasagent::ContainerCgroupMap cgroup_containers,
+                                     std::unordered_map<std::string, std::string> identity_containers,
+                                     std::unordered_map<std::string, std::string> annotations,
+                                     const std::string& name = "pod-one",
+                                     const std::string& pod_namespace = "ns-one",
+                                     std::unordered_map<std::string, double> cpu_requests = {})
+{
+    atlasagent::CgroupSnapshot cgroups;
+    cgroups.emplace(uid, atlasagent::CgroupPod{cgroup_path, std::move(cgroup_containers)});
+
+    atlasagent::PodIdentity identity{name, pod_namespace, {}, std::move(annotations), {}};
+    for (auto& [container_id, container_name] : identity_containers)
+    {
+        auto request = cpu_requests.find(container_name);
+        std::optional<double> cpu_request =
+            request != cpu_requests.end() ? std::optional<double>{request->second} : std::nullopt;
+        identity.containers.emplace(std::move(container_id),
+                                    atlasagent::ContainerIdentity{std::move(container_name), cpu_request});
+    }
+
+    atlasagent::PodIdentityMap identities;
+    identities.emplace(uid, std::move(identity));
+    return atlasagent::BuildActivePods(cgroups, identities, "");
 }
 
 // Emitted lines look like "<sym>:<name>,<k>=<v>,<k>=<v>:<value>\n". ToSpectatorId() builds the tag
@@ -134,9 +182,12 @@ class TempCgroupTree
     TempCgroupTree(const TempCgroupTree&) = delete;
     TempCgroupTree& operator=(const TempCgroupTree&) = delete;
 
-    // The pod-slice directory to hand to PodInfo::cgroup_path.
+    // The pod-slice directory used by CgroupSnapshot and active-pod fixtures.
     [[nodiscard]] std::string PodPath() const { return root_.string(); }
-    [[nodiscard]] std::filesystem::path ScopePath() const { return root_ / ("cri-containerd-" + ContainerId('a') + ".scope"); }
+    [[nodiscard]] std::filesystem::path ScopePath() const
+    {
+        return root_ / ("cri-containerd-" + ContainerId('a') + ".scope");
+    }
 
     void WriteScopeFile(const char* filename, const std::string& contents) const
     {
@@ -201,204 +252,130 @@ TEST(CgroupPodDiscovery, MatchPodSliceNameTooShortFails)
     EXPECT_FALSE(result.has_value());
 }
 
-TEST(CgroupPodDiscovery, FindActivePodCgroupsSystemd)
+TEST(CgroupPodDiscovery, DiscoverReturnsCompleteSystemdSnapshot)
 {
-    atlasagent::CgroupPodDiscovery discovery{"lib/collectors/pod_monitor/test/resources/systemd"};
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/systemd_pod_with_containers"};
+    auto result = discovery.Discover();
 
-    auto pods = discovery.FindActivePodCgroups();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->size(), 1);
+    const auto& pod = result->at(kPod1Uid);
+    EXPECT_EQ(pod.cgroup_path, Pod1SlicePath("systemd_pod_with_containers"));
+    ASSERT_EQ(pod.containers.size(), 1);
+    EXPECT_TRUE(pod.containers.contains(ContainerId('a')));
+}
 
-    ASSERT_EQ(pods.size(), 3);
+TEST(CgroupPodDiscovery, DiscoverReturnsPodsFromAllSystemdQosLocations)
+{
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/systemd"};
+    auto result = discovery.Discover();
 
-    EXPECT_EQ(pods.at("11111111-1111-1111-1111-111111111111"),
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->size(), 3);
+
+    EXPECT_EQ(result->at("11111111-1111-1111-1111-111111111111").cgroup_path,
               std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/systemd/kubepods.slice/"
+                  std::string(kResources) + "/systemd/kubepods.slice/"
                   "kubepods-pod11111111_1111_1111_1111_111111111111.slice"));
-
-    EXPECT_EQ(pods.at("22222222-2222-2222-2222-222222222222"),
+    EXPECT_EQ(result->at("22222222-2222-2222-2222-222222222222").cgroup_path,
               std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/systemd/kubepods.slice/kubepods-burstable.slice/"
+                  std::string(kResources) + "/systemd/kubepods.slice/kubepods-burstable.slice/"
                   "kubepods-burstable-pod22222222_2222_2222_2222_222222222222.slice"));
-
-    EXPECT_EQ(pods.at("33333333-3333-3333-3333-333333333333"),
+    EXPECT_EQ(result->at("33333333-3333-3333-3333-333333333333").cgroup_path,
               std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/systemd/kubepods.slice/kubepods-besteffort.slice/"
+                  std::string(kResources) + "/systemd/kubepods.slice/kubepods-besteffort.slice/"
                   "kubepods-besteffort-pod33333333_3333_3333_3333_333333333333.slice"));
+
+    EXPECT_TRUE(result->at("11111111-1111-1111-1111-111111111111").containers.empty());
+    EXPECT_TRUE(result->at("22222222-2222-2222-2222-222222222222").containers.empty());
+    EXPECT_TRUE(result->at("33333333-3333-3333-3333-333333333333").containers.empty());
 }
 
-TEST(CgroupPodDiscovery, FindActivePodCgroupsCgroupfs)
+TEST(CgroupPodDiscovery, DiscoverReportsUnsupportedCgroupfsLayout)
 {
-    atlasagent::CgroupPodDiscovery discovery{"lib/collectors/pod_monitor/test/resources/cgroupfs"};
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/cgroupfs"};
+    auto result = discovery.Discover();
 
-    auto pods = discovery.FindActivePodCgroups();
-
-    ASSERT_EQ(pods.size(), 3);
-
-    EXPECT_EQ(pods.at("44444444-4444-4444-4444-444444444444"),
-              std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/cgroupfs/kubepods/"
-                  "pod44444444-4444-4444-4444-444444444444"));
-
-    EXPECT_EQ(pods.at("55555555-5555-5555-5555-555555555555"),
-              std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/cgroupfs/kubepods/burstable/"
-                  "pod55555555-5555-5555-5555-555555555555"));
-
-    EXPECT_EQ(pods.at("66666666-6666-6666-6666-666666666666"),
-              std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/cgroupfs/kubepods/besteffort/"
-                  "pod66666666-6666-6666-6666-666666666666"));
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, atlasagent::CgroupDiscoveryErrorKind::kUnsupportedCgroupfsLayout);
+    EXPECT_EQ(result.error().path, std::filesystem::path(kResources) / "cgroupfs" / "kubepods");
+    EXPECT_FALSE(result.error().cause);
 }
 
-TEST(CgroupPodDiscovery, FindActivePodCgroupsMissingRoot)
+TEST(CgroupPodDiscovery, DiscoverReportsMissingRoot)
 {
-    atlasagent::CgroupPodDiscovery discovery{"lib/collectors/pod_monitor/test/resources/does_not_exist"};
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/does_not_exist"};
+    auto result = discovery.Discover();
 
-    auto pods = discovery.FindActivePodCgroups();
-
-    EXPECT_TRUE(pods.empty());
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, atlasagent::CgroupDiscoveryErrorKind::kMissingRoot);
+    EXPECT_EQ(result.error().path, std::filesystem::path(kResources) / "does_not_exist");
+    EXPECT_EQ(result.error().cause, std::make_error_code(std::errc::no_such_file_or_directory));
 }
 
-TEST(PodMonitor, RefreshTrackedPodsPartialAddAndEvict)
+TEST(CgroupPodDiscovery, DiscoverReportsNonDirectoryRootWithContext)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    // Hermetic: the default kubelet URL reaches nothing, so FindActivePodInfo()'s identity lookup
-    // always fails closed (see PodMonitorTest above).
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/unreadable_root"};
+    auto result = discovery.Discover();
 
-    podMonitor.RefreshTrackedPods();
-    ASSERT_EQ(podMonitor.TrackedPods().size(), 3);
-    EXPECT_TRUE(podMonitor.TrackedPods().contains("11111111-1111-1111-1111-111111111111"));
-    EXPECT_TRUE(podMonitor.TrackedPods().contains("22222222-2222-2222-2222-222222222222"));
-    EXPECT_TRUE(podMonitor.TrackedPods().contains("33333333-3333-3333-3333-333333333333"));
-
-    // "systemd_partial" reuses the already-tracked UID 11111111..., adds a brand-new 77777777...,
-    // and no longer contains 22222222... or 33333333....
-    podMonitor.SetPrefix("lib/collectors/pod_monitor/test/resources/systemd_partial");
-    podMonitor.RefreshTrackedPods();
-
-    const auto& tracked = podMonitor.TrackedPods();
-    ASSERT_EQ(tracked.size(), 2);
-    EXPECT_TRUE(tracked.contains("11111111-1111-1111-1111-111111111111"));
-    EXPECT_TRUE(tracked.contains("77777777-7777-7777-7777-777777777777"));
-    EXPECT_FALSE(tracked.contains("22222222-2222-2222-2222-222222222222"));
-    EXPECT_FALSE(tracked.contains("33333333-3333-3333-3333-333333333333"));
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, atlasagent::CgroupDiscoveryErrorKind::kUnreadableRoot);
+    EXPECT_EQ(result.error().path, std::filesystem::path(kResources) / "unreadable_root" / "kubepods.slice");
+    EXPECT_EQ(result.error().cause.default_error_condition(),
+              std::make_error_condition(std::errc::not_a_directory));
 }
 
-// NOTE on Gating coverage. Since the tagging/Gating redesign (annotations/labels from kubelet's
-// local API, replacing per-container /proc/<pid>/environ reads), identity resolution and Gating
-// share one data source -- a single kubelet HTTP call -- and nothing here mocks it. So the
-// successful tag resolution is covered directly by ResolvePodTags, identity copying by
-// JoinCgroupAndIdentity, and gated-in reconciliation by the direct TrackedPodRegistry tests below;
-// the full path is not covered end-to-end through RefreshTrackedPods.
-//
-// The Gating-failure path is likewise not covered end-to-end through PodMonitor: identity resolution
-// always fails in this harness, so a pod's tracked container map is empty from creation and nothing
-// can make it non-empty. Asserting it is empty holds whether the Gating logic works, is deleted, or
-// is inverted (see RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved).
-//
-// Both paths ARE reachable without HTTP mocking, just not through PodMonitor -- see the
-// TrackedPodRegistry section below, which drives Refresh(const PodInfoMap&) directly.
-
-// FindContainersInPod tests: structural directory-name matching only, no PID/environ I/O involved.
-TEST(CgroupPodDiscovery, FindContainersInPodMatchesCriContainerdScopes)
+TEST(CgroupPodDiscovery, DiscoverReportsUnreadableScanWithContext)
 {
-    auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(
-        "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
-        "kubepods-pod11111111_1111_1111_1111_111111111111.slice");
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/unreadable_scan"};
+    auto result = discovery.Discover();
 
-    ASSERT_EQ(containers.size(), 1);
-    EXPECT_TRUE(containers.contains("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
-    EXPECT_EQ(containers.at("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-              std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
-                  "kubepods-pod11111111_1111_1111_1111_111111111111.slice/"
-                  "cri-containerd-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.scope"));
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, atlasagent::CgroupDiscoveryErrorKind::kUnreadableScan);
+    EXPECT_EQ(result.error().path,
+              std::filesystem::path(kResources) / "unreadable_scan" / "kubepods.slice" /
+                  "kubepods-burstable.slice");
+    EXPECT_EQ(result.error().cause.default_error_condition(),
+              std::make_error_condition(std::errc::not_a_directory));
 }
 
-TEST(CgroupPodDiscovery, FindContainersInPodIgnoresNonMatchingEntries)
+TEST(CgroupPodDiscovery, DiscoverTreatsEmptySystemdHierarchyAsSuccessfulSnapshot)
 {
-    // The fixture also holds a plain file (cgroup.procs) and a subdirectory
-    // (not-a-container-scope-dir) lacking the cri-containerd-*.scope shape. This proves less than
-    // it looks: BOTH decoys are rejected by NAME at MatchPodSliceName's size guard / prefix check,
-    // not by FindContainersInPod's is_directory() type guard -- "cgroup.procs" is 12 chars, below
-    // the 21-char prefix+suffix floor, so it is rejected identically with or without that guard.
-    // Covering the type guard needs a regular file whose name has the accepted
-    // cri-containerd-<long-id>.scope shape, and no fixture has one.
-    auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(
-        "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers/kubepods.slice/"
-        "kubepods-pod11111111_1111_1111_1111_111111111111.slice");
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/systemd_empty"};
+    auto result = discovery.Discover();
 
-    // This loop catches only a SPURIOUS entry; it is blind to a MISSING one (an empty map passes
-    // vacuously). The size()==1 in FindContainersInPodMatchesCriContainerdScopes pins the count.
-    for (const auto& [id, path] : containers)
-    {
-        EXPECT_EQ(id, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    }
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->empty());
 }
 
-// Accumulation: every other fixture directory yields at most ONE match, so a stray break or early
-// return after either emplace would leave them all passing. Real pods almost always have at least
-// two scopes (pause plus application), and dropping all but one happens before ReconcileContainers
-// -- no log line to notice, the metrics simply never appear.
-TEST(CgroupPodDiscovery, FindContainersInPodReturnsAllMatchingScopes)
+TEST(CgroupPodDiscovery, DiscoverDoesNotPreferEmptySystemdRootOverCgroupfs)
 {
-    auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(Pod1SlicePath("systemd_pod_with_two_containers"));
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/mixed_layout_empty_systemd"};
+    auto result = discovery.Discover();
 
-    ASSERT_EQ(containers.size(), 2);
-    EXPECT_TRUE(containers.contains(ContainerId('a')));
-    EXPECT_TRUE(containers.contains(ContainerId('b')));
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, atlasagent::CgroupDiscoveryErrorKind::kUnsupportedCgroupfsLayout);
+    EXPECT_EQ(result.error().path, std::filesystem::path(kResources) / "mixed_layout_empty_systemd" / "kubepods");
+    EXPECT_FALSE(result.error().cause);
 }
 
-TEST(CgroupPodDiscovery, FindActivePodCgroupsReturnsAllPodsInOneDirectory)
+TEST(CgroupPodDiscovery, DiscoverReturnsAllContainerScopes)
 {
-    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/systemd_two_pods"};
+    atlasagent::CgroupPodDiscovery discovery{std::string(kResources) + "/systemd_pod_with_two_containers"};
+    auto result = discovery.Discover();
 
-    auto pods = discovery.FindActivePodCgroups();
-
-    ASSERT_EQ(pods.size(), 2);
-    EXPECT_TRUE(pods.contains("22222222-2222-2222-2222-222222222222"));
-    EXPECT_TRUE(pods.contains("33333333-3333-3333-3333-333333333333"));
-}
-
-TEST(CgroupPodDiscovery, FindContainersInPodMissingDirReturnsEmpty)
-{
-    auto containers =
-        atlasagent::CgroupPodDiscovery::FindContainersInPod("lib/collectors/pod_monitor/test/resources/does_not_exist");
-    EXPECT_TRUE(containers.empty());
-}
-
-// KNOWN GAP, asserted deliberately. Under the CGROUPFS driver (this fixture) a container's cgroup
-// directory is the BARE id -- no "cri-containerd-" prefix, no ".scope" suffix -- so
-// FindContainersInPod, matching only the systemd+containerd spelling, finds nothing. Driver support
-// is ASYMMETRIC: FindActivePodCgroups handles both drivers (see FindActivePodCgroupsCgroupfs
-// above), FindContainersInPod one of six runtime x driver spellings. On such a node every pod is
-// tracked, every container silently skipped, and zero container metrics ship while it looks healthy.
-//
-// Bare ids are containerd's and docker's cgroupfs spelling, NOT a universal one -- CRI-O keeps its
-// crio- prefix and only drops .scope -- so passing this after a widening does not prove CRI-O
-// works; that needs its own fixture with a crio-conmon-<id> sibling, proving the monitor cgroup is
-// excluded rather than counted as a container. Full matrix in CgroupPodDiscovery's header.
-//
-// Deployment constraint: this known gap is acceptable only on containerd/systemd nodes. Supporting
-// a CRI-O or cgroupfs deployment requires widening the matcher and changing this expected result.
-//
-// The is_directory assertions matter as much as the size check: the previous cgroupfs fixture had
-// NO container directories, so an empty result was indistinguishable from a correct one. Deleting
-// them must fail loudly. WHEN cgroupfs support lands, expect 2 and assert both ids resolve -- the
-// fixture already carries them, so the test flips from pinning the bug to pinning the fix.
-TEST(CgroupPodDiscovery, FindContainersInPodFindsNothingUnderCgroupfsDriverKnownGap)
-{
-    const std::string pod_dir =
-        std::string(kResources) + "/cgroupfs/kubepods/burstable/pod55555555-5555-5555-5555-555555555555";
-
-    // The fixture really does hold two container directories, named the cgroupfs way.
-    ASSERT_TRUE(std::filesystem::is_directory(pod_dir + "/" + ContainerId('e')));
-    ASSERT_TRUE(std::filesystem::is_directory(pod_dir + "/" + ContainerId('f')));
-
-    auto containers = atlasagent::CgroupPodDiscovery::FindContainersInPod(pod_dir);
-
-    EXPECT_TRUE(containers.empty());
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->size(), 1);
+    const auto& pod = result->at(kPod1Uid);
+    ASSERT_EQ(pod.containers.size(), 2);
+    EXPECT_TRUE(pod.containers.contains(ContainerId('a')));
+    EXPECT_TRUE(pod.containers.contains(ContainerId('b')));
+    EXPECT_EQ(pod.containers.at(ContainerId('a')),
+              std::filesystem::path(Pod1SlicePath("systemd_pod_with_two_containers")) /
+                  ("cri-containerd-" + ContainerId('a') + ".scope"));
+    EXPECT_EQ(pod.containers.at(ContainerId('b')),
+              std::filesystem::path(Pod1SlicePath("systemd_pod_with_two_containers")) /
+                  ("cri-containerd-" + ContainerId('b') + ".scope"));
 }
 
 // ResolvePodTags: pure fallback-chain tag resolution -- the netflix.com/* primary tier, the
@@ -597,28 +574,6 @@ TEST(PodTagResolver, ResolvePodTagsStackAloneOrDetailAlonePassesGating)
     EXPECT_TRUE(componentLabelOnly->empty());
 }
 
-// Wiring through RefreshTrackedPods(): the pod in systemd_pod_with_containers and its container
-// scope are both discovered structurally, but identity lookup always fails closed here, so
-// annotations/labels are empty, ResolvePodTags returns nullopt, and the container is never tracked.
-//
-// WHAT THIS DOES NOT PROVE: it is not a test of the Gating logic. Two independent causes give the
-// same empty container map -- Gating rejecting the pod, and the container being absent from the
-// always-empty kubelet-reported info.containers -- and this assertion cannot tell them apart; it
-// passes with Gating's container-clearing statement working, deleted, or inverted. It pins only
-// the outer wiring: an unresolved-identity pod stays TRACKED as a pod while emitting nothing for
-// any container. See the NOTE above for how Gating is actually covered.
-TEST(PodMonitor, RefreshTrackedPodsContainerNotTrackedWhenPodIdentityUnresolved)
-{
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd_pod_with_containers"};
-
-    podMonitor.RefreshTrackedPods();
-
-    ASSERT_TRUE(podMonitor.TrackedPods().contains("11111111-1111-1111-1111-111111111111"));
-    EXPECT_TRUE(podMonitor.TrackedPods().at("11111111-1111-1111-1111-111111111111").containers.empty());
-}
-
 // ParseCpuQuantity handles CPU request strings obtained from the pod spec. The cgroup filesystem
 // exposes cpu.max (the limit), not the declared request.
 TEST(CpuQuantity, ParseCpuQuantityAcceptsMillicpuAndDecimalCores)
@@ -671,11 +626,8 @@ TEST(CpuQuantity, ParseCpuQuantityRejectsMemoryStyleSuffixes)
 }
 
 // ---------------------------------------------------------------------------------------------
-// TrackedPodRegistry: the gated-IN path. The TrackedPodRegistry tests in this section drive
-// Refresh(const PodInfoMap&) directly with fabricated data, which lets them exercise
-// ReconcileContainers / EvictUntrackedContainers / the Gating clear / SetExtraTags /
-// SetCpuCountOverride -- none of which a PodMonitor-routed test can reach, since its kubelet lookup
-// always fails closed here (see the NOTE further up).
+// TrackedPodRegistry consumes active pod maps. OnePodPlan builds those maps from fixture cgroups and
+// fabricated identities, keeping filesystem/identity admission separate from mutable CGroup state.
 //
 // WRITER DISCIPLINE, load-bearing: WriterTestHelper::GetImpl() returns a process-wide singleton
 // shared by every test in this binary, so each emission-focused test in this section Clear()s it
@@ -693,7 +645,7 @@ class TrackedPodRegistryTest : public testing::Test
     MemoryWriter* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 };
 
-TEST_F(TrackedPodRegistryTest, GatingClearsTrackedContainersWhenIdentityLost)
+TEST_F(TrackedPodRegistryTest, TagGateEvictsTrackedPod)
 {
     atlasagent::TrackedPodRegistry registry{&r};
 
@@ -701,17 +653,16 @@ TEST_F(TrackedPodRegistryTest, GatingClearsTrackedContainersWhenIdentityLost)
     const auto container_id = ContainerId('a');
 
     // Cycle 1: netflix.com/app resolves, so Gating passes and the container is tracked.
-    registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, {{container_id, "main"}}, {{"netflix.com/app", "myapp"}}));
+    registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {container_id}),
+                                  {{container_id, "main"}}, {{"netflix.com/app", "myapp"}}));
     ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
-    // Cycle 2: byte-identical input minus the annotation (a relabel/rollout), so ResolvePodTags
-    // returns nullopt. The pod stays tracked but its containers must be dropped -- otherwise they
-    // keep publishing under the stale nf.app/nf.cluster tags SetExtraTags gave them on the gated-in
-    // path. Deleting the container-clearing statement makes this assertion fail.
-    registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, {{container_id, "main"}}, {}));
-    ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
-    EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
+    // Cycle 2: removing the annotation fails the plan's pod-level tag gate. The pod and all of its
+    // containers leave the active plan, so reconciliation evicts their metric state.
+    registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {container_id}),
+                                  {{container_id, "main"}}, {}));
+    EXPECT_FALSE(registry.TrackedPods().contains(kPod1Uid));
 }
 
 TEST_F(TrackedPodRegistryTest, EvictsContainerWhoseCgroupScopeDisappears)
@@ -722,18 +673,20 @@ TEST_F(TrackedPodRegistryTest, EvictsContainerWhoseCgroupScopeDisappears)
     const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
 
     // Cycle 1: the pod's cgroup_path has a real container scope, so it gets tracked.
-    registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_pod_with_containers"), containers, annotations));
+    const auto first_path = Pod1SlicePath("systemd_pod_with_containers");
+    registry.Reconcile(OnePodPlan(kPod1Uid, first_path, ContainerScopes(first_path, {ContainerId('a')}), containers,
+                                  annotations));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
     // Cycle 2: same uid and kubelet-reported container, but cgroup_path now points at a pod slice
     // with NO container scopes -- the scope directory vanished. Gating still passes, so this
     // isolates EvictUntrackedContainers rather than the Gating clear.
-    registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd"), containers, annotations));
+    registry.Reconcile(OnePodPlan(kPod1Uid, Pod1SlicePath("systemd"), {}, containers, annotations));
     ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
     EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
 }
 
-TEST_F(TrackedPodRegistryTest, SkipsWithoutEvictingContainerNotYetReportedByKubelet)
+TEST_F(TrackedPodRegistryTest, DefersContainerUntilIdentityArrives)
 {
     atlasagent::TrackedPodRegistry registry{&r};
 
@@ -742,13 +695,31 @@ TEST_F(TrackedPodRegistryTest, SkipsWithoutEvictingContainerNotYetReportedByKube
 
     // The container's cgroup scope exists on disk but kubelet hasn't reported it yet (empty
     // container list) -- the documented transient race. It must not be tracked...
-    registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, {}, annotations));
+    registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}), {},
+                                  annotations));
     ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
     EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
 
     // ...and once kubelet does report it, the next cycle picks it up with no intervening restart.
-    registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, {{ContainerId('a'), "main"}}, annotations));
+    registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}),
+                                  {{ContainerId('a'), "main"}}, annotations));
     EXPECT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
+}
+
+TEST_F(TrackedPodRegistryTest, MissingCurrentContainerIdentityEvictsTrackedContainer)
+{
+    atlasagent::TrackedPodRegistry registry{&r};
+    const auto cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
+    const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
+
+    registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}),
+                                  {{ContainerId('a'), "main"}}, annotations));
+    ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
+
+    registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}), {},
+                                  annotations));
+    ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
+    EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
 }
 
 // Both container scopes in this fixture carry real memory.current/max/stat/events/swap files ON
@@ -760,7 +731,9 @@ TEST_F(TrackedPodRegistryTest, PerContainerTagsReachEmittedLinesWithSharedPodTag
 {
     atlasagent::TrackedPodRegistry registry{&r};
 
-    registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_pod_with_two_containers"),
+    registry.Reconcile(OnePodPlan(kPod1Uid, Pod1SlicePath("systemd_pod_with_two_containers"),
+                                    ContainerScopes(Pod1SlicePath("systemd_pod_with_two_containers"),
+                                                    {ContainerId('a'), ContainerId('b')}),
                                     {{ContainerId('a'), "main"}, {ContainerId('b'), "sidecar"}},
                                     {{"netflix.com/app", "myapp"}, {"netflix.com/stack", "mystack"}}));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 2);
@@ -775,55 +748,56 @@ TEST_F(TrackedPodRegistryTest, PerContainerTagsReachEmittedLinesWithSharedPodTag
     EXPECT_TRUE(AnyLineContains(messages, "nf.process=sidecar"));
 
     // ...while BOTH carry the pod-level tags -- the assertion that matters. ReconcileContainers
-    // copies pod_tags per iteration and std::move()s that copy into SetExtraTags: hoisting the copy
+    // copies active.tags per iteration and std::move()s that copy into SetExtraTags: hoisting it
     // out of the loop as an "optimization" would leave every container after the first with an
     // empty tag map -- metrics that still publish, but silently unattributable to any app.
     EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.process=main", "nf.app=myapp", "nf.stack=mystack"}));
     EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.process=sidecar", "nf.app=myapp", "nf.stack=mystack"}));
 }
 
-TEST_F(TrackedPodRegistryTest, InjectsK8sNamespaceNameOnlyWhenNamespaceKnown)
+TEST_F(TrackedPodRegistryTest, InjectsNamespaceAndRejectsMissingPodIdentity)
 {
     const auto cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
     const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
 
-    // A known namespace becomes the k8s.namespace.name tag. ResolvePodTags never sets this tag --
-    // TrackedPodRegistry injects it -- so no PodTagResolver test can cover it.
+    // The active-pod builder adds a known namespace after ResolvePodTags succeeds.
     {
         atlasagent::TrackedPodRegistry registry{&r};
-        registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, containers, annotations, "pod-one", "ns-one"));
+        registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}),
+                                      containers, annotations, "pod-one", "ns-one"));
         memoryWriter->Clear();
         registry.EmitMemoryStats();
         auto messages = memoryWriter->GetMessages();
         EXPECT_TRUE(AnyLineContains(messages, "k8s.namespace.name=ns-one"));
     }
 
-    // An unknown namespace must omit the tag entirely rather than emit it empty. Matching the
-    // exact key (not a loose "k8s.") matters -- k8s.cluster.name would otherwise match too.
+    // Missing required pod identity rejects the entire pod rather than emitting partially
+    // attributed container metrics.
     {
         atlasagent::TrackedPodRegistry registry{&r};
-        registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, containers, annotations, "", ""));
+        registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}),
+                                      containers, annotations, "", ""));
         memoryWriter->Clear();
         registry.EmitMemoryStats();
         auto messages = memoryWriter->GetMessages();
-        ASSERT_FALSE(messages.empty());
-        EXPECT_FALSE(AnyLineContains(messages, "k8s.namespace.name"));
+        EXPECT_TRUE(messages.empty());
+        EXPECT_FALSE(registry.TrackedPods().contains(kPod1Uid));
     }
 
-    // The namespace tag reads the stored identity rather than this cycle's raw name/namespace.
-    // This directly supplied PodInfo keeps valid annotations and container ids while leaving only
-    // name/namespace blank, so Gating still passes and the previously stored namespace is reused.
-    // A complete kubelet lookup failure also clears annotations/containers and follows the
-    // fail-closed Gating path instead.
+    // A later invalid identity is authoritative for the new plan; reconciliation must not preserve
+    // the previously valid namespace or continue emitting the old container.
     {
         atlasagent::TrackedPodRegistry registry{&r};
-        registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, containers, annotations, "pod-one", "ns-one"));
-        registry.Refresh(OnePodInfoMap(kPod1Uid, cgroup_path, containers, annotations, "", ""));
+        registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}),
+                                      containers, annotations, "pod-one", "ns-one"));
+        registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}),
+                                      containers, annotations, "", ""));
         memoryWriter->Clear();
         registry.EmitMemoryStats();
         auto messages = memoryWriter->GetMessages();
-        EXPECT_TRUE(AnyLineContains(messages, "k8s.namespace.name=ns-one"));
+        EXPECT_TRUE(messages.empty());
+        EXPECT_FALSE(registry.TrackedPods().contains(kPod1Uid));
     }
 }
 
@@ -837,7 +811,9 @@ TEST_F(TrackedPodRegistryTest, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
     // carries the resolved count.
     {
         atlasagent::TrackedPodRegistry registry{&r};
-        registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_single_pod_with_quota"), containers, annotations));
+        const auto quota_path = Pod1SlicePath("systemd_single_pod_with_quota");
+        registry.Reconcile(
+            OnePodPlan(kPod1Uid, quota_path, ContainerScopes(quota_path, {ContainerId('a')}), containers, annotations));
         ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
         memoryWriter->Clear();
         registry.EmitCpuStats(true, true);
@@ -851,7 +827,10 @@ TEST_F(TrackedPodRegistryTest, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
     {
         const auto expected = ":" + std::to_string(static_cast<double>(sysconf(_SC_NPROCESSORS_ONLN)));
         atlasagent::TrackedPodRegistry registry{&r};
-        registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_pod_cpu_unlimited"), containers, annotations));
+        const auto unlimited_path = Pod1SlicePath("systemd_pod_cpu_unlimited");
+        registry.Reconcile(
+            OnePodPlan(kPod1Uid, unlimited_path, ContainerScopes(unlimited_path, {ContainerId('a')}), containers,
+                       annotations));
         ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
         memoryWriter->Clear();
         registry.EmitCpuStats(true, true);
@@ -869,9 +848,10 @@ TEST_F(TrackedPodRegistryTest, RequestedGaugeReportsDeclaredRequestNotTheLimit)
 {
     atlasagent::TrackedPodRegistry registry{&r};
 
-    registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_single_pod_with_quota"),
-                                    {{ContainerId('a'), "main"}}, {{"netflix.com/app", "myapp"}}, "pod-one", "ns-one",
-                                    {{"main", 0.25}}));
+    const auto quota_path = Pod1SlicePath("systemd_single_pod_with_quota");
+    registry.Reconcile(OnePodPlan(kPod1Uid, quota_path, ContainerScopes(quota_path, {ContainerId('a')}),
+                                  {{ContainerId('a'), "main"}}, {{"netflix.com/app", "myapp"}}, "pod-one", "ns-one",
+                                  {{"main", 0.25}}));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
     memoryWriter->Clear();
@@ -895,8 +875,9 @@ TEST_F(TrackedPodRegistryTest, RequestedGaugeOmittedForContainerWithNoCpuRequest
     atlasagent::TrackedPodRegistry registry{&r};
 
     // Same fixture and container as above, but cpu_requests is empty.
-    registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_single_pod_with_quota"),
-                                    {{ContainerId('a'), "main"}}, {{"netflix.com/app", "myapp"}}));
+    const auto quota_path = Pod1SlicePath("systemd_single_pod_with_quota");
+    registry.Reconcile(OnePodPlan(kPod1Uid, quota_path, ContainerScopes(quota_path, {ContainerId('a')}),
+                                  {{ContainerId('a'), "main"}}, {{"netflix.com/app", "myapp"}}));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
     memoryWriter->Clear();
@@ -922,7 +903,8 @@ TEST_F(TrackedPodRegistryTest, ReResolvesCpuCountEveryRefreshCycle)
     const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
 
-    registry.Refresh(OnePodInfoMap(kPod1Uid, tree.PodPath(), containers, annotations));
+    registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
+                                  containers, annotations));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
     memoryWriter->Clear();
     registry.EmitCpuStats(true, true);
@@ -932,12 +914,37 @@ TEST_F(TrackedPodRegistryTest, ReResolvesCpuCountEveryRefreshCycle)
     // Resize to 2 CPUs and refresh again. Re-resolving only at first insertion would keep
     // publishing 0.5 here, understating the container's capacity for the rest of the process.
     tree.WriteScopeFile("cpu.max", "200000 100000\n");
-    registry.Refresh(OnePodInfoMap(kPod1Uid, tree.PodPath(), containers, annotations));
+    registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
+                                  containers, annotations));
     memoryWriter->Clear();
     registry.EmitCpuStats(true, true);
     messages = memoryWriter->GetMessages();
     EXPECT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":2.000000"}));
     EXPECT_FALSE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
+}
+
+TEST_F(TrackedPodRegistryTest, RecreatesContainerWhenCgroupPathChanges)
+{
+    atlasagent::TrackedPodRegistry registry{&r};
+    const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
+    const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
+
+    const auto first_cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
+    registry.Reconcile(OnePodPlan(kPod1Uid, first_cgroup_path,
+                                  ContainerScopes(first_cgroup_path, {ContainerId('a')}), containers,
+                                  annotations));
+    const auto first_path = registry.TrackedPods().at(kPod1Uid).containers.at(ContainerId('a')).cgroup_path;
+
+    const auto second_cgroup_path = Pod1SlicePath("systemd_single_pod_with_quota");
+    registry.Reconcile(OnePodPlan(kPod1Uid, second_cgroup_path,
+                                  ContainerScopes(second_cgroup_path, {ContainerId('a')}), containers,
+                                  annotations));
+    const auto second_path = registry.TrackedPods().at(kPod1Uid).containers.at(ContainerId('a')).cgroup_path;
+
+    EXPECT_NE(first_path, second_path);
+    EXPECT_EQ(second_path,
+              std::filesystem::path(Pod1SlicePath("systemd_single_pod_with_quota")) /
+                  ("cri-containerd-" + ContainerId('a') + ".scope"));
 }
 
 // Regression guard for the noexcept/out-of-bounds defects fixed in cgroup.cpp: CpuUtilizationV2 and
@@ -956,7 +963,9 @@ TEST_F(TrackedPodRegistryTest, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
     // Case A: the container scope has no cpu.stat and no cpu.max at all.
     {
         atlasagent::TrackedPodRegistry registry{&r};
-        registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_pod_with_containers"), containers, annotations));
+        const auto fixture_path = Pod1SlicePath("systemd_pod_with_containers");
+        registry.Reconcile(OnePodPlan(kPod1Uid, fixture_path, ContainerScopes(fixture_path, {ContainerId('a')}),
+                                      containers, annotations));
         ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
         memoryWriter->Clear();
@@ -968,7 +977,7 @@ TEST_F(TrackedPodRegistryTest, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
         // (silently killing it for every pod) would go unnoticed. It depends only on the resolved
         // CPU count, not on cpu.stat, so it survives here by design.
         EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.numProcessors"));
-        // No "requested" gauge at all: these PodInfoMaps declare no CPU request, and a container
+        // No "requested" gauge at all: these plans declare no CPU request, and a container
         // without one omits it rather than publishing the limit (or the node's core count) as
         // though it were the request. titus.cpu.requested belongs to the Titus path and must never
         // appear on pod metrics.
@@ -988,7 +997,8 @@ TEST_F(TrackedPodRegistryTest, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
         tree.WriteScopeFile("cpu.stat", "usage_usec 1000\n");
 
         atlasagent::TrackedPodRegistry registry{&r};
-        registry.Refresh(OnePodInfoMap(kPod1Uid, tree.PodPath(), containers, annotations));
+        registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
+                                      containers, annotations));
         ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
         memoryWriter->Clear();
@@ -1014,7 +1024,8 @@ TEST_F(TrackedPodRegistryTest, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
         tree.WriteScopeFile("cpu.stat", "usage_usec 1000\nuser_usec 400\nsystem_usec 600\n");
 
         atlasagent::TrackedPodRegistry registry{&r};
-        registry.Refresh(OnePodInfoMap(kPod1Uid, tree.PodPath(), containers, annotations));
+        registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
+                                      containers, annotations));
         ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
         registry.EmitCpuStats(true, true);  // seeds the prev_* baselines
 
@@ -1052,8 +1063,9 @@ TEST_F(TrackedPodRegistryTest, SkipsEmissionForContainerWhoseCgroupVanishedSince
     tree.WriteScopeFile("cpu.max", "50000 100000\n");
     tree.WriteScopeFile("memory.current", "1048576\n");
 
-    registry.Refresh(OnePodInfoMap(kPod1Uid, tree.PodPath(), {{ContainerId('a'), "main"}},
-                                    {{"netflix.com/app", "myapp"}}, "pod-one", "ns-one", {{"main", 0.25}}));
+    registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
+                                  {{ContainerId('a'), "main"}}, {{"netflix.com/app", "myapp"}}, "pod-one", "ns-one",
+                                  {{"main", 0.25}}));
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
     // Baseline: while the scope exists, every leak-prone metric really is published.
@@ -1068,9 +1080,8 @@ TEST_F(TrackedPodRegistryTest, SkipsEmissionForContainerWhoseCgroupVanishedSince
         ASSERT_TRUE(AnyLineContains(messages, "cgroup.mem.used"));
     }
 
-    // The container terminates: containerd removes the scope directory. It stays TRACKED (only
-    // Refresh() changes membership, and it has not run again), so this exercises the liveness
-    // skip, not eviction.
+    // The container terminates: containerd removes the scope directory. It stays TRACKED because no
+    // new plan has been reconciled, so this exercises the liveness skip rather than eviction.
     std::filesystem::remove_all(tree.ScopePath());
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
@@ -1116,22 +1127,6 @@ TEST_F(TrackedPodRegistryTest, EmitMethodsAreNoOpsWithNothingTracked)
     EXPECT_TRUE(memoryWriter->GetMessages().empty());
 }
 
-TEST(PodMonitor, RefreshTrackedPodsEvictsAllWhenRootDisappears)
-{
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
-
-    podMonitor.RefreshTrackedPods();
-    ASSERT_EQ(podMonitor.TrackedPods().size(), 3);
-
-    // Point at a nonexistent root, so FindActivePodInfo() discovers nothing.
-    podMonitor.SetPrefix("lib/collectors/pod_monitor/test/resources/does_not_exist");
-    podMonitor.RefreshTrackedPods();
-
-    EXPECT_TRUE(podMonitor.TrackedPods().empty());
-}
-
 TEST(PodIdentityClient, ParsePodListWellFormed)
 {
     auto json = R"json(
@@ -1170,14 +1165,18 @@ TEST(PodIdentityClient, ParsePodListWellFormed)
 
 TEST(PodIdentityClient, ParsePodListMalformedJsonFails)
 {
-    auto result = PodIdentityClientTest::ParsePodList("not json{{{");
-    EXPECT_FALSE(result.has_value());
+    const std::string json = "not json{{{";
+    auto result = PodIdentityClientTest::ParsePodList(json);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, atlasagent::PodIdentityErrorKind::Parse);
+    EXPECT_EQ(result.error().response_size, json.size());
 }
 
 TEST(PodIdentityClient, ParsePodListMissingItemsFails)
 {
     auto result = PodIdentityClientTest::ParsePodList(R"json({"kind":"PodList"})json");
-    EXPECT_FALSE(result.has_value());
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, atlasagent::PodIdentityErrorKind::Envelope);
 }
 
 TEST(PodIdentityClient, ParsePodListEmptyItemsSucceeds)
@@ -1323,7 +1322,7 @@ TEST(PodIdentityClient, ParsePodListSkipsNonStringAnnotationValues)
 }
 
 // status.containerStatuses parsing had NO coverage at all before this. PodIdentity::containers is
-// what ReconcileContainers matches cgroup-discovered ids against, so a parsing regression here
+// what BuildActivePods matches cgroup-discovered ids against, so a parsing regression here
 // gates out every container on the node while leaving pods tracked and every other test green.
 TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
 {
@@ -1339,10 +1338,22 @@ TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
       },
       "status": {
         "containerStatuses": [
-          {"name": "main", "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-          {"name": "sidecar", "containerID": "cri-o://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
-          {"name": "double-scheme", "containerID": "docker://x://cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
-          {"name": "bare", "containerID": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+          {
+            "name": "main",
+            "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "name": "sidecar",
+            "containerID": "cri-o://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "name": "double-scheme",
+            "containerID": "docker://x://cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          {
+            "name": "bare",
+            "containerID": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          }
         ]
       }
     }
@@ -1357,13 +1368,13 @@ TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
     ASSERT_EQ(identity.containers.size(), 4);
     // The runtime scheme prefix must be stripped so a normal containerID key matches the id segment
     // carried by the cgroup scope directory name.
-    EXPECT_EQ(identity.containers.at(ContainerId('a')), "main");
-    EXPECT_EQ(identity.containers.at(ContainerId('b')), "sidecar");
+    EXPECT_EQ(identity.containers.at(ContainerId('a')).name, "main");
+    EXPECT_EQ(identity.containers.at(ContainerId('b')).name, "sidecar");
     // Strips at the FIRST "://", not the last -- this entry is what distinguishes the two, and
     // a switch to find-last would key this container as the bare c's instead.
-    EXPECT_EQ(identity.containers.at("x://" + std::string(60, 'c')), "double-scheme");
+    EXPECT_EQ(identity.containers.at("x://" + std::string(60, 'c')).name, "double-scheme");
     // No scheme at all: passed through unchanged rather than mangled.
-    EXPECT_EQ(identity.containers.at(ContainerId('d')), "bare");
+    EXPECT_EQ(identity.containers.at(ContainerId('d')).name, "bare");
 }
 
 // A NATIVE SIDECAR -- an initContainer with restartPolicy=Always (k8s 1.28+) -- is reported in
@@ -1374,7 +1385,7 @@ TEST(PodIdentityClient, ParsePodListParsesContainerStatusesAndStripsIdScheme)
 //
 // Parsing spec.initContainers[] (which ParsePodListParsesCpuRequestsFromSpec covers) is NOT a
 // substitute: spec carries container names but no ids -- an id is assigned when the runtime creates
-// the container -- so status is the only source of ids, and ReconcileContainers resolves
+// the container -- so status is the only source of ids, and BuildActivePods resolves
 // cgroup-discovered scopes by id.
 TEST(PodIdentityClient, ParsePodListParsesInitContainerStatusesForNativeSidecars)
 {
@@ -1398,10 +1409,16 @@ TEST(PodIdentityClient, ParsePodListParsesInitContainerStatusesForNativeSidecars
       },
       "status": {
         "initContainerStatuses": [
-          {"name": "envoy", "containerID": "containerd://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+          {
+            "name": "envoy",
+            "containerID": "containerd://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
         ],
         "containerStatuses": [
-          {"name": "app", "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+          {
+            "name": "app",
+            "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
         ]
       }
     }
@@ -1417,14 +1434,14 @@ TEST(PodIdentityClient, ParsePodListParsesInitContainerStatusesForNativeSidecars
     // Both status arrays land in the SAME map, keyed by id -- ids are unique per container, so
     // merging them cannot collide. Dropping the initContainerStatuses call makes this size 1.
     ASSERT_EQ(identity.containers.size(), 2);
-    EXPECT_EQ(identity.containers.at(ContainerId('a')), "app");
-    EXPECT_EQ(identity.containers.at(ContainerId('b')), "envoy");
+    EXPECT_EQ(identity.containers.at(ContainerId('a')).name, "app");
+    EXPECT_EQ(identity.containers.at(ContainerId('b')).name, "envoy");
 
-    // The sidecar's CPU request is now REACHABLE: spec.initContainers[] already parsed it before
-    // this fix, but ReconcileContainers looks cpu_requests up by NAME and gets that name only via
-    // the id lookup above -- so a correctly-parsed 50m sat permanently unread.
-    EXPECT_DOUBLE_EQ(identity.cpu_requests.at("envoy"), 0.05);
-    EXPECT_DOUBLE_EQ(identity.cpu_requests.at("app"), 0.5);
+    // Requests from the spec are attached directly to the corresponding runtime identities.
+    ASSERT_TRUE(identity.containers.at(ContainerId('b')).cpu_request.has_value());
+    EXPECT_DOUBLE_EQ(*identity.containers.at(ContainerId('b')).cpu_request, 0.05);
+    ASSERT_TRUE(identity.containers.at(ContainerId('a')).cpu_request.has_value());
+    EXPECT_DOUBLE_EQ(*identity.containers.at(ContainerId('a')).cpu_request, 0.5);
 }
 
 // This fixture models waiting statuses (such as ImagePullBackOff or CreateContainerError) with an
@@ -1446,7 +1463,10 @@ TEST(PodIdentityClient, ParsePodListSkipsContainerStatusWithEmptyContainerId)
       "status": {
         "containerStatuses": [
           {"name": "pending", "containerID": ""},
-          {"name": "running", "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+          {
+            "name": "running",
+            "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
         ],
         "initContainerStatuses": [
           {"name": "init-pending", "containerID": ""}
@@ -1466,8 +1486,48 @@ TEST(PodIdentityClient, ParsePodListSkipsContainerStatusWithEmptyContainerId)
     // per status array: without the guard both would target the same "" key, emplace would keep
     // whichever arrived first, and this map would be size 2 with a junk entry.
     ASSERT_EQ(identity.containers.size(), 1);
-    EXPECT_EQ(identity.containers.at(ContainerId('a')), "running");
+    EXPECT_EQ(identity.containers.at(ContainerId('a')).name, "running");
     EXPECT_FALSE(identity.containers.contains(""));
+}
+
+TEST(PodIdentityClient, ParsePodListOmitsEphemeralContainerStatuses)
+{
+    auto json = R"json(
+{
+  "kind": "PodList",
+  "items": [
+    {
+      "metadata": {
+        "uid": "11111111-1111-1111-1111-111111111111",
+        "name": "pod-one",
+        "namespace": "ns-one"
+      },
+      "status": {
+        "containerStatuses": [
+          {
+            "name": "main",
+            "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "ephemeralContainerStatuses": [
+          {
+            "name": "debugger",
+            "containerID": "containerd://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      }
+    }
+  ]
+}
+  )json";
+
+    auto result = PodIdentityClientTest::ParsePodList(json);
+
+    ASSERT_TRUE(result.has_value());
+    const auto& containers = result->at(kPod1Uid).containers;
+    ASSERT_EQ(containers.size(), 1);
+    EXPECT_TRUE(containers.contains(ContainerId('a')));
+    EXPECT_FALSE(containers.contains(ContainerId('b')));
 }
 
 // spec.containers[] and spec.initContainers[] are the parsed sources for container CPU requests;
@@ -1496,6 +1556,36 @@ TEST(PodIdentityClient, ParsePodListParsesCpuRequestsFromSpec)
           {"name": "no-resources-key"},
           {"name": "unparseable", "resources": {"requests": {"cpu": "not-a-number"}}}
         ]
+      },
+      "status": {
+        "initContainerStatuses": [
+          {
+            "name": "sidecar",
+            "containerID": "containerd://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "main",
+            "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "name": "besteffort",
+            "containerID": "containerd://cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          {
+            "name": "limits-only",
+            "containerID": "containerd://dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          {
+            "name": "no-resources-key",
+            "containerID": "containerd://eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          {
+            "name": "unparseable",
+            "containerID": "containerd://ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          }
+        ]
       }
     }
   ]
@@ -1507,23 +1597,22 @@ TEST(PodIdentityClient, ParsePodListParsesCpuRequestsFromSpec)
     ASSERT_TRUE(result.has_value());
     const auto& identity = result->at("11111111-1111-1111-1111-111111111111");
 
-    // Only the containers that actually declare a parseable requests.cpu appear.
-    ASSERT_EQ(identity.cpu_requests.size(), 2);
-    EXPECT_DOUBLE_EQ(identity.cpu_requests.at("main"), 0.5);
+    ASSERT_EQ(identity.containers.size(), 6);
+    ASSERT_TRUE(identity.containers.at(ContainerId('a')).cpu_request.has_value());
+    EXPECT_DOUBLE_EQ(*identity.containers.at(ContainerId('a')).cpu_request, 0.5);
     // From initContainers[], not containers[].
-    EXPECT_DOUBLE_EQ(identity.cpu_requests.at("sidecar"), 0.05);
+    ASSERT_TRUE(identity.containers.at(ContainerId('b')).cpu_request.has_value());
+    EXPECT_DOUBLE_EQ(*identity.containers.at(ContainerId('b')).cpu_request, 0.05);
 
-    // Every "no request" shape must be ABSENT rather than present-with-zero: absence is what makes
-    // the emission omit k8s.cpu.requested instead of publishing a misleading 0.
-    EXPECT_FALSE(identity.cpu_requests.contains("besteffort"));
-    EXPECT_FALSE(identity.cpu_requests.contains("limits-only"));
-    EXPECT_FALSE(identity.cpu_requests.contains("no-resources-key"));
-    EXPECT_FALSE(identity.cpu_requests.contains("unparseable"));
+    // Every "no request" shape keeps an empty optional rather than fabricating zero.
+    EXPECT_FALSE(identity.containers.at(ContainerId('c')).cpu_request.has_value());
+    EXPECT_FALSE(identity.containers.at(ContainerId('d')).cpu_request.has_value());
+    EXPECT_FALSE(identity.containers.at(ContainerId('e')).cpu_request.has_value());
+    EXPECT_FALSE(identity.containers.at(ContainerId('f')).cpu_request.has_value());
 }
 
-// A pod with no spec at all (or no containers array) must parse cleanly with an empty map rather
-// than failing the whole pod -- matching how this parser treats every other optional section.
-TEST(PodIdentityClient, ParsePodListMissingSpecLeavesCpuRequestsEmpty)
+// A pod with no spec must retain its runtime identity with no CPU request.
+TEST(PodIdentityClient, ParsePodListMissingSpecLeavesCpuRequestEmpty)
 {
     auto json = R"json(
 {
@@ -1534,6 +1623,14 @@ TEST(PodIdentityClient, ParsePodListMissingSpecLeavesCpuRequestsEmpty)
         "uid": "11111111-1111-1111-1111-111111111111",
         "name": "pod-one",
         "namespace": "ns-one"
+      },
+      "status": {
+        "containerStatuses": [
+          {
+            "name": "main",
+            "containerID": "containerd://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
       }
     }
   ]
@@ -1545,182 +1642,193 @@ TEST(PodIdentityClient, ParsePodListMissingSpecLeavesCpuRequestsEmpty)
     ASSERT_TRUE(result.has_value());
     const auto& identity = result->at("11111111-1111-1111-1111-111111111111");
     EXPECT_EQ(identity.name, "pod-one");
-    EXPECT_TRUE(identity.cpu_requests.empty());
+    ASSERT_EQ(identity.containers.size(), 1);
+    EXPECT_FALSE(identity.containers.at(ContainerId('a')).cpu_request.has_value());
 }
 
-TEST(PodMonitor, JoinCgroupAndIdentityPartialMatch)
+TEST(BuildActivePods, BuildsActivePodsOnlyForMatchedCgroups)
 {
-    atlasagent::PodCgroupMap cgroup_pods;
-    cgroup_pods.emplace("11111111-1111-1111-1111-111111111111", std::filesystem::path("/sys/fs/cgroup/pod-one"));
-    cgroup_pods.emplace("22222222-2222-2222-2222-222222222222", std::filesystem::path("/sys/fs/cgroup/pod-two"));
+    atlasagent::CgroupSnapshot cgroups;
+    cgroups.emplace("matched", atlasagent::CgroupPod{"/cgroup/matched", {{"container-a", "/cgroup/matched/a"}}});
+    cgroups.emplace("cgroup-only", atlasagent::CgroupPod{"/cgroup/cgroup-only", {}});
 
     atlasagent::PodIdentityMap identities;
-    identities.emplace(
-        "11111111-1111-1111-1111-111111111111",
-        atlasagent::PodIdentity{"pod-one", "namespace-one", {}, {{"netflix.com/app", "myapp"}},
-                                 {{"app.kubernetes.io/name", "mylabelapp"}}});
+    identities.emplace("matched",
+                       atlasagent::PodIdentity{"pod-one", "ns-one",
+                                               {{"container-a", atlasagent::ContainerIdentity{"main", 0.25}}},
+                                               {{"netflix.com/app", "myapp"}}, {}});
+    identities.emplace("identity-only", atlasagent::PodIdentity{"pod-two", "ns-two"});
 
-    auto result = PodMonitorTest::JoinCgroupAndIdentity(cgroup_pods, std::optional(identities));
+    auto active_pods = atlasagent::BuildActivePods(cgroups, identities, "test-cluster");
 
-    ASSERT_EQ(result.size(), 2);
-
-    EXPECT_EQ(result.at("11111111-1111-1111-1111-111111111111").name, "pod-one");
-    EXPECT_EQ(result.at("11111111-1111-1111-1111-111111111111").pod_namespace, "namespace-one");
-    EXPECT_EQ(result.at("11111111-1111-1111-1111-111111111111").cgroup_path,
-              std::filesystem::path("/sys/fs/cgroup/pod-one"));
-    EXPECT_EQ(result.at("11111111-1111-1111-1111-111111111111").annotations.at("netflix.com/app"), "myapp");
-    EXPECT_EQ(result.at("11111111-1111-1111-1111-111111111111").labels.at("app.kubernetes.io/name"), "mylabelapp");
-
-    EXPECT_EQ(result.at("22222222-2222-2222-2222-222222222222").name, "");
-    EXPECT_EQ(result.at("22222222-2222-2222-2222-222222222222").pod_namespace, "");
-    EXPECT_EQ(result.at("22222222-2222-2222-2222-222222222222").cgroup_path,
-              std::filesystem::path("/sys/fs/cgroup/pod-two"));
-    EXPECT_TRUE(result.at("22222222-2222-2222-2222-222222222222").annotations.empty());
-    EXPECT_TRUE(result.at("22222222-2222-2222-2222-222222222222").labels.empty());
-}
-
-TEST(PodMonitor, JoinCgroupAndIdentityNulloptIdentities)
-{
-    atlasagent::PodCgroupMap cgroup_pods;
-    cgroup_pods.emplace("11111111-1111-1111-1111-111111111111", std::filesystem::path("/sys/fs/cgroup/pod-one"));
-    cgroup_pods.emplace("22222222-2222-2222-2222-222222222222", std::filesystem::path("/sys/fs/cgroup/pod-two"));
-
-    auto result = PodMonitorTest::JoinCgroupAndIdentity(cgroup_pods, std::nullopt);
-
-    ASSERT_EQ(result.size(), 2);
-
-    EXPECT_EQ(result.at("11111111-1111-1111-1111-111111111111").name, "");
-    EXPECT_EQ(result.at("11111111-1111-1111-1111-111111111111").pod_namespace, "");
-    EXPECT_EQ(result.at("11111111-1111-1111-1111-111111111111").cgroup_path,
-              std::filesystem::path("/sys/fs/cgroup/pod-one"));
-
-    EXPECT_EQ(result.at("22222222-2222-2222-2222-222222222222").name, "");
-    EXPECT_EQ(result.at("22222222-2222-2222-2222-222222222222").pod_namespace, "");
-    EXPECT_EQ(result.at("22222222-2222-2222-2222-222222222222").cgroup_path,
-              std::filesystem::path("/sys/fs/cgroup/pod-two"));
-}
-
-TEST(PodMonitor, JoinCgroupAndIdentityDropsIdentityWithoutCgroup)
-{
-    atlasagent::PodCgroupMap cgroup_pods;
-    cgroup_pods.emplace("11111111-1111-1111-1111-111111111111", std::filesystem::path("/sys/fs/cgroup/pod-one"));
-
-    atlasagent::PodIdentityMap identities;
-    identities.emplace("11111111-1111-1111-1111-111111111111",
-                        atlasagent::PodIdentity{"pod-one", "namespace-one"});
-    identities.emplace("99999999-9999-9999-9999-999999999999",
-                        atlasagent::PodIdentity{"pod-without-cgroup", "namespace-ghost"});
-
-    auto result = PodMonitorTest::JoinCgroupAndIdentity(cgroup_pods, std::optional(identities));
-
-    ASSERT_EQ(result.size(), cgroup_pods.size());
-    EXPECT_EQ(result.find("99999999-9999-9999-9999-999999999999"), result.end());
-}
-
-TEST(PodMonitor, FindActivePodInfoWithoutKubeletIsHermetic)
-{
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, "lib/collectors/pod_monitor/test/resources/systemd"};
-
-    auto pods = podMonitor.FindActivePodInfo();
-
-    ASSERT_EQ(pods.size(), 3);
-
-    EXPECT_EQ(pods.at("11111111-1111-1111-1111-111111111111").cgroup_path,
-              std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/systemd/kubepods.slice/"
-                  "kubepods-pod11111111_1111_1111_1111_111111111111.slice"));
-    EXPECT_EQ(pods.at("22222222-2222-2222-2222-222222222222").cgroup_path,
-              std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/systemd/kubepods.slice/kubepods-burstable.slice/"
-                  "kubepods-burstable-pod22222222_2222_2222_2222_222222222222.slice"));
-    EXPECT_EQ(pods.at("33333333-3333-3333-3333-333333333333").cgroup_path,
-              std::filesystem::path(
-                  "lib/collectors/pod_monitor/test/resources/systemd/kubepods.slice/kubepods-besteffort.slice/"
-                  "kubepods-besteffort-pod33333333_3333_3333_3333_333333333333.slice"));
-
-    for (const auto& [uid, info] : pods)
-    {
-        EXPECT_EQ(info.name, "");
-        EXPECT_EQ(info.pod_namespace, "");
-    }
-}
-
-// This test explicitly reads PodInfo::uid and PodInfo::containers. Without those assertions, the
-// JoinCgroupAndIdentity lines that populate them could be deleted or mis-wired while the preceding
-// join tests stayed green; containers is what ReconcileContainers matches against.
-TEST(PodMonitor, JoinCgroupAndIdentityCopiesContainersAndUid)
-{
-    atlasagent::PodCgroupMap cgroup_pods;
-    cgroup_pods.emplace("uid-one", "/sys/fs/cgroup/pod-one");
-    cgroup_pods.emplace("uid-two", "/sys/fs/cgroup/pod-two");
-
-    atlasagent::PodIdentityMap identities;
-    identities.emplace("uid-one", atlasagent::PodIdentity{"pod-one",
-                                                           "namespace-one",
-                                                           {{"abc123", "sidecar-name"}},
-                                                           {{"netflix.com/app", "myapp"}},
-                                                           {{"k8s-app", "mylabelapp"}}});
-
-    auto result = PodMonitorTest::JoinCgroupAndIdentity(cgroup_pods, identities);
-
-    ASSERT_EQ(result.size(), 2);
-
-    // Matched pod: every identity-sourced field is copied through, keyed by the SAME uid.
-    const auto& matched = result.at("uid-one");
-    EXPECT_EQ(matched.uid, "uid-one");
+    ASSERT_EQ(active_pods.size(), 1);
+    const auto& matched = active_pods.at("matched");
+    EXPECT_EQ(matched.tags.at("k8s.namespace.name"), "ns-one");
+    EXPECT_EQ(matched.tags.at("k8s.cluster.name"), "test-cluster");
     ASSERT_EQ(matched.containers.size(), 1);
-    EXPECT_EQ(matched.containers.at("abc123"), "sidecar-name");
-    EXPECT_EQ(matched.annotations.at("netflix.com/app"), "myapp");
-    EXPECT_EQ(matched.labels.at("k8s-app"), "mylabelapp");
-
-    // Unmatched pod: discovered from cgroups but absent from identities, so it keeps its uid and
-    // cgroup path with every identity-sourced field empty. Asserting containers is empty (not just
-    // name) is what catches a merge leaking another pod's container list into this one.
-    const auto& unmatched = result.at("uid-two");
-    EXPECT_EQ(unmatched.uid, "uid-two");
-    EXPECT_TRUE(unmatched.containers.empty());
-    EXPECT_TRUE(unmatched.annotations.empty());
-    EXPECT_TRUE(unmatched.labels.empty());
+    EXPECT_EQ(matched.containers.at("container-a").name, "main");
+    ASSERT_TRUE(matched.containers.at("container-a").cpu_request.has_value());
+    EXPECT_DOUBLE_EQ(*matched.containers.at("container-a").cpu_request, 0.25);
 }
 
-// CollectMemoryStats() is the agent's ONLY refresh driver in shipped code (k8s-agent.cpp calls it
-// once at startup to prime the tracked set, then on the 60s tick). Before this test, that coupling
-// had no direct coverage.
-// Moving RefreshTrackedPods() after EmitMemoryStats(), or dropping it, would keep a container first
-// resolved by that refresh out of the immediately following memory pass.
-//
-// This pins the refresh, not the emission: routed through PodMonitor the container map is always
-// empty, so EmitMemoryStats writes nothing here (emission is covered by TrackedPodRegistry above).
-TEST(PodMonitor, CollectMemoryStatsRefreshesTrackedPods)
+TEST(BuildActivePods, RequiresCurrentContainerIdentityForCgroupScope)
+{
+    atlasagent::CgroupSnapshot cgroups;
+    cgroups.emplace("pod-uid", atlasagent::CgroupPod{"/cgroup/pod", {{"matched", "/cgroup/pod/matched"},
+                                                                      {"cgroup-only", "/cgroup/pod/cgroup-only"}}});
+    atlasagent::PodIdentityMap identities;
+    identities.emplace("pod-uid",
+                       atlasagent::PodIdentity{"pod-one", "ns-one",
+                                               {{"matched", atlasagent::ContainerIdentity{"main", std::nullopt}},
+                                                {"identity-only", atlasagent::ContainerIdentity{"old", std::nullopt}}},
+                                               {{"netflix.com/app", "myapp"}}, {}});
+
+    auto active_pods = atlasagent::BuildActivePods(cgroups, identities, "");
+
+    ASSERT_EQ(active_pods.at("pod-uid").containers.size(), 1);
+    EXPECT_TRUE(active_pods.at("pod-uid").containers.contains("matched"));
+}
+
+TEST(PodMonitor, SuccessfulRefreshThenIdentityFailureSuspendsEmission)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
-    PodMonitorTest podMonitor{&r, std::string(kResources) + "/systemd"};
+    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    atlasagent::CgroupSnapshot cgroups;
+    const auto cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
+    cgroups.emplace(
+        kPod1Uid,
+        atlasagent::CgroupPod{cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')})});
+    atlasagent::PodIdentityMap identities;
+    identities.emplace(kPod1Uid,
+                       atlasagent::PodIdentity{"pod-one", "ns-one",
+                                               {{ContainerId('a'), atlasagent::ContainerIdentity{"main", 0.25}}},
+                                               {{"netflix.com/app", "myapp"}}, {}});
+
+    auto cgroup_source = std::make_unique<FakePodCgroupSource>(cgroups);
+    auto identity_source = std::make_unique<FakePodIdentitySource>(identities);
+    auto* cgroup_source_ptr = cgroup_source.get();
+    auto* identity_source_ptr = identity_source.get();
+    PodMonitorTest podMonitor{&r, std::move(cgroup_source), std::move(identity_source), "test-cluster"};
+
+    auto refreshed = podMonitor.Refresh();
+    EXPECT_EQ(refreshed.state, atlasagent::PodMonitorState::kActive);
+    ASSERT_EQ(podMonitor.TrackedPods().at(kPod1Uid).containers.size(), 1);
+    EXPECT_EQ(refreshed.active_pods.at(kPod1Uid).containers.size(), 1);
+    EXPECT_EQ(cgroup_source_ptr->Calls(), 1);
+    EXPECT_EQ(identity_source_ptr->Calls(), 1);
 
     podMonitor.CollectMemoryStats();
-    EXPECT_EQ(podMonitor.TrackedPods().size(), 3);
+    EXPECT_EQ(cgroup_source_ptr->Calls(), 1);
+    EXPECT_EQ(identity_source_ptr->Calls(), 1);
 
-    // Re-point at a root with no pods: proves the refresh actually ran on this call, rather than
-    // the tracked set having happened to be correct already.
-    podMonitor.SetPrefix(std::string(kResources) + "/does_not_exist");
+    identity_source_ptr->SetResult(
+        std::unexpected(atlasagent::PodIdentityError{atlasagent::PodIdentityErrorKind::Http, 503}));
+    refreshed = podMonitor.Refresh();
+    EXPECT_EQ(refreshed.state, atlasagent::PodMonitorState::kIdentityUnavailable);
+    EXPECT_TRUE(podMonitor.TrackedPods().empty());
+    EXPECT_TRUE(refreshed.active_pods.empty());
+
+    memoryWriter->Clear();
+    podMonitor.CollectCpuStats(true, true);
+    podMonitor.CollectIOStats();
     podMonitor.CollectMemoryStats();
+    EXPECT_TRUE(memoryWriter->GetMessages().empty());
+
+    // A successful empty identity snapshot is authoritative rather than an error: emission is
+    // active again, but there are no admitted containers.
+    identity_source_ptr->SetResult(atlasagent::PodIdentityMap{});
+    refreshed = podMonitor.Refresh();
+    EXPECT_EQ(refreshed.state, atlasagent::PodMonitorState::kActive);
     EXPECT_TRUE(podMonitor.TrackedPods().empty());
 }
 
-// Pins that an unreachable kubelet fails closed (nullopt) rather than throwing or hanging -- the
-// premise used by PodMonitorTest cases that keep the default loopback URL. It does NOT cover
-// FetchPodIdentities' `status != 200` guard: an unreachable host yields an empty body that
-// ParsePodList rejects at its JSON-parse check anyway, so deleting the status check entirely would
-// leave this test green.
-// Covering that guard needs the response handling behind a seam fed a canned status/body.
-TEST(PodIdentityClient, FetchPodIdentitiesReturnsNulloptWhenKubeletUnreachable)
+TEST(PodMonitor, CgroupFailureSuspendsEmissionBeforeIdentityFetch)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    atlasagent::CgroupSnapshot cgroups;
+    const auto cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
+    cgroups.emplace(
+        kPod1Uid,
+        atlasagent::CgroupPod{cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')})});
+    atlasagent::PodIdentityMap identities;
+    identities.emplace(kPod1Uid,
+                       atlasagent::PodIdentity{"pod-one", "ns-one",
+                                               {{ContainerId('a'),
+                                                 atlasagent::ContainerIdentity{"main", std::nullopt}}},
+                                               {{"netflix.com/app", "myapp"}}, {}});
+
+    auto cgroup_source = std::make_unique<FakePodCgroupSource>(cgroups);
+    auto identity_source = std::make_unique<FakePodIdentitySource>(identities);
+    auto* cgroup_source_ptr = cgroup_source.get();
+    auto* identity_source_ptr = identity_source.get();
+    PodMonitorTest podMonitor{&r, std::move(cgroup_source), std::move(identity_source), ""};
+
+    auto refreshed = podMonitor.Refresh();
+    ASSERT_EQ(refreshed.state, atlasagent::PodMonitorState::kActive);
+    ASSERT_EQ(podMonitor.TrackedPods().at(kPod1Uid).containers.size(), 1);
+
+    const auto missing_path = std::filesystem::path{"/missing/cgroup/root"};
+    const auto missing_cause = std::make_error_code(std::errc::no_such_file_or_directory);
+    cgroup_source_ptr->SetResult(std::unexpected(atlasagent::CgroupDiscoveryError{
+        atlasagent::CgroupDiscoveryErrorKind::kMissingRoot, missing_path, missing_cause}));
+    refreshed = podMonitor.Refresh();
+    EXPECT_EQ(refreshed.state, atlasagent::PodMonitorState::kCgroupUnavailable);
+    ASSERT_TRUE(refreshed.cgroup_error.has_value());
+    EXPECT_EQ(refreshed.cgroup_error->kind, atlasagent::CgroupDiscoveryErrorKind::kMissingRoot);
+    EXPECT_EQ(refreshed.cgroup_error->path, missing_path);
+    EXPECT_EQ(refreshed.cgroup_error->cause, missing_cause);
+    EXPECT_TRUE(podMonitor.TrackedPods().empty());
+    EXPECT_EQ(cgroup_source_ptr->Calls(), 2);
+    EXPECT_EQ(identity_source_ptr->Calls(), 1);
+
+    memoryWriter->Clear();
+    podMonitor.CollectCpuStats(true, true);
+    podMonitor.CollectIOStats();
+    podMonitor.CollectMemoryStats();
+    EXPECT_TRUE(memoryWriter->GetMessages().empty());
+}
+
+TEST(PodMonitor, MissingInjectedSourcesReturnExplicitFailures)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+
+    auto identity_source = std::make_unique<FakePodIdentitySource>(atlasagent::PodIdentityMap{});
+    auto* identity_source_ptr = identity_source.get();
+    PodMonitorTest missing_cgroup{&r, std::unique_ptr<atlasagent::PodCgroupSource>{},
+                                  std::move(identity_source), ""};
+
+    auto refreshed = missing_cgroup.Refresh();
+    EXPECT_EQ(refreshed.state, atlasagent::PodMonitorState::kCgroupUnavailable);
+    ASSERT_TRUE(refreshed.cgroup_error.has_value());
+    EXPECT_EQ(refreshed.cgroup_error->kind, atlasagent::CgroupDiscoveryErrorKind::kUnavailableSource);
+    EXPECT_EQ(identity_source_ptr->Calls(), 0);
+
+    auto cgroup_source = std::make_unique<FakePodCgroupSource>(atlasagent::CgroupSnapshot{});
+    auto* cgroup_source_ptr = cgroup_source.get();
+    PodMonitorTest missing_identity{&r, std::move(cgroup_source),
+                                    std::unique_ptr<atlasagent::PodIdentitySource>{}, ""};
+
+    refreshed = missing_identity.Refresh();
+    EXPECT_EQ(refreshed.state, atlasagent::PodMonitorState::kIdentityUnavailable);
+    ASSERT_TRUE(refreshed.identity_error.has_value());
+    EXPECT_EQ(refreshed.identity_error->kind, atlasagent::PodIdentityErrorKind::UnavailableSource);
+    EXPECT_EQ(cgroup_source_ptr->Calls(), 1);
+}
+
+TEST(PodIdentityClient, FetchPodIdentitiesReturnsHttpErrorWhenKubeletUnreachable)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     PodIdentityClientTest client{&r};
-    EXPECT_FALSE(client.FetchPodIdentities().has_value());
+    auto result = client.FetchPodIdentities();
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, atlasagent::PodIdentityErrorKind::Http);
 }
 
 }  // namespace

@@ -6,6 +6,8 @@
 
 #include <rapidjson/document.h>
 
+#include <utility>
+
 namespace atlasagent
 {
 
@@ -40,14 +42,15 @@ std::unordered_map<std::string, std::string> ParseStringMap(const rapidjson::Val
     return result;
 }
 
-// Container name -> resources.requests.cpu (in cores) out of one spec container array. Called for
-// BOTH spec.containers[] and spec.initContainers[] so the two cannot drift: a native sidecar gets
-// its own cgroup scope and runs the pod's whole lifetime, so omitting initContainers would leave its
-// CPU request unavailable. Every level is optional and skipped rather than failing the pod's parse:
-// no resources, only limits, or a value ParseCpuQuantity cannot represent all leave the container
-// ABSENT from the map, never present with a fabricated zero.
+using CpuRequestMap = std::unordered_map<std::string, double>;
+
+// Collect resources.requests.cpu (in cores) from one spec container array. Called for BOTH
+// spec.containers[] and spec.initContainers[] so the two cannot drift. The spec is keyed by name,
+// while status supplies runtime IDs; CollectContainerIdentities joins the two views below. Every
+// optional level is skipped rather than failing the pod parse, and an invalid quantity never
+// fabricates a zero request.
 void CollectCpuRequests(const rapidjson::Value& containers,
-                        std::unordered_map<std::string, double>* cpu_requests) noexcept
+                        CpuRequestMap* cpu_requests) noexcept
 {
     for (const auto& container : containers.GetArray())
     {
@@ -82,9 +85,9 @@ void CollectCpuRequests(const rapidjson::Value& containers,
     }
 }
 
-// containerID after first-delimiter stripping -> container name out of one status array. Called for BOTH
-// status.containerStatuses[] and status.initContainerStatuses[] so the two cannot drift; keyed by
-// id, unique per container, so merging them into one map cannot collide.
+// containerID after first-delimiter stripping -> ContainerIdentity out of one status array. Called
+// for BOTH status.containerStatuses[] and status.initContainerStatuses[] so the two cannot drift;
+// keyed by id, unique per container, so merging them into one map cannot collide.
 //
 // This map is the ONLY thing that attributes a cgroup-discovered scope to anything: the scope
 // directory carries a runtime id, and `status` is the only place ids exist -- spec has names but no
@@ -93,10 +96,10 @@ void CollectCpuRequests(const rapidjson::Value& containers,
 // So initContainerStatuses is no edge case: a NATIVE SIDECAR (an initContainer with
 // restartPolicy=Always, k8s 1.28+) is reported there rather than in containerStatuses, and runs the
 // pod's whole lifetime with its own cgroup scope. While this array went unparsed, such a container
-// was discovered and skipped every cycle -- permanently and silently, since ReconcileContainers
-// matches discovered ids against this map.
-void CollectContainerNames(const rapidjson::Value& statuses,
-                           std::unordered_map<std::string, std::string>* containers) noexcept
+// was discovered but ignored every cycle, because BuildActivePods matches discovered ids against
+// this map.
+void CollectContainerIdentities(const rapidjson::Value& statuses, const CpuRequestMap& cpu_requests,
+                                std::unordered_map<std::string, ContainerIdentity>* containers) noexcept
 {
     for (const auto& container : statuses.GetArray())
     {
@@ -116,7 +119,12 @@ void CollectContainerNames(const rapidjson::Value& statuses,
                             container["name"].GetString());
             continue;
         }
-        containers->emplace(std::move(container_id), container["name"].GetString());
+        std::string container_name = container["name"].GetString();
+        auto request = cpu_requests.find(container_name);
+        std::optional<double> cpu_request =
+            request != cpu_requests.end() ? std::optional<double>{request->second} : std::nullopt;
+        containers->emplace(std::move(container_id),
+                            ContainerIdentity{std::move(container_name), cpu_request});
     }
 }
 
@@ -127,39 +135,41 @@ PodIdentityClient::PodIdentityClient(Registry* registry, std::string kubelet_url
 {
 }
 
-std::optional<PodIdentityMap> PodIdentityClient::FetchPodIdentities() const noexcept
+PodIdentityResult PodIdentityClient::FetchPodIdentities() const noexcept
 {
     auto resp = http_client_.Get(kubelet_url_ + "/pods");
     if (resp.status != 200)
     {
-        Logger()->warn("Unable to fetch pod identities from {}/pods: status={} body={}", kubelet_url_, resp.status,
-                        resp.raw_body);
-        return std::nullopt;
+        Logger()->warn("Unable to fetch pod identities from {}/pods: status={} response_bytes={}", kubelet_url_,
+                       resp.status, resp.raw_body.size());
+        return std::unexpected(
+            PodIdentityError{PodIdentityErrorKind::Http, resp.status, resp.raw_body.size(), 0});
     }
 
     return ParsePodList(resp.raw_body);
 }
 
-std::optional<PodIdentityMap> PodIdentityClient::ParsePodList(const std::string& json) noexcept
+PodIdentityResult PodIdentityClient::ParsePodList(const std::string& json) noexcept
 {
     rapidjson::Document doc;
     doc.Parse(json.c_str(), json.length());
     if (doc.HasParseError())
     {
-        Logger()->warn("Unable to parse pod list response as JSON: {}", json);
-        return std::nullopt;
+        Logger()->warn("Unable to parse pod list response as JSON: response_bytes={} error_offset={}", json.size(),
+                       doc.GetErrorOffset());
+        return std::unexpected(PodIdentityError{PodIdentityErrorKind::Parse, 0, json.size(), doc.GetErrorOffset()});
     }
 
     if (!doc.IsObject())
     {
-        Logger()->warn("Pod list response is not a JSON object: {}", json);
-        return std::nullopt;
+        Logger()->warn("Pod list response is not a JSON object: response_bytes={}", json.size());
+        return std::unexpected(PodIdentityError{PodIdentityErrorKind::Envelope, 0, json.size(), 0});
     }
 
     if (!doc.HasMember("items") || !doc["items"].IsArray())
     {
-        Logger()->warn("Pod list response has no 'items' array: {}", json);
-        return std::nullopt;
+        Logger()->warn("Pod list response has no 'items' array: response_bytes={}", json.size());
+        return std::unexpected(PodIdentityError{PodIdentityErrorKind::Envelope, 0, json.size(), 0});
     }
 
     PodIdentityMap result;
@@ -193,45 +203,60 @@ std::optional<PodIdentityMap> PodIdentityClient::ParsePodList(const std::string&
         // spec's DECLARED resources are the only source for a container's CPU request -- the cgroup
         // filesystem exposes the limit (cpu.max), not the request. Both arrays are optional: a pod
         // may declare no initContainers, and a static/mirror pod may omit resources entirely.
+        CpuRequestMap cpu_requests;
         if (entry.HasMember("spec") && entry["spec"].IsObject())
         {
             const auto& spec = entry["spec"];
             if (spec.HasMember("containers") && spec["containers"].IsArray())
             {
-                CollectCpuRequests(spec["containers"], &identity.cpu_requests);
+                CollectCpuRequests(spec["containers"], &cpu_requests);
             }
             if (spec.HasMember("initContainers") && spec["initContainers"].IsArray())
             {
-                CollectCpuRequests(spec["initContainers"], &identity.cpu_requests);
+                CollectCpuRequests(spec["initContainers"], &cpu_requests);
             }
         }
 
-        // status is the only source of runtime ids -- see CollectContainerNames, including for why
-        // initContainerStatuses matters. Both arrays are optional, and entries with missing or empty
-        // ids are skipped. If neither array yields a usable id, `containers` remains empty without
-        // failing the whole pod's parse.
+        // status is the only source of runtime ids -- see CollectContainerIdentities, including for
+        // why initContainerStatuses matters. Both arrays are optional, and entries with missing or
+        // empty ids are skipped. The temporary spec map above attaches requests by container name as
+        // each runtime-id keyed identity is created.
         if (entry.HasMember("status") && entry["status"].IsObject())
         {
             const auto& status = entry["status"];
             if (status.HasMember("containerStatuses") && status["containerStatuses"].IsArray())
             {
-                CollectContainerNames(status["containerStatuses"], &identity.containers);
+                CollectContainerIdentities(status["containerStatuses"], cpu_requests, &identity.containers);
             }
             if (status.HasMember("initContainerStatuses") && status["initContainerStatuses"].IsArray())
             {
-                CollectContainerNames(status["initContainerStatuses"], &identity.containers);
+                CollectContainerIdentities(status["initContainerStatuses"], cpu_requests, &identity.containers);
             }
             // NOT parsed: status.ephemeralContainerStatuses[] (kubectl debug containers). Those do
-            // get their own cgroup scope, so they land on the skip path native sidecars used to --
-            // but each one's name would become a new nf.process value, i.e. a fresh Atlas series per
-            // debug session. Left out pending that call (adding it is one more CollectContainerNames
-            // call here); ReconcileContainers' skip-path debug log keeps the gap diagnosable.
+            // get their own cgroup scope, so they land on the unmatched-identity path. Including
+            // them would create a new nf.process series for each debug session.
         }
 
         result.emplace(metadata["uid"].GetString(), std::move(identity));
     }
 
     return result;
+}
+
+std::string_view ToString(PodIdentityErrorKind error) noexcept
+{
+    switch (error)
+    {
+        case PodIdentityErrorKind::UnavailableSource:
+            return "unavailable-source";
+        case PodIdentityErrorKind::Http:
+            return "http";
+        case PodIdentityErrorKind::Parse:
+            return "parse";
+        case PodIdentityErrorKind::Envelope:
+            return "envelope";
+    }
+    return "unknown";
 }
 
 }  // namespace atlasagent

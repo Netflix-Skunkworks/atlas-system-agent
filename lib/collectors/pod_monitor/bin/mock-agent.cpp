@@ -12,7 +12,6 @@
 #include <lib/logger/src/logger.h>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
-#include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
 #include <fmt/format.h>
 
@@ -20,22 +19,7 @@
 #include <cstdlib>
 #include <string>
 #include <thread>
-
-namespace
-{
-
-// void PrintAndClearMessages(MemoryWriter* writer, int intervalNumber)
-// {
-//     auto messages = writer->GetMessages();
-//     fmt::print("=== 60s interval {}/60 complete: {} message(s) emitted ===\n", intervalNumber, messages.size());
-//     for (const auto& message : messages)
-//     {
-//         fmt::print("{}", message);
-//     }
-//     writer->Clear();
-// }
-
-}  // namespace
+#include <unordered_map>
 
 int main(int argc, char** argv)
 {
@@ -60,10 +44,8 @@ int main(int argc, char** argv)
     auto registry = Registry(config);
     atlasagent::PodMonitor podMonitor{&registry, path_prefix};
 
-    // auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-
-    // Mirrors k8s-agent.cpp's own pre-loop call: both cadence flags below are false on the very
-    // first tick, so without this the tracked-pod set stays empty for up to 60s after startup.
+    // Mirror k8s-agent's explicit startup refresh followed by the first memory emission.
+    static_cast<void>(podMonitor.Refresh());
     podMonitor.CollectMemoryStats();
 
     auto now = std::chrono::system_clock::now();
@@ -80,6 +62,11 @@ int main(int argc, char** argv)
         bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
         bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
 
+        if (sixtySecondMetricsEnabled)
+        {
+            static_cast<void>(podMonitor.Refresh());
+        }
+
         podMonitor.CollectCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
 
         // If it's time to gather the 5 second metrics
@@ -94,7 +81,6 @@ int main(int argc, char** argv)
         {
             podMonitor.CollectMemoryStats();
             ++sixtySecondIntervalsCompleted;
-            //PrintAndClearMessages(memoryWriter, sixtySecondIntervalsCompleted);
             next_sixty_second_run += std::chrono::seconds(60);
         }
 
