@@ -135,11 +135,10 @@ class TrackedPodRegistry
     // Whether a tracked container's cgroup scope still exists. In the shipped k8s-agent caller,
     // Refresh() normally runs on the 60-second memory cadence while EmitCpuStats() runs every
     // second, so an entry can remain tracked until the next refresh after containerd removes its
-    // scope directory. Without this check,
-    // emitting during that interval would publish wrong data under the POD's live nf.app/nf.cluster
-    // tags: CpuProcessingCapacity reads no files, so it could accumulate phantom capacity into a
-    // Counter, and sys.cpu.numProcessors / k8s.cpu.requested are emitted before CpuUtilizationV2's
-    // cpu.stat guard.
+    // scope directory. Without this check, emitting during that interval would publish wrong data
+    // under the POD's live nf.app/nf.cluster tags: CpuProcessingCapacity reads no files, so it could
+    // accumulate phantom capacity into a Counter, and sys.cpu.numProcessors / k8s.cpu.requested are
+    // emitted before CpuUtilizationV2's cpu.stat guard.
     //
     // Tests only whether the scope DIRECTORY exists; it does not inspect cgroup.events or verify that
     // the cgroup is populated. Keying on one metric file would conflate "container gone" with "that

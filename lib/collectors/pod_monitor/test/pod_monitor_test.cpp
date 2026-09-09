@@ -680,14 +680,21 @@ TEST(CpuQuantity, ParseCpuQuantityRejectsMemoryStyleSuffixes)
 // WRITER DISCIPLINE, load-bearing: WriterTestHelper::GetImpl() returns a process-wide singleton
 // shared by every test in this binary, so each emission-focused test in this section Clear()s it
 // immediately before the Emit* call it asserts on rather than relying on it starting empty.
-// GetImpl() is fetched only AFTER the Registry is constructed, matching cgroup_test.cpp's
-// convention; fresh tracking state uses another TrackedPodRegistry sharing that Registry.
+// The fixture's declaration order fetches GetImpl() only AFTER constructing the Registry, matching
+// cgroup_test.cpp's convention; fresh tracking state uses another TrackedPodRegistry sharing that
+// Registry.
 // ---------------------------------------------------------------------------------------------
 
-TEST(TrackedPodRegistry, GatingClearsTrackedContainersWhenIdentityLost)
+class TrackedPodRegistryTest : public testing::Test
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
+   protected:
+    Config config{WriterConfig(WriterTypes::Memory)};
+    Registry r{config};
+    MemoryWriter* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+};
+
+TEST_F(TrackedPodRegistryTest, GatingClearsTrackedContainersWhenIdentityLost)
+{
     atlasagent::TrackedPodRegistry registry{&r};
 
     const auto cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
@@ -707,10 +714,8 @@ TEST(TrackedPodRegistry, GatingClearsTrackedContainersWhenIdentityLost)
     EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
 }
 
-TEST(TrackedPodRegistry, EvictsContainerWhoseCgroupScopeDisappears)
+TEST_F(TrackedPodRegistryTest, EvictsContainerWhoseCgroupScopeDisappears)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
     atlasagent::TrackedPodRegistry registry{&r};
 
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
@@ -728,10 +733,8 @@ TEST(TrackedPodRegistry, EvictsContainerWhoseCgroupScopeDisappears)
     EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
 }
 
-TEST(TrackedPodRegistry, SkipsWithoutEvictingContainerNotYetReportedByKubelet)
+TEST_F(TrackedPodRegistryTest, SkipsWithoutEvictingContainerNotYetReportedByKubelet)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
     atlasagent::TrackedPodRegistry registry{&r};
 
     const auto cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
@@ -753,11 +756,8 @@ TEST(TrackedPodRegistry, SkipsWithoutEvictingContainerNotYetReportedByKubelet)
 // INSERTS a zero for absent memory.stat/memory.events keys, so a scope with no memory files still
 // emits several fabricated zero-valued metrics. This test would "pass" on an empty fixture only by
 // leaning on that behavior; real values keep it independent of it.
-TEST(TrackedPodRegistry, PerContainerTagsReachEmittedLinesWithSharedPodTags)
+TEST_F(TrackedPodRegistryTest, PerContainerTagsReachEmittedLinesWithSharedPodTags)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     atlasagent::TrackedPodRegistry registry{&r};
 
     registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_pod_with_two_containers"),
@@ -782,12 +782,8 @@ TEST(TrackedPodRegistry, PerContainerTagsReachEmittedLinesWithSharedPodTags)
     EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.process=sidecar", "nf.app=myapp", "nf.stack=mystack"}));
 }
 
-TEST(TrackedPodRegistry, InjectsK8sNamespaceNameOnlyWhenNamespaceKnown)
+TEST_F(TrackedPodRegistryTest, InjectsK8sNamespaceNameOnlyWhenNamespaceKnown)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-
     const auto cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
     const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
@@ -831,12 +827,8 @@ TEST(TrackedPodRegistry, InjectsK8sNamespaceNameOnlyWhenNamespaceKnown)
     }
 }
 
-TEST(TrackedPodRegistry, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
+TEST_F(TrackedPodRegistryTest, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-
     const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
 
@@ -873,11 +865,8 @@ TEST(TrackedPodRegistry, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
 // indistinguishable from its limit. The fixture's cpu.max is "50000 100000" (0.5 cores) against a
 // declared 250m request, so the two gauges MUST disagree: if they ever print the same value again,
 // the request has stopped being threaded through.
-TEST(TrackedPodRegistry, RequestedGaugeReportsDeclaredRequestNotTheLimit)
+TEST_F(TrackedPodRegistryTest, RequestedGaugeReportsDeclaredRequestNotTheLimit)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     atlasagent::TrackedPodRegistry registry{&r};
 
     registry.Refresh(OnePodInfoMap(kPod1Uid, Pod1SlicePath("systemd_single_pod_with_quota"),
@@ -901,11 +890,8 @@ TEST(TrackedPodRegistry, RequestedGaugeReportsDeclaredRequestNotTheLimit)
 // A container with no parsed CPU request (for example, a BestEffort or limits-only container) must
 // publish NO k8s.cpu.requested at all -- not the limit, and not a zero that would turn every
 // utilization/requested division in a dashboard into inf. The capacity gauge is unaffected.
-TEST(TrackedPodRegistry, RequestedGaugeOmittedForContainerWithNoCpuRequest)
+TEST_F(TrackedPodRegistryTest, RequestedGaugeOmittedForContainerWithNoCpuRequest)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     atlasagent::TrackedPodRegistry registry{&r};
 
     // Same fixture and container as above, but cpu_requests is empty.
@@ -922,11 +908,8 @@ TEST(TrackedPodRegistry, RequestedGaugeOmittedForContainerWithNoCpuRequest)
     EXPECT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
 }
 
-TEST(TrackedPodRegistry, ReResolvesCpuCountEveryRefreshCycle)
+TEST_F(TrackedPodRegistryTest, ReResolvesCpuCountEveryRefreshCycle)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     atlasagent::TrackedPodRegistry registry{&r};
 
     // An ALREADY-TRACKED container must pick up a changed cpu.max. try_emplace won't rebuild the
@@ -965,12 +948,8 @@ TEST(TrackedPodRegistry, ReResolvesCpuCountEveryRefreshCycle)
 // Deliberately NOT a death test: before the fix the cpu.max path was an out-of-bounds read (UB),
 // not a clean throw, and pinning a regression test to UB is not meaningful. This asserts the
 // post-fix contract -- return cleanly, emit nothing that depends on the missing data.
-TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
+TEST_F(TrackedPodRegistryTest, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
-
     const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
 
@@ -1065,11 +1044,8 @@ TEST(TrackedPodRegistry, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
 //
 // Asserting emission BEFORE the removal keeps this honest: without that baseline every absence
 // assertion below would also be satisfied by "nothing ran at all".
-TEST(TrackedPodRegistry, SkipsEmissionForContainerWhoseCgroupVanishedSinceRefresh)
+TEST_F(TrackedPodRegistryTest, SkipsEmissionForContainerWhoseCgroupVanishedSinceRefresh)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     atlasagent::TrackedPodRegistry registry{&r};
 
     TempCgroupTree tree{"vanished_scope"};
@@ -1127,11 +1103,8 @@ TEST(TrackedPodRegistry, SkipsEmissionForContainerWhoseCgroupVanishedSinceRefres
     // guard needs an io.stat fixture that would otherwise emit.
 }
 
-TEST(TrackedPodRegistry, EmitMethodsAreNoOpsWithNothingTracked)
+TEST_F(TrackedPodRegistryTest, EmitMethodsAreNoOpsWithNothingTracked)
 {
-    auto config = Config(WriterConfig(WriterTypes::Memory));
-    auto r = Registry(config);
-    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
     atlasagent::TrackedPodRegistry registry{&r};
 
     // Every Emit* is called on the agent's normal cadence regardless of whether anything is

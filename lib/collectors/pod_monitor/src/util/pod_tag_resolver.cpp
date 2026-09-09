@@ -1,5 +1,7 @@
 #include "pod_tag_resolver.h"
 
+#include <initializer_list>
+
 namespace atlasagent
 {
 
@@ -33,6 +35,15 @@ std::optional<std::string> FirstNonEmptyValue(const std::unordered_map<std::stri
         }
     }
     return std::nullopt;
+}
+
+// Prefer the already-resolved primary annotation; consult the ordered label fallbacks only when it
+// is absent. The caller retains the primary value separately for BuildNfCluster.
+std::optional<std::string> ResolvePrimaryOrFallback(
+    const std::optional<std::string>& primary, const std::unordered_map<std::string, std::string>& labels,
+    std::initializer_list<std::string_view> fallback_keys) noexcept
+{
+    return primary.has_value() ? primary : FirstNonEmptyValue(labels, fallback_keys);
 }
 
 // nf.cluster is gated on the *primary* netflix.com/app annotation, NOT on whatever nf_app resolved
@@ -74,11 +85,10 @@ std::optional<std::unordered_map<std::string, std::string>> ResolvePodTags(
 
     // primary_* stay separate from nf_* below because nf.cluster needs the primary-only values
     // specifically -- see BuildNfCluster.
-    auto nf_app = primary_app.has_value()
-                      ? primary_app
-                      : FirstNonEmptyValue(labels, {PodTagKeys::kLabelAppName, PodTagKeys::kLabelK8sApp, PodTagKeys::kLabelApp});
-    auto nf_stack = primary_stack.has_value() ? primary_stack : FirstNonEmptyValue(labels, {PodTagKeys::kLabelAppInstance});
-    auto nf_detail = primary_detail.has_value() ? primary_detail : FirstNonEmptyValue(labels, {PodTagKeys::kLabelAppComponent});
+    auto nf_app = ResolvePrimaryOrFallback(
+        primary_app, labels, {PodTagKeys::kLabelAppName, PodTagKeys::kLabelK8sApp, PodTagKeys::kLabelApp});
+    auto nf_stack = ResolvePrimaryOrFallback(primary_stack, labels, {PodTagKeys::kLabelAppInstance});
+    auto nf_detail = ResolvePrimaryOrFallback(primary_detail, labels, {PodTagKeys::kLabelAppComponent});
 
     if (!nf_app.has_value() && !nf_stack.has_value() && !nf_detail.has_value())
     {
