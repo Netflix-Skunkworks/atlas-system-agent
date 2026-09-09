@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -148,6 +149,11 @@ class TrackedPodRegistry
     // Skipping, not evicting: membership changes belong to Refresh() alone (see the Emit* docs
     // above), and erasing mid-iteration would invalidate the loop's own iterator.
     [[nodiscard]] static bool ContainerIsLive(const TrackedContainer& container) noexcept;
+
+    // Shared traversal for the three Emit* methods. The template is defined in the .cpp because all
+    // instantiations are private to that translation unit.
+    template <typename EmitFn>
+    void ForEachLiveContainer(std::string_view metric_type, EmitFn&& emit) noexcept;
 
     // Read by Refresh() to construct each newly-discovered container's own CGroup instance.
     Registry* registry_;

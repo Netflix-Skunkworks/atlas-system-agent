@@ -17,6 +17,24 @@ namespace atlasagent
 namespace
 {
 
+template <typename TrackedMap, typename DiscoveredMap>
+void EraseMissing(TrackedMap& tracked, const DiscoveredMap& discovered) noexcept
+{
+    // absl::flat_hash_map's single-iterator erase() returns void, not the next iterator like
+    // std::unordered_map. Advance with post-increment and erase the now-invalidated copy.
+    for (auto it = tracked.begin(); it != tracked.end();)
+    {
+        if (discovered.find(it->first) == discovered.end())
+        {
+            tracked.erase(it++);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
 std::string ResolveK8sClusterEnv() noexcept
 {
     const auto* value = std::getenv("K8S_CLUSTER");
@@ -50,20 +68,7 @@ bool TrackedPodRegistry::ContainerIsLive(const TrackedContainer& container) noex
 
 void TrackedPodRegistry::EvictUntrackedPods(const PodInfoMap& discovered) noexcept
 {
-    // absl::flat_hash_map's single-iterator erase() returns void, not the next iterator like
-    // std::unordered_map -- so advance by post-increment and erase the now-invalidated copy. This
-    // exact idiom is spelled out in raw_hash_set.h's own erase() doc comment.
-    for (auto it = tracked_pods_.begin(); it != tracked_pods_.end();)
-    {
-        if (discovered.find(it->first) == discovered.end())
-        {
-            tracked_pods_.erase(it++);
-        }
-        else
-        {
-            ++it;
-        }
-    }
+    EraseMissing(tracked_pods_, discovered);
 }
 
 TrackedPod& TrackedPodRegistry::UpsertPodIdentity(const std::string& uid, const PodInfo& info) noexcept
@@ -83,17 +88,7 @@ TrackedPod& TrackedPodRegistry::UpsertPodIdentity(const std::string& uid, const 
 
 void TrackedPodRegistry::EvictUntrackedContainers(TrackedPod& pod, const ContainerCgroupMap& discovered_containers) noexcept
 {
-    for (auto cit = pod.containers.begin(); cit != pod.containers.end();)
-    {
-        if (discovered_containers.find(cit->first) == discovered_containers.end())
-        {
-            pod.containers.erase(cit++);
-        }
-        else
-        {
-            ++cit;
-        }
-    }
+    EraseMissing(pod.containers, discovered_containers);
 }
 
 void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const PodInfo& info,
@@ -183,59 +178,42 @@ void TrackedPodRegistry::Refresh(const PodInfoMap& discovered) noexcept
     }
 }
 
-void TrackedPodRegistry::EmitCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept
+template <typename EmitFn>
+void TrackedPodRegistry::ForEachLiveContainer(std::string_view metric_type, EmitFn&& emit) noexcept
 {
-    for (auto& pod_entry : tracked_pods_)
+    for (auto& [pod_uid, pod] : tracked_pods_)
     {
-        for (auto& container_entry : pod_entry.second.containers)
+        for (auto& [container_id, container] : pod.containers)
         {
-            if (!ContainerIsLive(container_entry.second))
+            if (!ContainerIsLive(container))
             {
                 continue;
             }
-            atlasagent::Logger()->debug("Collecting CPU stats for pod {}/{} (uid={}) container {} ({})",
-                                        pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
-                                        container_entry.first, container_entry.second.container_name);
-            container_entry.second.cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+            atlasagent::Logger()->debug("Collecting {} stats for pod {}/{} (uid={}) container {} ({})", metric_type,
+                                        pod.pod_namespace, pod.name, pod_uid, container_id, container.container_name);
+            emit(container.cgroup);
         }
     }
+}
+
+void TrackedPodRegistry::EmitCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept
+{
+    ForEachLiveContainer("CPU", [fiveSecondMetricsEnabled, sixtySecondMetricsEnabled](CGroup& cgroup) {
+        cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+    });
 }
 
 void TrackedPodRegistry::EmitIOStats() noexcept
 {
-    for (auto& pod_entry : tracked_pods_)
-    {
-        for (auto& container_entry : pod_entry.second.containers)
-        {
-            if (!ContainerIsLive(container_entry.second))
-            {
-                continue;
-            }
-            atlasagent::Logger()->debug("Collecting IO stats for pod {}/{} (uid={}) container {} ({})",
-                                        pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
-                                        container_entry.first, container_entry.second.container_name);
-            container_entry.second.cgroup.IOStats();
-        }
-    }
+    ForEachLiveContainer("IO", [](CGroup& cgroup) { cgroup.IOStats(); });
 }
 
 void TrackedPodRegistry::EmitMemoryStats() noexcept
 {
-    for (auto& pod_entry : tracked_pods_)
-    {
-        for (auto& container_entry : pod_entry.second.containers)
-        {
-            if (!ContainerIsLive(container_entry.second))
-            {
-                continue;
-            }
-            atlasagent::Logger()->debug("Collecting memory stats for pod {}/{} (uid={}) container {} ({})",
-                                        pod_entry.second.pod_namespace, pod_entry.second.name, pod_entry.first,
-                                        container_entry.first, container_entry.second.container_name);
-            container_entry.second.cgroup.MemoryStatsV2();
-            container_entry.second.cgroup.MemoryStatsStdV2();
-        }
-    }
+    ForEachLiveContainer("memory", [](CGroup& cgroup) {
+        cgroup.MemoryStatsV2();
+        cgroup.MemoryStatsStdV2();
+    });
 }
 
 }  // namespace atlasagent
