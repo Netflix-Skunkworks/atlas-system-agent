@@ -186,6 +186,83 @@ std::expected<bool, std::error_code> InspectRoot(const std::filesystem::path& ro
     return std::unexpected(std::make_error_code(std::errc::not_a_directory));
 }
 
+CgroupDiscoveryResult DiscoverSystemdTree(const std::filesystem::path& systemd_root,
+                                          const std::filesystem::path& cgroupfs_root) noexcept
+{
+    PodCgroupMap pods;
+    auto root_scan = ScanPodSliceDirectoryImpl(systemd_root, "kubepods-pod", ".slice", pods);
+    if (!root_scan.has_value())
+    {
+        return std::unexpected(MakeDiscoveryScanError(root_scan.error()));
+    }
+
+    for (const auto* qos : {"burstable", "besteffort"})
+    {
+        auto qos_dir = systemd_root / fmt::format("kubepods-{}.slice", qos);
+        auto qos_scan = ScanPodSliceDirectoryImpl(qos_dir, fmt::format("kubepods-{}-pod", qos), ".slice", pods);
+        // Missing QoS directories are expected; the systemd layout only creates them when used.
+        if (!qos_scan.has_value() && qos_scan.error().kind == ScanErrorKind::kUnreadable)
+        {
+            return std::unexpected(MakeDiscoveryScanError(qos_scan.error()));
+        }
+    }
+
+    CgroupSnapshot snapshot;
+    snapshot.reserve(pods.size());
+    for (auto& [uid, pod_path] : pods)
+    {
+        ContainerCgroupMap containers;
+        auto container_scan = ScanContainersInPodImpl(pod_path, containers);
+        if (!container_scan.has_value() && container_scan.error().kind == ScanErrorKind::kMissing)
+        {
+            // Pod removal between the root scan and this per-pod scan is normal lifecycle
+            // churn. Omitting the known-stale entry evicts its previously tracked state without
+            // suspending unrelated pods.
+            continue;
+        }
+        if (!container_scan.has_value())
+        {
+            return std::unexpected(MakeDiscoveryScanError(container_scan.error()));
+        }
+        snapshot.emplace(std::move(uid), CgroupPod{std::move(pod_path), std::move(containers)});
+    }
+
+    // Distinguish a genuinely empty hierarchy from the root disappearing while it was being
+    // scanned. The latter is a failed observation and must not evict all tracked state as if
+    // the node authoritatively had no pods.
+    auto final_root_check = InspectRoot(systemd_root);
+    if (!final_root_check.has_value())
+    {
+        return std::unexpected(CgroupDiscoveryError{CgroupDiscoveryErrorKind::kUnreadableScan,
+                                                     systemd_root, final_root_check.error()});
+    }
+    if (!*final_root_check)
+    {
+        return std::unexpected(CgroupDiscoveryError{
+            CgroupDiscoveryErrorKind::kUnreadableScan, systemd_root,
+            std::make_error_code(std::errc::no_such_file_or_directory)});
+    }
+
+    if (snapshot.empty())
+    {
+        // Do not let an empty, stale systemd root mask an active cgroupfs layout. With no
+        // systemd pods there is no positive evidence for the supported driver, so the presence
+        // of the alternative root is treated conservatively as unsupported.
+        auto cgroupfs_present = InspectRoot(cgroupfs_root);
+        if (!cgroupfs_present.has_value())
+        {
+            return std::unexpected(CgroupDiscoveryError{CgroupDiscoveryErrorKind::kUnreadableRoot,
+                                                         cgroupfs_root, cgroupfs_present.error()});
+        }
+        if (*cgroupfs_present)
+        {
+            return std::unexpected(CgroupDiscoveryError{
+                CgroupDiscoveryErrorKind::kUnsupportedCgroupfsLayout, cgroupfs_root, {}});
+        }
+    }
+    return snapshot;
+}
+
 }  // namespace
 
 std::optional<std::string_view> CgroupPodDiscovery::MatchPodSliceName(
@@ -231,79 +308,7 @@ CgroupDiscoveryResult CgroupPodDiscovery::Discover() const noexcept
 
     if (*systemd_present)
     {
-        PodCgroupMap pods;
-        auto root_scan = ScanPodSliceDirectoryImpl(systemd_root, "kubepods-pod", ".slice", pods);
-        if (!root_scan.has_value())
-        {
-            return std::unexpected(MakeDiscoveryScanError(root_scan.error()));
-        }
-
-        for (const auto* qos : {"burstable", "besteffort"})
-        {
-            auto qos_dir = systemd_root / fmt::format("kubepods-{}.slice", qos);
-            auto qos_scan =
-                ScanPodSliceDirectoryImpl(qos_dir, fmt::format("kubepods-{}-pod", qos), ".slice", pods);
-            // Missing QoS directories are expected; the systemd layout only creates them when used.
-            if (!qos_scan.has_value() && qos_scan.error().kind == ScanErrorKind::kUnreadable)
-            {
-                return std::unexpected(MakeDiscoveryScanError(qos_scan.error()));
-            }
-        }
-
-        CgroupSnapshot snapshot;
-        snapshot.reserve(pods.size());
-        for (auto& [uid, pod_path] : pods)
-        {
-            ContainerCgroupMap containers;
-            auto container_scan = ScanContainersInPodImpl(pod_path, containers);
-            if (!container_scan.has_value() && container_scan.error().kind == ScanErrorKind::kMissing)
-            {
-                // Pod removal between the root scan and this per-pod scan is normal lifecycle
-                // churn. Omitting the known-stale entry evicts its previously tracked state without
-                // suspending unrelated pods.
-                continue;
-            }
-            if (!container_scan.has_value())
-            {
-                return std::unexpected(MakeDiscoveryScanError(container_scan.error()));
-            }
-            snapshot.emplace(std::move(uid), CgroupPod{std::move(pod_path), std::move(containers)});
-        }
-
-        // Distinguish a genuinely empty hierarchy from the root disappearing while it was being
-        // scanned. The latter is a failed observation and must not evict all tracked state as if
-        // the node authoritatively had no pods.
-        auto final_root_check = InspectRoot(systemd_root);
-        if (!final_root_check.has_value())
-        {
-            return std::unexpected(CgroupDiscoveryError{CgroupDiscoveryErrorKind::kUnreadableScan,
-                                                         systemd_root, final_root_check.error()});
-        }
-        if (!*final_root_check)
-        {
-            return std::unexpected(CgroupDiscoveryError{
-                CgroupDiscoveryErrorKind::kUnreadableScan, systemd_root,
-                std::make_error_code(std::errc::no_such_file_or_directory)});
-        }
-
-        if (snapshot.empty())
-        {
-            // Do not let an empty, stale systemd root mask an active cgroupfs layout. With no
-            // systemd pods there is no positive evidence for the supported driver, so the presence
-            // of the alternative root is treated conservatively as unsupported.
-            auto cgroupfs_present = InspectRoot(cgroupfs_root);
-            if (!cgroupfs_present.has_value())
-            {
-                return std::unexpected(CgroupDiscoveryError{CgroupDiscoveryErrorKind::kUnreadableRoot,
-                                                             cgroupfs_root, cgroupfs_present.error()});
-            }
-            if (*cgroupfs_present)
-            {
-                return std::unexpected(CgroupDiscoveryError{
-                    CgroupDiscoveryErrorKind::kUnsupportedCgroupfsLayout, cgroupfs_root, {}});
-            }
-        }
-        return snapshot;
+        return DiscoverSystemdTree(systemd_root, cgroupfs_root);
     }
 
     auto cgroupfs_present = InspectRoot(cgroupfs_root);

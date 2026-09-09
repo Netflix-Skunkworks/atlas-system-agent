@@ -347,18 +347,17 @@ TEST(CGroup, TwoInstancesIndependentCpuTimeState)
 }
 
 // The "max" -> 0 parsing pitfall QuotaCpuCount() exists to avoid: sample1/sample2's cpu.max
-// ("max 100000") is the unlimited case and must come back as nullopt, not a quota of 0 -- which is
-// what read_num_vector_from_file()'s strtoul parsing would yield, since strtoul("max", ...) == 0.
-TEST(CGroup, QuotaCpuCountUnlimitedReturnsNullopt)
+// ("max 100000") is the unlimited case and must return kUnlimited, not a limited quota of 0.
+TEST(CGroup, QuotaCpuCountUnlimitedReturnsUnlimited)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
     CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
 
-    EXPECT_FALSE(cGroup.QuotaCpuCount().has_value());
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnlimited);
 
     cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
-    EXPECT_FALSE(cGroup.QuotaCpuCount().has_value());
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnlimited);
 }
 
 // Pins down the numeric-quota branch (quota/period), which had no fixture or test in the repo
@@ -370,17 +369,44 @@ TEST(CGroup, QuotaCpuCountNumericQuotaReturnsQuotaOverPeriod)
     CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample_cpu_quota"};
 
     auto result = cGroup.QuotaCpuCount();
-    ASSERT_TRUE(result.has_value());
-    EXPECT_DOUBLE_EQ(*result, 0.5);
+    EXPECT_EQ(result.state, atlasagent::CpuQuotaState::kLimited);
+    EXPECT_DOUBLE_EQ(result.cores, 0.5);
 }
 
-TEST(CGroup, QuotaCpuCountMissingFileReturnsNullopt)
+TEST(CGroup, QuotaCpuCountMissingFileReturnsUnreadable)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     Registry registry(config);
     CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/does_not_exist"};
 
-    EXPECT_FALSE(cGroup.QuotaCpuCount().has_value());
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnreadable);
+}
+
+TEST(CGroup, QuotaCpuCountMalformedQuotaReturnsUnreadable)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample_cpu_quota_malformed"};
+
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnreadable);
+}
+
+TEST(CGroup, QuotaCpuCountPartialFileReturnsUnreadable)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample_cpu_quota_partial"};
+
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnreadable);
+}
+
+TEST(CGroup, QuotaCpuCountNonPositivePeriodReturnsUnreadable)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample_cpu_quota_nonpositive"};
+
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnreadable);
 }
 
 TEST(CGroup, CpuWeight)

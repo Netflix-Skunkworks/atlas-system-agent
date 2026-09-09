@@ -4,7 +4,6 @@
 
 #include <fmt/format.h>
 
-#include <cstddef>
 #include <cstdlib>
 #include <memory>
 #include <utility>
@@ -21,16 +20,6 @@ std::string ResolveK8sClusterEnv() noexcept
     return value != nullptr ? std::string(value) : std::string();
 }
 
-std::size_t CountActiveContainers(const ActivePodMap& active_pods) noexcept
-{
-    std::size_t count = 0;
-    for (const auto& entry : active_pods)
-    {
-        count += entry.second.containers.size();
-    }
-    return count;
-}
-
 std::string DescribeCgroupError(const CgroupDiscoveryError& error)
 {
     auto description = fmt::format("kind={}", ToString(error.kind));
@@ -43,37 +32,6 @@ std::string DescribeCgroupError(const CgroupDiscoveryError& error)
         description += fmt::format(" cause={}", error.cause.message());
     }
     return description;
-}
-
-void LogKubeletEntriesWithoutCgroups(const CgroupSnapshot& cgroups, const PodIdentityMap& identities) noexcept
-{
-    auto logger = Logger();
-    if (!logger->should_log(spdlog::level::debug))
-    {
-        return;
-    }
-
-    for (const auto& [uid, identity] : identities)
-    {
-        auto cgroup_pod = cgroups.find(uid);
-        if (cgroup_pod == cgroups.end())
-        {
-            logger->debug("Ignoring kubelet pod {}/{} (uid={}): no matching pod cgroup was discovered",
-                          identity.pod_namespace, identity.name, uid);
-            continue;
-        }
-
-        for (const auto& [container_id, container] : identity.containers)
-        {
-            if (!cgroup_pod->second.containers.contains(container_id))
-            {
-                logger->debug(
-                    "Ignoring kubelet container {} ({}) in pod {}/{} (uid={}): no matching container cgroup was "
-                    "discovered",
-                    container_id, container.name, identity.pod_namespace, identity.name, uid);
-            }
-        }
-    }
 }
 
 }  // namespace
@@ -128,7 +86,6 @@ PodRefreshResult PodMonitor::Refresh() noexcept
         return PodRefreshResult{PodMonitorState::kIdentityUnavailable, std::nullopt, identities.error(), {}};
     }
 
-    LogKubeletEntriesWithoutCgroups(*cgroups, *identities);
     auto active_pods = BuildActivePods(*cgroups, *identities, k8s_cluster_);
     const auto admitted_pods = active_pods.size();
     const auto admitted_containers = CountActiveContainers(active_pods);

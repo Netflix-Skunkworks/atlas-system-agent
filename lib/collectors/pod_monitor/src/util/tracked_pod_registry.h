@@ -8,6 +8,7 @@
 #include "active_pod_builder.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -16,9 +17,16 @@
 namespace atlasagent
 {
 
+enum class CpuMetricState
+{
+    kUnknown,
+    kEnabled,
+    kDisabled,
+};
+
 // One tracked container: owns a private CGroup so its CPU/IO/memory delta-tracking baselines do not
 // collide with another CGroup instance's state. Erasing the map entry destroys the CGroup and its
-// baselines in one step; there is no separate reset.
+// baselines in one step; ResetCpuStats() can independently reset CPU state when quota becomes unreadable.
 struct TrackedContainer
 {
     CGroup cgroup;
@@ -26,6 +34,8 @@ struct TrackedContainer
     // protected, so the emit loops can test whether it still exists -- see ContainerIsLive.
     std::filesystem::path cgroup_path;
     std::string container_name;
+    // CPU-only availability. Memory and I/O emission do not depend on this state.
+    CpuMetricState cpu_metric_state = CpuMetricState::kUnknown;
 
     // `path` is COPIED into cgroup and only then moved into cgroup_path -- members initialize in
     // declaration order, so cgroup is built first. Do not std::move() it into cgroup, or
@@ -75,15 +85,14 @@ class TrackedPodRegistry
     // successful Reconcile(). This also prevents deltas from spanning an unverified interval.
     void Suspend() noexcept;
 
-    [[nodiscard]] bool EmissionEnabled() const noexcept { return emission_enabled_; }
-
     // Read-only view of the tracked pod/container set, for test assertions and debug tooling.
     [[nodiscard]] const PodTrackedMap& TrackedPods() const noexcept { return tracked_pods_; }
 
     // Emits CGroup::PodCpuStats (cgroup.cpu.* plus sys.cpu.*/k8s.cpu.*, disambiguated
     // per-container via SetExtraTags -- see PodCpuStats's own doc comment) for every LIVE container
     // of every tracked pod; one whose cgroup scope vanished since the last Reconcile() is skipped,
-    // see ContainerIsLive. Never changes tracked membership -- only Reconcile()/Suspend() do.
+    // as is one whose cpu.max is unreadable at emission time. See ContainerIsLive. Never
+    // changes tracked membership -- only Reconcile()/Suspend() do.
     void EmitCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled) noexcept;
 
     // Emits cgroup I/O metrics (CGroup::IOStats) for every LIVE container of every currently
@@ -98,17 +107,18 @@ class TrackedPodRegistry
     void EmitMemoryStats() noexcept;
 
    private:
-    void EvictUntrackedPods(const ActivePodMap& active_pods) noexcept;
-
     [[nodiscard]] TrackedPod& UpsertPod(const std::string& uid, const ActivePod& active) noexcept;
-
-    void EvictUntrackedContainers(TrackedPod& pod, const ActiveContainerMap& active) noexcept;
 
     void ReconcileContainers(TrackedPod& pod, const ActivePod& active) noexcept;
 
-    // The CPU count configured on a container's CGroup: the value returned by QuotaCpuCount() when
-    // present, otherwise the online processor count returned by sysconf(_SC_NPROCESSORS_ONLN).
-    [[nodiscard]] static double ResolveCpuCountForPod(const CGroup& cgroup) noexcept;
+    // Resolves a numeric cpu.max limit directly and an explicit unlimited quota to the online
+    // processor count. Returns nullopt when cpu.max or the processor count is unreadable.
+    [[nodiscard]] static std::optional<double> ResolveCpuCount(const CGroup& cgroup) noexcept;
+
+    // Refreshes the container's CPU count immediately before emission. On an enabled -> disabled
+    // transition, resets CPU baselines so recovery cannot bridge the unreadable interval.
+    [[nodiscard]] static bool UpdateCpuMetricState(TrackedContainer& container,
+                                                    std::string_view container_id) noexcept;
 
     // Whether a tracked container's cgroup scope still exists. In the shipped k8s-agent caller,
     // reconciliation normally runs on the 60-second refresh cadence while EmitCpuStats() runs every
@@ -128,13 +138,14 @@ class TrackedPodRegistry
     [[nodiscard]] static bool ContainerIsLive(const TrackedContainer& container) noexcept;
 
     // Shared traversal for the three Emit* methods. The template is defined in the .cpp because all
-    // instantiations are private to that translation unit.
+    // instantiations are private to that translation unit. CPU callers can additionally require a
+    // readable quota without suppressing memory or I/O for the same container.
     template <typename EmitFn>
-    void ForEachLiveContainer(std::string_view metric_type, EmitFn&& emit) noexcept;
+    void ForEachLiveContainer(std::string_view metric_type, bool require_cpu_metrics,
+                              EmitFn&& emit) noexcept;
 
     // Read by Reconcile() to construct each newly admitted container's own CGroup instance.
     Registry* registry_;
-    bool emission_enabled_ = false;
     PodTrackedMap tracked_pods_;
 };
 

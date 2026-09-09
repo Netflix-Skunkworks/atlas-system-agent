@@ -1,5 +1,5 @@
 // Standalone debug tool, not part of atlas_system_agent. It runs the same cgroup discovery,
-// kubelet identity fetch, and reconciliation planner as PodMonitor, then prints admitted pods and
+// kubelet identity fetch, and active-pod builder as PodMonitor, then prints admitted pods and
 // containers. Excluded entries are available through PodMonitor's debug logging.
 //
 // Usage: find-activepods [cgroup_path_prefix] [filtered]  (either order; both optional)
@@ -13,7 +13,6 @@
 #include <fmt/format.h>
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdio>
 #include <string>
 #include <unordered_map>
@@ -60,16 +59,6 @@ std::vector<std::string> SortedPodUids(const atlasagent::ActivePodMap& pods)
     }
     std::sort(uids.begin(), uids.end());
     return uids;
-}
-
-std::size_t CountActiveContainers(const atlasagent::ActivePodMap& pods)
-{
-    std::size_t count = 0;
-    for (const auto& entry : pods)
-    {
-        count += entry.second.containers.size();
-    }
-    return count;
 }
 
 }  // namespace
@@ -126,7 +115,8 @@ int main(int argc, char** argv)
     }
 
     const auto& active_pods = refresh.active_pods;
-    fmt::print("Admitted pods: {}, admitted containers: {}\n", active_pods.size(), CountActiveContainers(active_pods));
+    fmt::print("Admitted pods: {}, admitted containers: {}\n", active_pods.size(),
+               atlasagent::CountActiveContainers(active_pods));
 
     for (const auto& uid : SortedPodUids(active_pods))
     {

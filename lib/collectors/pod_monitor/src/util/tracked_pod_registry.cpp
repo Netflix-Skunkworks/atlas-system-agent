@@ -38,13 +38,54 @@ TrackedPodRegistry::TrackedPodRegistry(Registry* registry) noexcept : registry_(
 {
 }
 
-double TrackedPodRegistry::ResolveCpuCountForPod(const CGroup& cgroup) noexcept
+std::optional<double> TrackedPodRegistry::ResolveCpuCount(const CGroup& cgroup) noexcept
 {
-    if (auto quota = cgroup.QuotaCpuCount(); quota.has_value())
+    auto quota = cgroup.QuotaCpuCount();
+    switch (quota.state)
     {
-        return *quota;
+        case CpuQuotaState::kLimited:
+            return quota.cores;
+        case CpuQuotaState::kUnlimited:
+        {
+            const auto online_processors = sysconf(_SC_NPROCESSORS_ONLN);
+            if (online_processors > 0)
+            {
+                return static_cast<double>(online_processors);
+            }
+            return std::nullopt;
+        }
+        case CpuQuotaState::kUnreadable:
+            return std::nullopt;
     }
-    return static_cast<double>(sysconf(_SC_NPROCESSORS_ONLN));
+    return std::nullopt;
+}
+
+bool TrackedPodRegistry::UpdateCpuMetricState(TrackedContainer& container,
+                                               std::string_view container_id) noexcept
+{
+    auto cpu_count = ResolveCpuCount(container.cgroup);
+    if (cpu_count.has_value())
+    {
+        if (container.cpu_metric_state == CpuMetricState::kDisabled)
+        {
+            atlasagent::Logger()->debug("CPU metrics re-enabled for container {}", container_id);
+        }
+        container.cgroup.SetCpuCountOverride(cpu_count);
+        container.cpu_metric_state = CpuMetricState::kEnabled;
+        return true;
+    }
+
+    if (container.cpu_metric_state == CpuMetricState::kEnabled)
+    {
+        container.cgroup.ResetCpuStats();
+    }
+    if (container.cpu_metric_state != CpuMetricState::kDisabled)
+    {
+        atlasagent::Logger()->debug("CPU metrics disabled for container {}: CPU capacity is unreadable", container_id);
+    }
+    container.cgroup.SetCpuCountOverride(std::nullopt);
+    container.cpu_metric_state = CpuMetricState::kDisabled;
+    return false;
 }
 
 bool TrackedPodRegistry::ContainerIsLive(const TrackedContainer& container) noexcept
@@ -57,11 +98,6 @@ bool TrackedPodRegistry::ContainerIsLive(const TrackedContainer& container) noex
     return std::filesystem::is_directory(container.cgroup_path, ec);
 }
 
-void TrackedPodRegistry::EvictUntrackedPods(const ActivePodMap& active_pods) noexcept
-{
-    EraseMissing(tracked_pods_, active_pods);
-}
-
 TrackedPod& TrackedPodRegistry::UpsertPod(const std::string& uid, const ActivePod& active) noexcept
 {
     auto [it, inserted] = tracked_pods_.try_emplace(uid, active.name, active.pod_namespace);
@@ -71,11 +107,6 @@ TrackedPod& TrackedPodRegistry::UpsertPod(const std::string& uid, const ActivePo
         it->second.pod_namespace = active.pod_namespace;
     }
     return it->second;
-}
-
-void TrackedPodRegistry::EvictUntrackedContainers(TrackedPod& pod, const ActiveContainerMap& active) noexcept
-{
-    EraseMissing(pod.containers, active);
 }
 
 void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const ActivePod& active) noexcept
@@ -100,11 +131,6 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const ActivePod& a
         }
         cit->second.cgroup.SetExtraTags(std::move(container_tags));
 
-        // Re-resolve every cycle, not only at first insertion -- cpu.max can be set to its real
-        // quota slightly after the cgroup directory appears, and an in-place resize changes it
-        // later.
-        cit->second.cgroup.SetCpuCountOverride(ResolveCpuCountForPod(cit->second.cgroup));
-
         cit->second.cgroup.SetCpuRequestOverride(active_container.cpu_request);
     }
 }
@@ -112,34 +138,33 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const ActivePod& a
 void TrackedPodRegistry::Suspend() noexcept
 {
     tracked_pods_.clear();
-    emission_enabled_ = false;
 }
 
 void TrackedPodRegistry::Reconcile(const ActivePodMap& active_pods) noexcept
 {
-    EvictUntrackedPods(active_pods);
+    EraseMissing(tracked_pods_, active_pods);
 
     for (const auto& [uid, active] : active_pods)
     {
         auto& pod = UpsertPod(uid, active);
-        EvictUntrackedContainers(pod, active.containers);
+        EraseMissing(pod.containers, active.containers);
         ReconcileContainers(pod, active);
     }
-    emission_enabled_ = true;
 }
 
 template <typename EmitFn>
-void TrackedPodRegistry::ForEachLiveContainer(std::string_view metric_type, EmitFn&& emit) noexcept
+void TrackedPodRegistry::ForEachLiveContainer(std::string_view metric_type, const bool require_cpu_metrics,
+                                              EmitFn&& emit) noexcept
 {
-    if (!emission_enabled_)
-    {
-        return;
-    }
     for (auto& [pod_uid, pod] : tracked_pods_)
     {
         for (auto& [container_id, container] : pod.containers)
         {
             if (!ContainerIsLive(container))
+            {
+                continue;
+            }
+            if (require_cpu_metrics && !UpdateCpuMetricState(container, container_id))
             {
                 continue;
             }
@@ -153,19 +178,21 @@ void TrackedPodRegistry::ForEachLiveContainer(std::string_view metric_type, Emit
 void TrackedPodRegistry::EmitCpuStats(const bool fiveSecondMetricsEnabled,
                                       const bool sixtySecondMetricsEnabled) noexcept
 {
-    ForEachLiveContainer("CPU", [fiveSecondMetricsEnabled, sixtySecondMetricsEnabled](CGroup& cgroup) {
-        cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
-    });
+    ForEachLiveContainer(
+        "CPU", /*require_cpu_metrics=*/true,
+        [fiveSecondMetricsEnabled, sixtySecondMetricsEnabled](CGroup& cgroup) {
+            cgroup.PodCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+        });
 }
 
 void TrackedPodRegistry::EmitIOStats() noexcept
 {
-    ForEachLiveContainer("IO", [](CGroup& cgroup) { cgroup.IOStats(); });
+    ForEachLiveContainer("IO", /*require_cpu_metrics=*/false, [](CGroup& cgroup) { cgroup.IOStats(); });
 }
 
 void TrackedPodRegistry::EmitMemoryStats() noexcept
 {
-    ForEachLiveContainer("memory", [](CGroup& cgroup) {
+    ForEachLiveContainer("memory", /*require_cpu_metrics=*/false, [](CGroup& cgroup) {
         cgroup.MemoryStatsV2();
         cgroup.MemoryStatsStdV2();
     });

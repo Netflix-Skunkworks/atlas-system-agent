@@ -665,7 +665,7 @@ TEST_F(TrackedPodRegistryTest, TagGateEvictsTrackedPod)
     EXPECT_FALSE(registry.TrackedPods().contains(kPod1Uid));
 }
 
-TEST_F(TrackedPodRegistryTest, EvictsContainerWhoseCgroupScopeDisappears)
+TEST_F(TrackedPodRegistryTest, EvictsPodWhenAllCgroupScopesDisappear)
 {
     atlasagent::TrackedPodRegistry registry{&r};
 
@@ -679,14 +679,13 @@ TEST_F(TrackedPodRegistryTest, EvictsContainerWhoseCgroupScopeDisappears)
     ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
     // Cycle 2: same uid and kubelet-reported container, but cgroup_path now points at a pod slice
-    // with NO container scopes -- the scope directory vanished. Gating still passes, so this
-    // isolates EvictUntrackedContainers rather than the Gating clear.
+    // with NO container scopes -- the scope directory vanished. The active-pod builder omits the
+    // pod because it has no admitted containers, so reconciliation evicts the whole pod.
     registry.Reconcile(OnePodPlan(kPod1Uid, Pod1SlicePath("systemd"), {}, containers, annotations));
-    ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
-    EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
+    EXPECT_FALSE(registry.TrackedPods().contains(kPod1Uid));
 }
 
-TEST_F(TrackedPodRegistryTest, DefersContainerUntilIdentityArrives)
+TEST_F(TrackedPodRegistryTest, OmitsPodUntilContainerIdentityArrives)
 {
     atlasagent::TrackedPodRegistry registry{&r};
 
@@ -694,11 +693,11 @@ TEST_F(TrackedPodRegistryTest, DefersContainerUntilIdentityArrives)
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
 
     // The container's cgroup scope exists on disk but kubelet hasn't reported it yet (empty
-    // container list) -- the documented transient race. It must not be tracked...
+    // container list) -- the documented transient race. With no admitted containers, the pod is
+    // absent from the active map and is not tracked...
     registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}), {},
                                   annotations));
-    ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
-    EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
+    EXPECT_FALSE(registry.TrackedPods().contains(kPod1Uid));
 
     // ...and once kubelet does report it, the next cycle picks it up with no intervening restart.
     registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}),
@@ -706,7 +705,7 @@ TEST_F(TrackedPodRegistryTest, DefersContainerUntilIdentityArrives)
     EXPECT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 }
 
-TEST_F(TrackedPodRegistryTest, MissingCurrentContainerIdentityEvictsTrackedContainer)
+TEST_F(TrackedPodRegistryTest, MissingCurrentContainerIdentityEvictsPod)
 {
     atlasagent::TrackedPodRegistry registry{&r};
     const auto cgroup_path = Pod1SlicePath("systemd_pod_with_containers");
@@ -718,8 +717,7 @@ TEST_F(TrackedPodRegistryTest, MissingCurrentContainerIdentityEvictsTrackedConta
 
     registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path, ContainerScopes(cgroup_path, {ContainerId('a')}), {},
                                   annotations));
-    ASSERT_TRUE(registry.TrackedPods().contains(kPod1Uid));
-    EXPECT_TRUE(registry.TrackedPods().at(kPod1Uid).containers.empty());
+    EXPECT_FALSE(registry.TrackedPods().contains(kPod1Uid));
 }
 
 // Both container scopes in this fixture carry real memory.current/max/stat/events/swap files ON
@@ -801,7 +799,7 @@ TEST_F(TrackedPodRegistryTest, InjectsNamespaceAndRejectsMissingPodIdentity)
     }
 }
 
-TEST_F(TrackedPodRegistryTest, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
+TEST_F(TrackedPodRegistryTest, ResolvesCpuCountFromLimitedQuotaAndUnlimitedFallback)
 {
     const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
@@ -821,9 +819,8 @@ TEST_F(TrackedPodRegistryTest, ResolvesCpuCountFromQuotaThenFallsBackToSysconf)
         EXPECT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
     }
 
-    // cpu.max "max 100000" is the unlimited case: QuotaCpuCount returns nullopt and the code falls
-    // back to the online CPU count from sysconf, computed here the same way ResolveCpuCountForPod
-    // does.
+    // cpu.max "max 100000" is the explicit unlimited case: the tri-state quota result falls back to
+    // the online CPU count from sysconf, computed here the same way ResolveCpuCount does.
     {
         const auto expected = ":" + std::to_string(static_cast<double>(sysconf(_SC_NPROCESSORS_ONLN)));
         atlasagent::TrackedPodRegistry registry{&r};
@@ -889,7 +886,7 @@ TEST_F(TrackedPodRegistryTest, RequestedGaugeOmittedForContainerWithNoCpuRequest
     EXPECT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
 }
 
-TEST_F(TrackedPodRegistryTest, ReResolvesCpuCountEveryRefreshCycle)
+TEST_F(TrackedPodRegistryTest, ReReadsCpuCountBeforeEveryCpuEmission)
 {
     atlasagent::TrackedPodRegistry registry{&r};
 
@@ -911,11 +908,9 @@ TEST_F(TrackedPodRegistryTest, ReResolvesCpuCountEveryRefreshCycle)
     auto messages = memoryWriter->GetMessages();
     ASSERT_TRUE(AnyLineContainsAll(messages, {"sys.cpu.numProcessors", ":0.500000"}));
 
-    // Resize to 2 CPUs and refresh again. Re-resolving only at first insertion would keep
-    // publishing 0.5 here, understating the container's capacity for the rest of the process.
+    // Resize to 2 CPUs without reconciling again. Reading only at insertion or refresh would keep
+    // publishing 0.5 here until the next minute.
     tree.WriteScopeFile("cpu.max", "200000 100000\n");
-    registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
-                                  containers, annotations));
     memoryWriter->Clear();
     registry.EmitCpuStats(true, true);
     messages = memoryWriter->GetMessages();
@@ -960,11 +955,13 @@ TEST_F(TrackedPodRegistryTest, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
     const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
     const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
 
-    // Case A: the container scope has no cpu.stat and no cpu.max at all.
+    // Case A: cpu.max is readable but cpu.stat is absent. This isolates the cpu.stat guard from
+    // the tri-state quota's unreadable path.
     {
+        TempCgroupTree tree{"missing_cpu_stat"};
+        tree.WriteScopeFile("cpu.max", "50000 100000\n");
         atlasagent::TrackedPodRegistry registry{&r};
-        const auto fixture_path = Pod1SlicePath("systemd_pod_with_containers");
-        registry.Reconcile(OnePodPlan(kPod1Uid, fixture_path, ContainerScopes(fixture_path, {ContainerId('a')}),
+        registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
                                       containers, annotations));
         ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
@@ -991,9 +988,10 @@ TEST_F(TrackedPodRegistryTest, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
     }
 
     // Case B: cpu.stat EXISTS but is missing the keys these functions read -- a present-but-partial
-    // file, which a whole-file existence check would have let through.
+    // file, which a whole-file existence check would have let through. cpu.max remains readable.
     {
         TempCgroupTree tree{"partial_cpu_stat"};
+        tree.WriteScopeFile("cpu.max", "50000 100000\n");
         tree.WriteScopeFile("cpu.stat", "usage_usec 1000\n");
 
         atlasagent::TrackedPodRegistry registry{&r};
@@ -1014,31 +1012,61 @@ TEST_F(TrackedPodRegistryTest, EmitCpuStatsSurvivesMissingAndPartialCpuStat)
         EXPECT_FALSE(AnyLineContains(messages, "cgroup.cpu.usageTime"));
     }
 
-    // Case C: cpu.stat COMPLETE but cpu.max absent, so GetAvailCpuTime returns 0. Cases A and B
-    // both bail out at the cpu.stat key guard and never reach the divide-by-zero gate, so without
-    // this case that third part of the fix is uncovered. TWO cycles are required: on the first the
-    // prev_* baselines are still -1, so the gauges are skipped for an unrelated reason -- only on
-    // the second is the avail_cpu_time gate the deciding factor, and removing it publishes secs/0.
-    {
-        TempCgroupTree tree{"complete_cpu_stat_no_cpu_max"};
-        tree.WriteScopeFile("cpu.stat", "usage_usec 1000\nuser_usec 400\nsystem_usec 600\n");
+}
 
-        atlasagent::TrackedPodRegistry registry{&r};
-        registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
-                                      containers, annotations));
-        ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
-        registry.EmitCpuStats(true, true);  // seeds the prev_* baselines
+TEST_F(TrackedPodRegistryTest, SuppressesCpuMetricsOnUnreadableQuotaAndRecoversWithoutBridgingDelta)
+{
+    atlasagent::TrackedPodRegistry registry{&r};
+    TempCgroupTree tree{"cpu_quota_recovery"};
+    tree.WriteScopeFile("cpu.max", "50000 100000\n");
+    tree.WriteScopeFile("cpu.stat", "usage_usec 1000\nuser_usec 400\nsystem_usec 600\n");
+    tree.WriteScopeFile("memory.current", "1048576\n");
 
-        // Advance the counters so the second cycle has a non-zero delta to divide.
-        tree.WriteScopeFile("cpu.stat", "usage_usec 5000\nuser_usec 2400\nsystem_usec 2600\n");
-        memoryWriter->Clear();
-        registry.EmitCpuStats(true, true);
+    const std::unordered_map<std::string, std::string> containers{{ContainerId('a'), "main"}};
+    const std::unordered_map<std::string, std::string> annotations{{"netflix.com/app", "myapp"}};
+    registry.Reconcile(OnePodPlan(kPod1Uid, tree.PodPath(), ContainerScopes(tree.PodPath(), {ContainerId('a')}),
+                                  containers, annotations));
+    ASSERT_EQ(registry.TrackedPods().at(kPod1Uid).containers.size(), 1);
 
-        auto messages = memoryWriter->GetMessages();
-        EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.numProcessors"));
-        EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.utilization"));
-        EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.peakUtilization"));
-    }
+    // Establish a readable CPU baseline before the quota becomes unreadable.
+    memoryWriter->Clear();
+    registry.EmitCpuStats(true, true);
+    EXPECT_TRUE(AnyLineContains(memoryWriter->GetMessages(), "sys.cpu.numProcessors"));
+
+    ASSERT_TRUE(std::filesystem::remove(tree.ScopePath() / "cpu.max"));
+
+    // CPU is suppressed as soon as cpu.max is unreadable, without waiting for reconciliation, while
+    // memory continues to emit. The CPU baseline is reset so the large usage jump below cannot
+    // become a bridged delta.
+    memoryWriter->Clear();
+    registry.EmitCpuStats(true, true);
+    registry.EmitMemoryStats();
+    auto messages = memoryWriter->GetMessages();
+    EXPECT_FALSE(AnyLineContains(messages, "sys.cpu."));
+    EXPECT_FALSE(AnyLineContains(messages, "cgroup.cpu."));
+    EXPECT_TRUE(AnyLineContains(messages, "cgroup.mem.used"));
+
+    // Once cpu.max is readable again, CPU emission resumes with a fresh baseline.
+    tree.WriteScopeFile("cpu.max", "50000 100000\n");
+    tree.WriteScopeFile("cpu.stat", "usage_usec 100000\nuser_usec 40000\nsystem_usec 60000\n");
+    memoryWriter->Clear();
+    registry.EmitCpuStats(true, true);
+    messages = memoryWriter->GetMessages();
+    EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.numProcessors"));
+    EXPECT_FALSE(AnyLineContains(messages, "cgroup.cpu.processingTime"));
+    EXPECT_FALSE(AnyLineContains(messages, "cgroup.cpu.usageTime"));
+    EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.utilization"));
+    EXPECT_FALSE(AnyLineContains(messages, "sys.cpu.peakUtilization"));
+
+    // A subsequent readable sample now produces a normal delta.
+    tree.WriteScopeFile("cpu.stat", "usage_usec 102000\nuser_usec 40800\nsystem_usec 61200\n");
+    memoryWriter->Clear();
+    registry.EmitCpuStats(true, true);
+    messages = memoryWriter->GetMessages();
+    EXPECT_TRUE(AnyLineContains(messages, "cgroup.cpu.processingTime"));
+    EXPECT_TRUE(AnyLineContains(messages, "cgroup.cpu.usageTime"));
+    EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.utilization"));
+    EXPECT_TRUE(AnyLineContains(messages, "sys.cpu.peakUtilization"));
 }
 
 // The complement of EmitCpuStatsSurvivesMissingAndPartialCpuStat above: there the scope directory

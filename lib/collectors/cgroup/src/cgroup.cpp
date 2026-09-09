@@ -2,7 +2,11 @@
 #include <lib/util/src/util.h>
 #include <cstdlib>
 #include <charconv>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <map>
+#include <string_view>
 #include <unordered_set>
 #include <unistd.h>
 
@@ -10,6 +14,23 @@ namespace atlasagent
 {
 
 constexpr auto MICROS = 1000 * 1000.0;
+
+namespace
+{
+
+std::optional<std::uint64_t> ParsePositiveCpuMaxField(std::string_view field) noexcept
+{
+    std::uint64_t value = 0;
+    const auto* end = field.data() + field.size();
+    auto [ptr, error] = std::from_chars(field.data(), end, value);
+    if (error != std::errc() || ptr != end || value == 0)
+    {
+        return std::nullopt;
+    }
+    return value;
+}
+
+}  // namespace
 
 void CGroup::NetworkStats() noexcept
 {
@@ -167,29 +188,60 @@ double CGroup::GetNumCpu() noexcept
     return cpuCount;
 }
 
-std::optional<double> CGroup::QuotaCpuCount() const noexcept
+CpuQuotaResult CGroup::QuotaCpuCount() const noexcept
 {
-    auto lines = read_lines_fields(path_prefix_, "cpu.max");
-    if (lines.empty() || lines[0].size() < 2)
+    std::ifstream input(std::filesystem::path(path_prefix_) / "cpu.max");
+    std::string quota_field;
+    std::string period_field;
+    if (!(input >> quota_field >> period_field))
     {
-        return std::nullopt;
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
     }
 
-    const auto& quota_field = lines[0][0];
+    std::string extra_field;
+    if (input >> extra_field)
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
+    }
+    if (input.bad())
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
+    }
+
+    auto period = ParsePositiveCpuMaxField(period_field);
+    if (!period.has_value())
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
+    }
+
     if (quota_field == "max")
     {
-        // Unlimited quota.
-        return std::nullopt;
+        return CpuQuotaResult{CpuQuotaState::kUnlimited};
     }
 
-    auto quota = std::strtod(quota_field.c_str(), nullptr);
-    auto period = std::strtod(lines[0][1].c_str(), nullptr);
-    if (period <= 0)
+    auto quota = ParsePositiveCpuMaxField(quota_field);
+    if (!quota.has_value())
     {
-        return std::nullopt;
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
     }
 
-    return quota / period;
+    return CpuQuotaResult{CpuQuotaState::kLimited,
+                          static_cast<double>(*quota) / static_cast<double>(*period)};
+}
+
+void CGroup::ResetCpuStats() noexcept
+{
+    prev_throttled_time_ = -1;
+    prev_proc_time_ = -1;
+    prev_sys_usage_ = -1;
+    prev_user_usage_ = -1;
+    capacity_last_updated_ = absl::UnixEpoch();
+    utilization_last_updated_ = absl::UnixEpoch();
+    utilization_prev_system_time_ = -1;
+    utilization_prev_user_time_ = -1;
+    peak_last_updated_ = absl::UnixEpoch();
+    peak_prev_system_time_ = -1;
+    peak_prev_user_time_ = -1;
 }
 
 void CGroup::CpuProcessingCapacity(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept
@@ -223,9 +275,9 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
     // NOTE: utilization_last_updated_ is deliberately NOT advanced here -- it advances past the
     // cpu.stat guard below, in lockstep with the utilization_prev_*_time_ baselines; see that
     // assignment for why splitting them publishes a wrong number. The epoch bootstrap above is the
-    // sole write preceding the guard, and it is benign: it fires at most once (nothing resets the
-    // clock to the epoch) and only before the first guard-passing call, when prev_*_time_ is still
-    // -1 and no utilization gauge is published whatever delta_t came out as.
+    // sole write preceding the guard, and it is benign: it fires only before the first guard-passing
+    // call of a readable interval (ResetCpuStats can start a new interval), when prev_*_time_ is -1
+    // and no utilization gauge is published whatever delta_t came out as.
     auto delta_t = absl::ToDoubleSeconds(now - utilization_last_updated_);
 
     auto avail_cpu_time = GetAvailCpuTime(delta_t, cpuCount);

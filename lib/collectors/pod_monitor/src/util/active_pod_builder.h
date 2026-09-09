@@ -2,6 +2,7 @@
 
 #include <absl/container/flat_hash_map.h>
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -24,8 +25,8 @@ struct ActiveContainer
 
 using ActiveContainerMap = absl::flat_hash_map<std::string, ActiveContainer>;
 
-// The complete admitted identity and container set for one pod. This is intentionally independent
-// of the input snapshot: callers can apply it after the source maps have been discarded.
+// The complete admitted identity and non-empty container set for one pod. This is intentionally
+// independent of the input snapshot: callers can apply it after the source maps have been discarded.
 struct ActivePod
 {
     std::string name;
@@ -42,5 +43,7 @@ using ActivePodMap = absl::flat_hash_map<std::string, ActivePod>;
 // id and non-empty name. Existing tag fallback and nf.cluster semantics are preserved.
 [[nodiscard]] ActivePodMap BuildActivePods(const CgroupSnapshot& cgroups, const PodIdentityMap& identities,
                                             const std::string& k8s_cluster) noexcept;
+
+[[nodiscard]] std::size_t CountActiveContainers(const ActivePodMap& active_pods) noexcept;
 
 }  // namespace atlasagent

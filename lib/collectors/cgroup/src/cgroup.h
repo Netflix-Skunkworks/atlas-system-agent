@@ -31,6 +31,20 @@ struct IOThrottle
     std::optional<double> wIops = std::nullopt;
 };
 
+enum class CpuQuotaState
+{
+    kLimited,
+    kUnlimited,
+    kUnreadable,
+};
+
+struct CpuQuotaResult
+{
+    CpuQuotaState state;
+    // Meaningful only for kLimited.
+    double cores = 0.0;
+};
+
 class CGroup
 {
    public:
@@ -71,8 +85,8 @@ class CGroup
     //
     // NOTE: whether this has been set also selects WHICH "requested" metric CpuUtilizationV2 emits --
     // titus.cpu.requested when unset (Titus), k8s.cpu.requested when set (a pod container).
-    // PodMonitor sets it unconditionally for every tracked container; if that ever becomes
-    // conditional, revisit that emission rather than assuming it still distinguishes the two callers.
+    // PodMonitor sets a value whenever cpu.max is readable and suppresses PodCpuStats while the
+    // override is absent. Titus never sets this field.
     void SetCpuCountOverride(std::optional<double> count) noexcept { cpu_count_override_ = count; }
 
     // The container's DECLARED CPU request (resources.requests.cpu, per kubelet) -- not the CPU
@@ -83,9 +97,13 @@ class CGroup
     // than published with the limit or a zero.
     void SetCpuRequestOverride(std::optional<double> request) noexcept { cpu_request_override_ = request; }
 
-    // Reads cpu.max and returns quota/period, or std::nullopt when the quota is "max"
-    // (unlimited).
-    std::optional<double> QuotaCpuCount() const noexcept;
+    // Reads cpu.max and distinguishes a numeric limit, an explicit "max" (unlimited), and a file or
+    // value that cannot be read safely. `cores` is populated only for a numeric limit.
+    [[nodiscard]] CpuQuotaResult QuotaCpuCount() const noexcept;
+
+    // Clears only CPU delta/timestamp baselines. PodMonitor uses this when cpu.max becomes unreadable
+    // so the next readable sample cannot bridge an interval during which CPU emission was disabled.
+    void ResetCpuStats() noexcept;
 
    protected:
     // For testing access

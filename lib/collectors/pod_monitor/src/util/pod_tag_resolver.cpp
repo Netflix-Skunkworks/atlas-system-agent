@@ -1,12 +1,25 @@
 #include "pod_tag_resolver.h"
 
 #include <initializer_list>
+#include <string_view>
 
 namespace atlasagent
 {
 
 namespace
 {
+
+struct PodTagKeys
+{
+    static constexpr std::string_view kAnnotationApp = "netflix.com/app";
+    static constexpr std::string_view kAnnotationStack = "netflix.com/stack";
+    static constexpr std::string_view kAnnotationDetail = "netflix.com/detail";
+    static constexpr std::string_view kLabelAppName = "app.kubernetes.io/name";
+    static constexpr std::string_view kLabelK8sApp = "k8s-app";
+    static constexpr std::string_view kLabelApp = "app";
+    static constexpr std::string_view kLabelAppInstance = "app.kubernetes.io/instance";
+    static constexpr std::string_view kLabelAppComponent = "app.kubernetes.io/component";
+};
 
 // A key present in `values` with a non-empty value; nullopt otherwise -- missing and
 // present-but-empty both count as "not set".

@@ -2,31 +2,15 @@
 
 #include <optional>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
 namespace atlasagent
 {
 
-// Annotation/label keys ResolvePodTags() checks. The netflix.com/{app,stack,detail} annotations are
-// primary (stamped by a mutating admission webhook). The exact fallback labels are
-// app.kubernetes.io/{name,instance,component}, k8s-app, and app.
-struct PodTagKeys
-{
-    static constexpr std::string_view kAnnotationApp = "netflix.com/app";
-    static constexpr std::string_view kAnnotationStack = "netflix.com/stack";
-    static constexpr std::string_view kAnnotationDetail = "netflix.com/detail";
-    static constexpr std::string_view kLabelAppName = "app.kubernetes.io/name";
-    static constexpr std::string_view kLabelK8sApp = "k8s-app";
-    static constexpr std::string_view kLabelApp = "app";
-    static constexpr std::string_view kLabelAppInstance = "app.kubernetes.io/instance";
-    static constexpr std::string_view kLabelAppComponent = "app.kubernetes.io/component";
-};
-
 // Resolves one pod's tags from its own annotations/labels (PodIdentity's maps) and this agent's
-// K8S_CLUSTER (may be empty) -- pure, no I/O. The netflix.com/* annotations above are the primary
-// tier; the label fallback, used only where the primary is unset, is kLabelAppName -> kLabelK8sApp
-// -> kLabelApp for nf.app, kLabelAppInstance for nf.stack, kLabelAppComponent for nf.detail.
+// K8S_CLUSTER (may be empty) -- pure, no I/O. The netflix.com/{app,stack,detail} annotations are the
+// primary tier. When a primary is unset, nf.app falls back through app.kubernetes.io/name, k8s-app,
+// and app; nf.stack uses app.kubernetes.io/instance; nf.detail uses app.kubernetes.io/component.
 //
 // Returns nullopt (Gating: no metrics for any container in this pod) if none of
 // nf.app/nf.stack/nf.detail resolved. nf.node/nf.process are excluded from that decision because
