@@ -109,7 +109,7 @@ class TrackedPodRegistry
    private:
     [[nodiscard]] TrackedPod& UpsertPod(const std::string& uid, const ActivePod& active) noexcept;
 
-    void ReconcileContainers(TrackedPod& pod, const ActivePod& active) noexcept;
+    void ReconcileContainers(const std::string& uid, TrackedPod& pod, const ActivePod& active) noexcept;
 
     // Resolves a numeric cpu.max limit directly and an explicit unlimited quota to the online
     // processor count. Returns nullopt when cpu.max or the processor count is unreadable.

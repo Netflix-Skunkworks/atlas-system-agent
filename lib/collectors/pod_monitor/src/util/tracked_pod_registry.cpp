@@ -2,6 +2,7 @@
 
 #include <lib/logger/src/logger.h>
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <system_error>
@@ -14,8 +15,9 @@ namespace atlasagent
 namespace
 {
 
-template <typename TrackedMap, typename DiscoveredMap>
-void EraseMissing(TrackedMap& tracked, const DiscoveredMap& discovered) noexcept
+// on_erase is invoked BEFORE the entry is destroyed, so it can still read the value being evicted.
+template <typename TrackedMap, typename DiscoveredMap, typename OnEraseFn>
+void EraseMissing(TrackedMap& tracked, const DiscoveredMap& discovered, OnEraseFn&& on_erase) noexcept
 {
     // absl::flat_hash_map's single-iterator erase() returns void, not the next iterator like
     // std::unordered_map. Advance with post-increment and erase the now-invalidated copy.
@@ -23,6 +25,7 @@ void EraseMissing(TrackedMap& tracked, const DiscoveredMap& discovered) noexcept
     {
         if (discovered.find(it->first) == discovered.end())
         {
+            on_erase(it->first, it->second);
             tracked.erase(it++);
         }
         else
@@ -101,7 +104,11 @@ bool TrackedPodRegistry::ContainerIsLive(const TrackedContainer& container) noex
 TrackedPod& TrackedPodRegistry::UpsertPod(const std::string& uid, const ActivePod& active) noexcept
 {
     auto [it, inserted] = tracked_pods_.try_emplace(uid, active.name, active.pod_namespace);
-    if (!inserted)
+    if (inserted)
+    {
+        atlasagent::Logger()->info("Tracking new pod {}/{} (uid={})", active.pod_namespace, active.name, uid);
+    }
+    else
     {
         it->second.name = active.name;
         it->second.pod_namespace = active.pod_namespace;
@@ -109,15 +116,22 @@ TrackedPod& TrackedPodRegistry::UpsertPod(const std::string& uid, const ActivePo
     return it->second;
 }
 
-void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const ActivePod& active) noexcept
+void TrackedPodRegistry::ReconcileContainers(const std::string& uid, TrackedPod& pod,
+                                             const ActivePod& active) noexcept
 {
     for (const auto& [container_id, active_container] : active.containers)
     {
         auto existing = pod.containers.find(container_id);
+        bool recreated = false;
         if (existing != pod.containers.end() && existing->second.cgroup_path != active_container.cgroup_path)
         {
             // Recreate the CGroup so delta baselines cannot span two paths for the same runtime id.
+            atlasagent::Logger()->info(
+                "Recreating container {} ({}) in pod {}/{} (uid={}): cgroup path changed from {} to {}", container_id,
+                active_container.name, pod.pod_namespace, pod.name, uid, existing->second.cgroup_path.string(),
+                active_container.cgroup_path.string());
             pod.containers.erase(existing);
+            recreated = true;
         }
 
         auto container_tags = active.tags;
@@ -129,6 +143,13 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const ActivePod& a
         {
             cit->second.container_name = active_container.name;
         }
+        else if (!recreated)
+        {
+            // Only for a genuinely new runtime id; the recreate path above already reported itself.
+            atlasagent::Logger()->info("Tracking new container {} ({}) in pod {}/{} (uid={}) at {}", container_id,
+                                       active_container.name, pod.pod_namespace, pod.name, uid,
+                                       active_container.cgroup_path.string());
+        }
         cit->second.cgroup.SetExtraTags(std::move(container_tags));
 
         cit->second.cgroup.SetCpuRequestOverride(active_container.cpu_request);
@@ -137,18 +158,39 @@ void TrackedPodRegistry::ReconcileContainers(TrackedPod& pod, const ActivePod& a
 
 void TrackedPodRegistry::Suspend() noexcept
 {
+    // Only when something was actually dropped: a persistent probe outage calls Suspend() on every
+    // refresh, and an unconditional line would be pure noise once the map is already empty.
+    if (!tracked_pods_.empty())
+    {
+        std::size_t containers = 0;
+        for (const auto& [uid, pod] : tracked_pods_)
+        {
+            containers += pod.containers.size();
+        }
+        atlasagent::Logger()->info("Suspending emission: evicted all {} tracked pod(s) and {} container(s)",
+                                   tracked_pods_.size(), containers);
+    }
     tracked_pods_.clear();
 }
 
 void TrackedPodRegistry::Reconcile(const ActivePodMap& active_pods) noexcept
 {
-    EraseMissing(tracked_pods_, active_pods);
+    EraseMissing(tracked_pods_, active_pods, [](const std::string& uid, const TrackedPod& pod) {
+        atlasagent::Logger()->info("Evicted pod {}/{} (uid={}) and its {} tracked container(s): absent from the "
+                                   "active snapshot",
+                                   pod.pod_namespace, pod.name, uid, pod.containers.size());
+    });
 
     for (const auto& [uid, active] : active_pods)
     {
         auto& pod = UpsertPod(uid, active);
-        EraseMissing(pod.containers, active.containers);
-        ReconcileContainers(pod, active);
+        EraseMissing(pod.containers, active.containers,
+                     [&uid, &pod](const std::string& container_id, const TrackedContainer& container) {
+                         atlasagent::Logger()->info(
+                             "Evicted container {} ({}) from pod {}/{} (uid={}): absent from the active snapshot",
+                             container_id, container.container_name, pod.pod_namespace, pod.name, uid);
+                     });
+        ReconcileContainers(uid, pod, active);
     }
 }
 
