@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <optional>
 #include <vector>
+#include <unistd.h>
 #include <lib/files/src/files.h>
 
 struct UtilConstants
@@ -39,10 +40,9 @@ bool can_execute(const std::string& program);
 // parse a string of the form key=val,key2=val2 into spectator Tags
 std::unordered_map<std::string, std::string> parse_tags(const char* s);
 
-// Reads Netflix/EC2 identity metadata straight from the environment and returns it as spectator
-// tags (nf.account, nf.app, nf.asg, nf.cluster, nf.container, nf.node, nf.process, nf.region,
-// nf.shard1, nf.shard2, nf.stack, nf.vmtype, nf.zone). A tag is omitted entirely when none of
-// its candidate environment variables are set.
+// Netflix/EC2 identity metadata from the environment, as spectator tags (nf.account, nf.app,
+// nf.asg, nf.cluster, nf.container, nf.node, nf.process, nf.region, nf.shard1, nf.shard2, nf.stack,
+// nf.vmtype, nf.zone). A tag is omitted when none of its candidate environment variables are set.
 std::unordered_map<std::string, std::string> get_common_tags();
 
 bool is_service_running(const char* serviceName);
@@ -51,5 +51,10 @@ bool is_file_present(const char* fileName);
 
 // read a file line by line into a vector
 std::optional<std::vector<std::string>> read_file(const std::string& filePath);
+
+// Read an entire file into one string, trailing CR/LF trimmed; nullopt if unreadable. For small
+// single-value files whose content can rotate underneath the process (e.g. a projected
+// ServiceAccount token) -- callers must not cache the result across calls.
+std::optional<std::string> read_file_to_string(const std::string& filePath);
 
 }  // namespace atlasagent

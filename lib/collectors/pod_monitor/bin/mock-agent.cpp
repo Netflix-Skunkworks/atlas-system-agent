@@ -1,0 +1,97 @@
+// Standalone debug tool, not part of the atlas_system_agent binary and not run by ctest: mirrors
+// AtlasAgent/src/k8s-agent.cpp's 1s/5s/60s polling loop, but constructs only PodMonitor and stops
+// after 60 60-second cadence intervals (about one hour) instead of running forever, so PodMonitor's
+// real per-pod cadence wiring can be exercised by hand over full collection cycles without the rest
+// of k8s-agent.cpp's collectors.
+//
+// Uses a plain sleep_for instead of k8s-agent.cpp's runner.wait_for(): that helper's backing
+// "terminator" object lives in the AtlasAgent target (atlas-agent.cpp), which this tool doesn't
+// link against.
+
+#include <lib/collectors/pod_monitor/src/pod_monitor.h>
+#include <lib/logger/src/logger.h>
+
+#include <thirdparty/spectator-cpp/spectator/registry.h>
+
+#include <fmt/format.h>
+
+#include <chrono>
+#include <cstdlib>
+#include <string>
+#include <thread>
+#include <unordered_map>
+
+int main(int argc, char** argv)
+{
+    // Matches AtlasAgent/src/atlas-agent.cpp's VERBOSE_AGENT convention -- set it to see the
+    // per-pod Logger()->debug(...) lines PodMonitor emits, suppressed at spdlog's default info
+    // level.
+    if (std::getenv("VERBOSE_AGENT") != nullptr)
+    {
+        atlasagent::Logger()->set_level(spdlog::level::debug);
+    }
+
+    std::string path_prefix = argc > 1 ? argv[1] : "/sys/fs/cgroup";
+
+    // Same socket real PodMonitor instances publish through when built with AGENT_FLAVOR_K8S
+    // (AtlasAgent/src/atlas-agent.h's K8sAgentConstants::SpectatordSocket) -- a literal here since
+    // this tool's CMake target doesn't link against AtlasAgent, so it can't reference the constant.
+    // This tool adds xatlas.process only to identify its debug output. The shipped PodMonitor
+    // Registry uses metric-type=pod-container instead; neither Registry is given the node identity
+    // tags used by the other k8s-agent collectors.
+    std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", "mock-agent"}};
+    auto config = Config(WriterConfig("unix:///run/spectatord-notags/spectatord.unix"), common_tags);
+    auto registry = Registry(config);
+    atlasagent::PodMonitor podMonitor{&registry, path_prefix};
+
+    // Mirror k8s-agent's explicit startup refresh followed by the first memory emission.
+    static_cast<void>(podMonitor.Refresh());
+    podMonitor.CollectMemoryStats();
+
+    auto now = std::chrono::system_clock::now();
+    auto next_run = now;
+    auto next_sixty_second_run = now + std::chrono::seconds(60);
+    auto next_five_second_run = now + std::chrono::seconds(5);
+    std::chrono::nanoseconds time_to_sleep;
+
+    int sixtySecondIntervalsCompleted = 0;
+
+    do
+    {
+        auto start = std::chrono::system_clock::now();
+        bool fiveSecondMetricsEnabled = (start >= next_five_second_run);
+        bool sixtySecondMetricsEnabled = (start >= next_sixty_second_run);
+
+        if (sixtySecondMetricsEnabled)
+        {
+            static_cast<void>(podMonitor.Refresh());
+        }
+
+        podMonitor.CollectCpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+
+        // If it's time to gather the 5 second metrics
+        if (fiveSecondMetricsEnabled == true)
+        {
+            podMonitor.CollectIOStats();
+            next_five_second_run += std::chrono::seconds(5);
+        }
+
+        // If it's time to gather the 60 second metrics
+        if (sixtySecondMetricsEnabled == true)
+        {
+            podMonitor.CollectMemoryStats();
+            ++sixtySecondIntervalsCompleted;
+            next_sixty_second_run += std::chrono::seconds(60);
+        }
+
+        next_run += std::chrono::seconds(1);
+        time_to_sleep = next_run - std::chrono::system_clock::now();
+        if (time_to_sleep.count() > 0)
+        {
+            std::this_thread::sleep_for(time_to_sleep);
+        }
+    } while (sixtySecondIntervalsCompleted < 60);
+
+    fmt::print("mock-agent: completed {} 60-second interval(s), exiting.\n", sixtySecondIntervalsCompleted);
+    return 0;
+}

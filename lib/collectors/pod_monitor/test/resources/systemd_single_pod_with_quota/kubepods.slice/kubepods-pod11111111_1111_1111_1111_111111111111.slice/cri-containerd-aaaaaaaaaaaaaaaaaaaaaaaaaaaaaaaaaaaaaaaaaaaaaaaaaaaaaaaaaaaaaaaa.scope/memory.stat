@@ -1,0 +1,7 @@
+file 5242880
+shmem 1048576
+anon 20971520
+anon_thp 0
+file_mapped 0
+pgfault 100
+pgmajfault 5
