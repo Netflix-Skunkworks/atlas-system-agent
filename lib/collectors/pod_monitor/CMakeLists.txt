@@ -31,6 +31,14 @@ target_link_libraries(pod_monitor
 )
 
 add_executable(pod_monitor_test
+    test/pod_monitor_test_support.h
+    test/pod_monitor_test_support.cpp
+    test/cgroup_pod_discovery_test.cpp
+    test/pod_tag_resolver_test.cpp
+    test/cpu_quantity_test.cpp
+    test/tracked_pod_registry_test.cpp
+    test/pod_identity_client_test.cpp
+    test/active_pod_builder_test.cpp
     test/pod_monitor_test.cpp
 )
 
