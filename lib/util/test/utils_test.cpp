@@ -1,6 +1,9 @@
 #include <lib/util/src/util.h>
 #include <gtest/gtest.h>
 
+#include <cstdlib>
+#include <string>
+
 namespace
 {
 
@@ -92,5 +95,74 @@ TEST(Utils, ParseTagsEmpty)
     auto some_invalid = atlasagent::parse_tags("key=val, key2=, =");
     EXPECT_EQ(some_invalid.size(), 1);
     EXPECT_EQ(some_invalid.at("key"), "val");
+}
+
+// Sets an env var for a scope and restores the prior value (or unsets it). gtest runs every test
+// in one process, so a leaked setenv would be visible to the tests that follow.
+class ScopedEnv
+{
+   public:
+    ScopedEnv(const char* name, const char* value) : name_(name)
+    {
+        if (const char* prior = std::getenv(name); prior != nullptr)
+        {
+            had_prior_ = true;
+            prior_ = prior;
+        }
+        setenv(name, value, 1);
+    }
+    ~ScopedEnv()
+    {
+        if (had_prior_)
+        {
+            setenv(name_, prior_.c_str(), 1);
+        }
+        else
+        {
+            unsetenv(name_);
+        }
+    }
+    ScopedEnv(const ScopedEnv&) = delete;
+    ScopedEnv& operator=(const ScopedEnv&) = delete;
+
+   private:
+    const char* name_;
+    bool had_prior_ = false;
+    std::string prior_;
+};
+
+// A whitespace-only value is non-empty, so first_non_empty() hands it to trim(), which threw
+// std::length_error on an all-whitespace string before its guard (mechanism in util.cpp). Uncaught,
+// and get_common_tags() runs in main() before the Registry exists, so the agent aborted at startup.
+TEST(Utils, GetCommonTagsSurvivesWhitespaceOnlyEnvVar)
+{
+    {
+        ScopedEnv stack{"NETFLIX_STACK", " "};
+        ASSERT_NO_THROW(atlasagent::get_common_tags());
+        // Trimmed to empty, so the tag is omitted rather than published blank.
+        EXPECT_FALSE(atlasagent::get_common_tags().contains("nf.stack"));
+    }
+    {
+        ScopedEnv stack{"NETFLIX_STACK", "\t\n \v\f\r"};
+        ASSERT_NO_THROW(atlasagent::get_common_tags());
+        EXPECT_FALSE(atlasagent::get_common_tags().contains("nf.stack"));
+    }
+    {
+        // strip_nimble_prefix reduces this to " " before trim() sees it, so the env var itself
+        // need not look like whitespace to hit the same path.
+        ScopedEnv app{"NETFLIX_APP", "nimble_ "};
+        ASSERT_NO_THROW(atlasagent::get_common_tags());
+        EXPECT_FALSE(atlasagent::get_common_tags().contains("nf.app"));
+    }
+}
+
+// Stops the fix degenerating into a no-op: the test above would also pass if trim() returned {}
+// unconditionally.
+TEST(Utils, GetCommonTagsTrimsSurroundingWhitespace)
+{
+    ScopedEnv stack{"NETFLIX_STACK", "  prod\t"};
+    auto tags = atlasagent::get_common_tags();
+    ASSERT_TRUE(tags.contains("nf.stack"));
+    EXPECT_EQ(tags.at("nf.stack"), "prod");
 }
 }  // namespace
