@@ -346,6 +346,69 @@ TEST(CGroup, TwoInstancesIndependentCpuTimeState)
     EXPECT_EQ(messages.size(), 0);
 }
 
+// The "max" -> 0 parsing pitfall QuotaCpuCount() exists to avoid: sample1/sample2's cpu.max
+// ("max 100000") is the unlimited case and must return kUnlimited, not a limited quota of 0.
+TEST(CGroup, QuotaCpuCountUnlimitedReturnsUnlimited)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnlimited);
+
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnlimited);
+}
+
+// Pins down the numeric-quota branch (quota/period), which had no fixture or test in the repo
+// before this one.
+TEST(CGroup, QuotaCpuCountNumericQuotaReturnsQuotaOverPeriod)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample_cpu_quota"};
+
+    auto result = cGroup.QuotaCpuCount();
+    EXPECT_EQ(result.state, atlasagent::CpuQuotaState::kLimited);
+    EXPECT_DOUBLE_EQ(result.cores, 0.5);
+}
+
+TEST(CGroup, QuotaCpuCountMissingFileReturnsUnreadable)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/does_not_exist"};
+
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnreadable);
+}
+
+TEST(CGroup, QuotaCpuCountMalformedQuotaReturnsUnreadable)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample_cpu_quota_malformed"};
+
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnreadable);
+}
+
+TEST(CGroup, QuotaCpuCountPartialFileReturnsUnreadable)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample_cpu_quota_partial"};
+
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnreadable);
+}
+
+TEST(CGroup, QuotaCpuCountNonPositivePeriodReturnsUnreadable)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample_cpu_quota_nonpositive"};
+
+    EXPECT_EQ(cGroup.QuotaCpuCount().state, atlasagent::CpuQuotaState::kUnreadable);
+}
+
 TEST(CGroup, CpuWeight)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
@@ -358,6 +421,273 @@ TEST(CGroup, CpuWeight)
     auto messages = memoryWriter->GetMessages();
     EXPECT_EQ(messages.size(), 1);
     EXPECT_EQ(messages.at(0), "g:cgroup.cpu.weight:100.000000\n");
+}
+
+TEST(CGroup, SetExtraTagsMergesWithLocalTags)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+
+    // "id" deliberately collides with CpuTimeV2's own "id" tag on the usageTime series, so this
+    // also exercises local_tags winning on collision; "pod" never collides.
+    cGroup.SetExtraTags({{"pod", "my-pod"}, {"id", "OVERRIDE_ME"}});
+
+    std::unordered_map<std::string, int64_t> stats;
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+    cGroup.CpuTimeV2(stats);  // first call: no prev reading yet, nothing emitted
+
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    atlasagent::parse_kv_from_file(cGroup.path_prefix_, "cpu.stat", &stats);
+    cGroup.CpuTimeV2(stats);
+
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+    ASSERT_EQ(messages.size(), 3);
+
+    // processingTime has no local tags, so extra_tags_ passes through untouched. Not asserting the
+    // full line on purpose -- multi-tag order follows hash-bucket iteration, not insertion order.
+    EXPECT_NE(messages.at(0).find("cgroup.cpu.processingTime"), std::string::npos);
+    EXPECT_NE(messages.at(0).find("pod=my-pod"), std::string::npos);
+    EXPECT_NE(messages.at(0).find("id=OVERRIDE_ME"), std::string::npos);
+
+    // usageTime,id=system: local "id=system" must win over extra_tags_'s "id=OVERRIDE_ME", while
+    // "pod" (no collision) still comes through.
+    EXPECT_NE(messages.at(1).find("cgroup.cpu.usageTime"), std::string::npos);
+    EXPECT_NE(messages.at(1).find("pod=my-pod"), std::string::npos);
+    EXPECT_NE(messages.at(1).find("id=system"), std::string::npos);
+    EXPECT_EQ(messages.at(1).find("OVERRIDE_ME"), std::string::npos);
+
+    // usageTime,id=user: same, but for the "user" series.
+    EXPECT_NE(messages.at(2).find("cgroup.cpu.usageTime"), std::string::npos);
+    EXPECT_NE(messages.at(2).find("pod=my-pod"), std::string::npos);
+    EXPECT_NE(messages.at(2).find("id=user"), std::string::npos);
+    EXPECT_EQ(messages.at(2).find("OVERRIDE_ME"), std::string::npos);
+}
+
+// PodCpuStats() delegates straight to CpuStats() (see cgroup.cpp for why), so a pod's sys.cpu.* /
+// titus.cpu.* lines have the same shape Titus already emits per-container, disambiguated per pod by
+// SetExtraTags()/MergeTags(). These tests pin down that sys.cpu.utilization / sys.cpu.numProcessors
+// / titus.cpu.requested DO appear (gated by sixtySecondMetricsEnabled, via CpuUtilizationV2), that
+// sys.cpu.peakUtilization appears on every call regardless of either flag (CpuStats() calls
+// CpuPeakUtilizationV2 unconditionally), and that the lines carry the pod's tag -- replacing the old
+// (incorrect) assertions that these series could never appear from PodCpuStats().
+
+TEST(CGroup, PodCpuStatsBothCadencesEnabled)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    setenv("TITUS_NUM_CPU", "1", 1);
+    cGroup.SetExtraTags({{"nf.node", "test-pod"}});
+
+    cGroup.PodCpuStats(/*fiveSecondMetricsEnabled=*/true, /*sixtySecondMetricsEnabled=*/true);
+
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+    // First-ever call: CpuThrottleV2's numThrottled (1) + CpuUtilizationV2's CpuWeight /
+    // sys.cpu.numProcessors / titus.cpu.requested (3) + CpuProcessingCapacity's counter (1) = 5.
+    // sys.cpu.utilization, CpuTimeV2 and the unconditional CpuPeakUtilizationV2 all need a prior
+    // reading, so none of them fire yet.
+    EXPECT_EQ(messages.size(), 5);
+
+    // numProcessors / titus.cpu.requested are present on this very first call (unlike delta-based
+    // sys.cpu.utilization) and already carry the pod's tag.
+    int otherMetricCount = 0;  // the messages this loop does not assert on
+    for (const auto& msg : messages)
+    {
+        if (msg.find("sys.cpu.numProcessors") != std::string::npos || msg.find("titus.cpu.requested") != std::string::npos)
+        {
+            EXPECT_NE(msg.find("nf.node=test-pod"), std::string::npos);
+        }
+        else
+        {
+            ++otherMetricCount;
+        }
+    }
+    EXPECT_EQ(otherMetricCount, 3);  // numThrottled, weight, processingCapacity
+    memoryWriter->Clear();
+
+    // Second call, against a different sample so the delta-tracked sub-metrics fire too.
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.PodCpuStats(true, true);
+    messages = memoryWriter->GetMessages();
+    // CpuThrottleV2 (2) + CpuUtilizationV2's weight/numProcessors/titus.requested/utilization
+    // system+user (5) + CpuTimeV2 (3) + CpuProcessingCapacity (1) + CpuPeakUtilizationV2 (2, now
+    // that it has a prior reading) = 13.
+    EXPECT_EQ(messages.size(), 13);
+
+    auto countContaining = [&messages](const std::string& needle)
+    {
+        int count = 0;
+        for (const auto& msg : messages)
+        {
+            if (msg.find(needle) != std::string::npos) ++count;
+        }
+        return count;
+    };
+
+    // The metrics PodCpuStats() was previously asserted never to emit, now present per pod.
+    EXPECT_EQ(countContaining("sys.cpu.utilization"), 2);      // id=system, id=user
+    EXPECT_EQ(countContaining("sys.cpu.numProcessors"), 1);
+    EXPECT_EQ(countContaining("titus.cpu.requested"), 1);
+    EXPECT_EQ(countContaining("sys.cpu.peakUtilization"), 2);  // id=system, id=user
+
+    // And every sys.cpu.* / titus.cpu.* line carries the pod's disambiguating tag.
+    for (const auto& msg : messages)
+    {
+        if (msg.find("sys.cpu") != std::string::npos || msg.find("titus.cpu") != std::string::npos)
+        {
+            EXPECT_NE(msg.find("nf.node=test-pod"), std::string::npos);
+        }
+    }
+}
+
+TEST(CGroup, PodCpuStatsOnlySixtySecondCadence)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    setenv("TITUS_NUM_CPU", "1", 1);
+    cGroup.SetExtraTags({{"nf.node", "test-pod"}});
+
+    cGroup.PodCpuStats(false, true);
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+    // CpuThrottleV2's numThrottled (1) + CpuUtilizationV2's weight/numProcessors/titus.requested
+    // (3); CpuTimeV2/CpuProcessingCapacity never run (fiveSecondMetricsEnabled=false); the
+    // always-called CpuPeakUtilizationV2 emits nothing on its first-ever call -- 4 total.
+    EXPECT_EQ(messages.size(), 4);
+    memoryWriter->Clear();
+
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.PodCpuStats(false, true);
+    messages = memoryWriter->GetMessages();
+    // CpuThrottleV2 (2) + CpuUtilizationV2's weight/numProcessors/titus.requested/utilization
+    // system+user (5) + CpuPeakUtilizationV2's system+user (2, now it has a prior reading) -- 9.
+    EXPECT_EQ(messages.size(), 9);
+
+    auto countContaining = [&messages](const std::string& needle)
+    {
+        int count = 0;
+        for (const auto& msg : messages)
+        {
+            if (msg.find(needle) != std::string::npos) ++count;
+        }
+        return count;
+    };
+
+    // The 60-second-cadence sys.cpu.*/titus.cpu.* group is present...
+    EXPECT_EQ(countContaining("sys.cpu.numProcessors"), 1);
+    EXPECT_EQ(countContaining("titus.cpu.requested"), 1);
+    EXPECT_EQ(countContaining("sys.cpu.utilization"), 2);
+    // ...and so is the unconditional peak metric...
+    EXPECT_EQ(countContaining("sys.cpu.peakUtilization"), 2);
+    // ...while the 5-second-cadence group is correctly still absent.
+    for (const auto& msg : messages)
+    {
+        EXPECT_EQ(msg.find("cgroup.cpu.processingTime"), std::string::npos);
+        EXPECT_EQ(msg.find("cgroup.cpu.processingCapacity"), std::string::npos);
+        EXPECT_EQ(msg.find("cgroup.cpu.usageTime"), std::string::npos);
+    }
+
+    bool sawTaggedSysCpuLine = false;
+    for (const auto& msg : messages)
+    {
+        if (msg.find("sys.cpu") != std::string::npos && msg.find("nf.node=test-pod") != std::string::npos)
+        {
+            sawTaggedSysCpuLine = true;
+        }
+    }
+    EXPECT_TRUE(sawTaggedSysCpuLine);
+}
+
+TEST(CGroup, PodCpuStatsOnlyFiveSecondCadence)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    setenv("TITUS_NUM_CPU", "1", 1);
+    cGroup.SetExtraTags({{"nf.node", "test-pod"}});
+
+    cGroup.PodCpuStats(true, false);
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+    // sixtySecondMetricsEnabled=false skips CpuThrottleV2 and all of CpuUtilizationV2 (so no
+    // numProcessors/titus.cpu.requested/sys.cpu.utilization/cgroup.cpu.weight at all); CpuTimeV2
+    // and the always-called CpuPeakUtilizationV2 have no prior reading yet, leaving only
+    // CpuProcessingCapacity's counter -- 1 total.
+    EXPECT_EQ(messages.size(), 1);
+    memoryWriter->Clear();
+
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.PodCpuStats(true, false);
+    messages = memoryWriter->GetMessages();
+    // CpuTimeV2's three usage/processing deltas + CpuProcessingCapacity's one +
+    // CpuPeakUtilizationV2's system+user (now it has a prior reading) -- 6 total.
+    EXPECT_EQ(messages.size(), 6);
+
+    // The metrics gated behind sixtySecondMetricsEnabled are correctly still absent...
+    for (const auto& msg : messages)
+    {
+        EXPECT_EQ(msg.find("sys.cpu.numProcessors"), std::string::npos);
+        EXPECT_EQ(msg.find("titus.cpu.requested"), std::string::npos);
+        EXPECT_EQ(msg.find("sys.cpu.utilization"), std::string::npos);
+        EXPECT_EQ(msg.find("cgroup.cpu.weight"), std::string::npos);
+        EXPECT_EQ(msg.find("cgroup.cpu.throttledTime"), std::string::npos);
+        EXPECT_EQ(msg.find("cgroup.cpu.numThrottled"), std::string::npos);
+    }
+
+    // ...but sys.cpu.peakUtilization is still present and tagged, because CpuPeakUtilizationV2
+    // is called outside of any cadence gate -- the key behavior this test pins down.
+    int peakCount = 0;
+    bool sawTaggedPeakLine = false;
+    for (const auto& msg : messages)
+    {
+        if (msg.find("sys.cpu.peakUtilization") != std::string::npos)
+        {
+            ++peakCount;
+            if (msg.find("nf.node=test-pod") != std::string::npos) sawTaggedPeakLine = true;
+        }
+    }
+    EXPECT_EQ(peakCount, 2);
+    EXPECT_TRUE(sawTaggedPeakLine);
+}
+
+TEST(CGroup, PodCpuStatsNeitherCadenceEnabled)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    setenv("TITUS_NUM_CPU", "1", 1);
+    cGroup.SetExtraTags({{"nf.node", "test-pod"}});
+
+    cGroup.PodCpuStats(false, false);
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+    // Every cadence-gated sub-metric is skipped, and the always-called CpuPeakUtilizationV2
+    // emits nothing on its first-ever call -- 0 total.
+    EXPECT_EQ(messages.size(), 0);
+
+    cGroup.SetPrefix("lib/collectors/cgroup/test/resources/sample2");
+    cGroup.PodCpuStats(false, false);
+    messages = memoryWriter->GetMessages();
+    // The crux of the fix: CpuPeakUtilizationV2 runs even with BOTH cadence flags off, and now has
+    // a prior reading to diff against -- sys.cpu.peakUtilization fires on every single call.
+    EXPECT_EQ(messages.size(), 2);
+    EXPECT_NE(messages.at(0).find("sys.cpu.peakUtilization"), std::string::npos);
+    EXPECT_NE(messages.at(0).find("nf.node=test-pod"), std::string::npos);
+    EXPECT_NE(messages.at(1).find("sys.cpu.peakUtilization"), std::string::npos);
+    EXPECT_NE(messages.at(1).find("nf.node=test-pod"), std::string::npos);
+
+    // No other cadence-gated or 60s-only metric leaks in.
+    for (const auto& msg : messages)
+    {
+        EXPECT_EQ(msg.find("sys.cpu.numProcessors"), std::string::npos);
+        EXPECT_EQ(msg.find("titus.cpu.requested"), std::string::npos);
+        EXPECT_EQ(msg.find("sys.cpu.utilization"), std::string::npos);
+        EXPECT_EQ(msg.find("cgroup.cpu"), std::string::npos);
+    }
 }
 
 TEST(CGroup, CpuPeakUtilizationV2)
@@ -423,6 +753,31 @@ TEST(CGroup, ParseMemoryV2)
     EXPECT_EQ(messages.at(14), "g:mem.availSwap:536870912.000000\n");
     EXPECT_EQ(messages.at(15), "g:mem.totalSwap:536870912.000000\n");
     EXPECT_EQ(messages.at(16), "g:mem.totalFree:1296650240.000000\n");
+}
+
+// Regression test for MemoryStatsStdV2()'s tag-parity bug: all 8 of its CreateGauge call sites used
+// to pass no tag argument at all (not even MergeTags({})), even though it reads genuinely
+// per-cgroup values under path_prefix_ (memory.max/current/swap.max/swap.current/memory.stat) just
+// as MemoryStatsV2() does above it. For a pod-scoped caller (PodMonitor) that meant every tracked
+// pod's mem.* series colliding under identical untagged names. Substring checks only: the tag is
+// the point here, not the numbers (ParseMemoryV2 above already pins those).
+TEST(CGroup, MemoryStatsStdV2EmitsWithPodTags)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    Registry registry(config);
+    CGroupTest cGroup{&registry, "lib/collectors/cgroup/test/resources/sample1"};
+    cGroup.SetExtraTags({{"nf.node", "test-pod"}});
+
+    cGroup.MemoryStatsStdV2();
+
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    auto messages = memoryWriter->GetMessages();
+    ASSERT_EQ(messages.size(), 8);
+
+    for (const auto& msg : messages)
+    {
+        EXPECT_NE(msg.find("nf.node=test-pod"), std::string::npos) << "message missing pod tag: " << msg;
+    }
 }
 
 // Test case structure for invalid file tests

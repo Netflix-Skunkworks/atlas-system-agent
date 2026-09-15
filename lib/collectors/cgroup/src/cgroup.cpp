@@ -2,7 +2,11 @@
 #include <lib/util/src/util.h>
 #include <cstdlib>
 #include <charconv>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <map>
+#include <string_view>
 #include <unordered_set>
 #include <unistd.h>
 
@@ -10,6 +14,23 @@ namespace atlasagent
 {
 
 constexpr auto MICROS = 1000 * 1000.0;
+
+namespace
+{
+
+std::optional<std::uint64_t> ParsePositiveCpuMaxField(std::string_view field) noexcept
+{
+    std::uint64_t value = 0;
+    const auto* end = field.data() + field.size();
+    auto [ptr, error] = std::from_chars(field.data(), end, value);
+    if (error != std::errc() || ptr != end || value == 0)
+    {
+        return std::nullopt;
+    }
+    return value;
+}
+
+}  // namespace
 
 void CGroup::NetworkStats() noexcept
 {
@@ -60,12 +81,27 @@ void CGroup::PressureStall() noexcept
     }
 }
 
+std::unordered_map<std::string, std::string> CGroup::MergeTags(const std::unordered_map<std::string, std::string>& local_tags) const noexcept
+{
+    if (extra_tags_.empty())
+    {
+        return local_tags;
+    }
+
+    auto merged = extra_tags_;
+    for (const auto& [key, value] : local_tags)
+    {
+        merged[key] = value;
+    }
+    return merged;
+}
+
 void CGroup::CpuThrottleV2(const std::unordered_map<std::string, int64_t>& stats) noexcept
 {
     // stats.at() would throw std::out_of_range out of this noexcept function -- terminating the
-    // process -- when cpu.stat could not be read this tick (the cgroup directory having been removed
-    // between one sample and the next, say; parse_kv_from_file() then just leaves `stats` empty).
-    // Bail out without touching prev_throttled_time_, so the next successful read still computes a
+    // process -- when cpu.stat could not be read this tick (e.g. a pod's cgroup directory removed
+    // between discovery and this call; parse_kv_from_file() then just leaves `stats` empty). Bail
+    // out without touching prev_throttled_time_, so the next successful read still computes a
     // correct delta from the last real baseline.
     auto throttled_it = stats.find("throttled_usec");
     auto nr_throttled_it = stats.find("nr_throttled");
@@ -78,11 +114,11 @@ void CGroup::CpuThrottleV2(const std::unordered_map<std::string, int64_t>& stats
     if (prev_throttled_time_ >= 0)
     {
         auto seconds = (cur_throttled_time - prev_throttled_time_) / MICROS;
-        registry_->CreateCounter("cgroup.cpu.throttledTime").Increment(seconds);
+        registry_->CreateCounter("cgroup.cpu.throttledTime", MergeTags({})).Increment(seconds);
     }
     prev_throttled_time_ = cur_throttled_time;
 
-    registry_->CreateMonotonicCounter("cgroup.cpu.numThrottled").Set(nr_throttled_it->second);
+    registry_->CreateMonotonicCounter("cgroup.cpu.numThrottled", MergeTags({})).Set(nr_throttled_it->second);
 }
 
 void CGroup::CpuTimeV2(const std::unordered_map<std::string, int64_t>& stats) noexcept
@@ -99,21 +135,21 @@ void CGroup::CpuTimeV2(const std::unordered_map<std::string, int64_t>& stats) no
     if (prev_proc_time_ >= 0)
     {
         auto secs = (usage_it->second - prev_proc_time_) / MICROS;
-        registry_->CreateCounter("cgroup.cpu.processingTime").Increment(secs);
+        registry_->CreateCounter("cgroup.cpu.processingTime", MergeTags({})).Increment(secs);
     }
     prev_proc_time_ = usage_it->second;
 
     if (prev_sys_usage_ >= 0)
     {
         auto secs = (system_it->second - prev_sys_usage_) / MICROS;
-        registry_->CreateCounter("cgroup.cpu.usageTime", {{"id", "system"}}).Increment(secs);
+        registry_->CreateCounter("cgroup.cpu.usageTime", MergeTags({{"id", "system"}})).Increment(secs);
     }
     prev_sys_usage_ = system_it->second;
 
     if (prev_user_usage_ >= 0)
     {
         auto secs = (user_it->second - prev_user_usage_) / MICROS;
-        registry_->CreateCounter("cgroup.cpu.usageTime", {{"id", "user"}}).Increment(secs);
+        registry_->CreateCounter("cgroup.cpu.usageTime", MergeTags({{"id", "user"}})).Increment(secs);
     }
     prev_user_usage_ = user_it->second;
 }
@@ -122,10 +158,11 @@ double CGroup::GetAvailCpuTime(const double delta_t, const double cpuCount) noex
 {
     auto cpu_max = read_num_vector_from_file(path_prefix_, "cpu.max");
     // read_num_vector_from_file() returns an EMPTY vector when cpu.max can't be opened (see
-    // util.cpp) -- reachable whenever the cgroup directory is removed between one sample and the
-    // next. Without this guard cpu_max[1] reads out of bounds, out of a noexcept function. 0 means
-    // "unknown"; callers must not divide by it. Note cfs_period cancels algebraically in the return
-    // below, so reading cpu.max is mostly a probe for whether the file is still readable.
+    // util.cpp) -- routine for PodMonitor, whose CollectCpuStats() runs every second while the
+    // tracked set refreshes only every 60s, so a discovered cgroup may already be gone. Without this
+    // guard cpu_max[1] reads out of bounds, out of a noexcept function. 0 means "unknown"; callers
+    // must not divide by it. Note cfs_period cancels algebraically in the return below, so reading
+    // cpu.max is mostly a probe for whether the file is still readable.
     if (cpu_max.size() < 2)
     {
         return 0.0;
@@ -137,6 +174,11 @@ double CGroup::GetAvailCpuTime(const double delta_t, const double cpuCount) noex
 
 double CGroup::GetNumCpu() noexcept
 {
+    if (cpu_count_override_.has_value())
+    {
+        return cpu_count_override_.value();
+    }
+
     auto env_num_cpu = std::getenv("TITUS_NUM_CPU");
     auto cpuCount = 0.0;
     if (env_num_cpu != nullptr)
@@ -144,6 +186,62 @@ double CGroup::GetNumCpu() noexcept
         cpuCount = strtod(env_num_cpu, nullptr);
     }
     return cpuCount;
+}
+
+CpuQuotaResult CGroup::QuotaCpuCount() const noexcept
+{
+    std::ifstream input(std::filesystem::path(path_prefix_) / "cpu.max");
+    std::string quota_field;
+    std::string period_field;
+    if (!(input >> quota_field >> period_field))
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
+    }
+
+    std::string extra_field;
+    if (input >> extra_field)
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
+    }
+    if (input.bad())
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
+    }
+
+    auto period = ParsePositiveCpuMaxField(period_field);
+    if (!period.has_value())
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
+    }
+
+    if (quota_field == "max")
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnlimited};
+    }
+
+    auto quota = ParsePositiveCpuMaxField(quota_field);
+    if (!quota.has_value())
+    {
+        return CpuQuotaResult{CpuQuotaState::kUnreadable};
+    }
+
+    return CpuQuotaResult{CpuQuotaState::kLimited,
+                          static_cast<double>(*quota) / static_cast<double>(*period)};
+}
+
+void CGroup::ResetCpuStats() noexcept
+{
+    prev_throttled_time_ = -1;
+    prev_proc_time_ = -1;
+    prev_sys_usage_ = -1;
+    prev_user_usage_ = -1;
+    capacity_last_updated_ = absl::UnixEpoch();
+    utilization_last_updated_ = absl::UnixEpoch();
+    utilization_prev_system_time_ = -1;
+    utilization_prev_user_time_ = -1;
+    peak_last_updated_ = absl::UnixEpoch();
+    peak_prev_system_time_ = -1;
+    peak_prev_user_time_ = -1;
 }
 
 void CGroup::CpuProcessingCapacity(const absl::Time& now, const double cpuCount, const absl::Duration& interval) noexcept
@@ -154,7 +252,7 @@ void CGroup::CpuProcessingCapacity(const absl::Time& now, const double cpuCount,
     }
     auto delta_t = absl::ToDoubleSeconds(now - capacity_last_updated_);
     capacity_last_updated_ = now;
-    registry_->CreateCounter("cgroup.cpu.processingCapacity").Increment(delta_t * cpuCount);
+    registry_->CreateCounter("cgroup.cpu.processingCapacity", MergeTags({})).Increment(delta_t * cpuCount);
 }
 
 void CGroup::CpuWeight() noexcept
@@ -162,7 +260,7 @@ void CGroup::CpuWeight() noexcept
     auto weight = read_num_from_file(path_prefix_, "cpu.weight");
     if (weight >= 0)
     {
-        registry_->CreateGauge("cgroup.cpu.weight").Set(weight);
+        registry_->CreateGauge("cgroup.cpu.weight", MergeTags({})).Set(weight);
     }
 }
 
@@ -177,14 +275,35 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
     // NOTE: utilization_last_updated_ is deliberately NOT advanced here -- it advances past the
     // cpu.stat guard below, in lockstep with the utilization_prev_*_time_ baselines; see that
     // assignment for why splitting them publishes a wrong number. The epoch bootstrap above is the
-    // sole write preceding the guard, and it is benign: it fires at most once (nothing resets the
-    // clock to the epoch) and only before the first guard-passing call, when prev_*_time_ is still
-    // -1 and no utilization gauge is published whatever delta_t came out as.
+    // sole write preceding the guard, and it is benign: it fires only before the first guard-passing
+    // call of a readable interval (ResetCpuStats can start a new interval), when prev_*_time_ is -1
+    // and no utilization gauge is published whatever delta_t came out as.
     auto delta_t = absl::ToDoubleSeconds(now - utilization_last_updated_);
 
     auto avail_cpu_time = GetAvailCpuTime(delta_t, cpuCount);
-    registry_->CreateGauge("sys.cpu.numProcessors").Set(cpuCount);
-    registry_->CreateGauge("titus.cpu.requested").Set(cpuCount);
+    // numProcessors is capacity, so cpuCount (the cpu.max limit, or the node's core count when
+    // unlimited) is the right value for it on both agents.
+    registry_->CreateGauge("sys.cpu.numProcessors", MergeTags({})).Set(cpuCount);
+
+    // "requested" is NOT capacity -- it is what the workload asked for, which on Kubernetes differs
+    // from the limit. The two agents use DIFFERENT NAMES on purpose, because the quantity itself
+    // differs: Titus reports a fixed allocation, Kubernetes a declared request its limit may exceed.
+    // One shared name would put two meanings on one series, distinguishable only by tags.
+    if (!cpu_count_override_.has_value())
+    {
+        // Titus: one fixed allocation (TITUS_NUM_CPU), for which request == limit == count.
+        // Unchanged from before pod support existed -- do not rename, Titus dashboards read this.
+        registry_->CreateGauge("titus.cpu.requested", MergeTags({})).Set(cpuCount);
+    }
+    else if (cpu_request_override_.has_value())
+    {
+        // A pod container that declares resources.requests.cpu; k8s.* matches the prefix already
+        // used for the pod-scoped tags (k8s.namespace.name, k8s.cluster.name).
+        registry_->CreateGauge("k8s.cpu.requested", MergeTags({})).Set(*cpu_request_override_);
+    }
+    // else: a pod container with no declared CPU request (BestEffort). Omit the gauge -- cpuCount
+    // would report the limit (or the whole node) as if it were the request, and 0 would turn every
+    // utilization/requested division into inf.
 
     // Same noexcept .at() hazard as CpuThrottleV2()/CpuTimeV2() -- see CpuThrottleV2().
     auto system_it = stats.find("system_usec");
@@ -208,14 +327,14 @@ void CGroup::CpuUtilizationV2(const absl::Time& now, const double cpuCount, cons
     if (avail_cpu_time > 0 && utilization_prev_system_time_ >= 0)
     {
         auto secs = (system_it->second - utilization_prev_system_time_) / MICROS;
-        registry_->CreateGauge("sys.cpu.utilization", {{"id", "system"}}).Set((secs / avail_cpu_time) * 100);
+        registry_->CreateGauge("sys.cpu.utilization", MergeTags({{"id", "system"}})).Set((secs / avail_cpu_time) * 100);
     }
     utilization_prev_system_time_ = system_it->second;
 
     if (avail_cpu_time > 0 && utilization_prev_user_time_ >= 0)
     {
         auto secs = (user_it->second - utilization_prev_user_time_) / MICROS;
-        registry_->CreateGauge("sys.cpu.utilization", {{"id", "user"}}).Set((secs / avail_cpu_time) * 100);
+        registry_->CreateGauge("sys.cpu.utilization", MergeTags({{"id", "user"}})).Set((secs / avail_cpu_time) * 100);
     }
     utilization_prev_user_time_ = user_it->second;
 }
@@ -243,14 +362,14 @@ void CGroup::CpuPeakUtilizationV2(const absl::Time& now, const std::unordered_ma
     if (avail_cpu_time > 0 && peak_prev_system_time_ >= 0)
     {
         auto secs = (system_it->second - peak_prev_system_time_) / MICROS;
-        registry_->CreateMaxGauge("sys.cpu.peakUtilization", {{"id", "system"}}).Set((secs / avail_cpu_time) * 100);
+        registry_->CreateMaxGauge("sys.cpu.peakUtilization", MergeTags({{"id", "system"}})).Set((secs / avail_cpu_time) * 100);
     }
     peak_prev_system_time_ = system_it->second;
 
     if (avail_cpu_time > 0 && peak_prev_user_time_ >= 0)
     {
         auto secs = (user_it->second - peak_prev_user_time_) / MICROS;
-        registry_->CreateMaxGauge("sys.cpu.peakUtilization", {{"id", "user"}}).Set((secs / avail_cpu_time) * 100);
+        registry_->CreateMaxGauge("sys.cpu.peakUtilization", MergeTags({{"id", "user"}})).Set((secs / avail_cpu_time) * 100);
     }
     peak_prev_user_time_ = user_it->second;
 }
@@ -279,18 +398,25 @@ void CGroup::CpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecon
     CpuPeakUtilizationV2(absl::Now(), stats, cpuCount);
 }
 
+// Pod-scoped entry point; the body is deliberately identical to CpuStats(). See the declaration in
+// cgroup.h for why full Titus-name parity is right for pods and why this stays a separate method.
+void CGroup::PodCpuStats(const bool fiveSecondMetricsEnabled, const bool sixtySecondMetricsEnabled)
+{
+    CpuStats(fiveSecondMetricsEnabled, sixtySecondMetricsEnabled);
+}
+
 void CGroup::MemoryStatsV2() noexcept
 {
     auto usage_bytes = read_num_from_file(path_prefix_, "memory.current");
     if (usage_bytes >= 0)
     {
-        registry_->CreateGauge("cgroup.mem.used").Set(usage_bytes);
+        registry_->CreateGauge("cgroup.mem.used", MergeTags({})).Set(usage_bytes);
     }
 
     auto limit_bytes = read_num_from_file(path_prefix_, "memory.max");
     if (limit_bytes >= 0)
     {
-        registry_->CreateGauge("cgroup.mem.limit").Set(limit_bytes);
+        registry_->CreateGauge("cgroup.mem.limit", MergeTags({})).Set(limit_bytes);
     }
 
     std::unordered_map<std::string, int64_t> events;
@@ -298,7 +424,7 @@ void CGroup::MemoryStatsV2() noexcept
     auto mem_fail = events["max"];
     if (mem_fail >= 0)
     {
-        registry_->CreateMonotonicCounter("cgroup.mem.failures").Set(mem_fail);
+        registry_->CreateMonotonicCounter("cgroup.mem.failures", MergeTags({})).Set(mem_fail);
     }
 
     // kmem_stats not available for v2
@@ -306,17 +432,17 @@ void CGroup::MemoryStatsV2() noexcept
     std::unordered_map<std::string, int64_t> stats;
     parse_kv_from_file(path_prefix_, "memory.stat", &stats);
 
-    registry_->CreateGauge("cgroup.mem.processUsage", {{"id", "cache"}}).Set(stats["file"]);
+    registry_->CreateGauge("cgroup.mem.processUsage", MergeTags({{"id", "cache"}})).Set(stats["file"]);
 
-    registry_->CreateGauge("cgroup.mem.processUsage", {{"id", "rss"}}).Set(stats["anon"]);
+    registry_->CreateGauge("cgroup.mem.processUsage", MergeTags({{"id", "rss"}})).Set(stats["anon"]);
 
-    registry_->CreateGauge("cgroup.mem.processUsage", {{"id", "rss_huge"}}).Set(stats["anon_thp"]);
+    registry_->CreateGauge("cgroup.mem.processUsage", MergeTags({{"id", "rss_huge"}})).Set(stats["anon_thp"]);
 
-    registry_->CreateGauge("cgroup.mem.processUsage", {{"id", "mapped_file"}}).Set(stats["file_mapped"]);
+    registry_->CreateGauge("cgroup.mem.processUsage", MergeTags({{"id", "mapped_file"}})).Set(stats["file_mapped"]);
 
-    registry_->CreateMonotonicCounter("cgroup.mem.pageFaults", {{"id", "minor"}}).Set(stats["pgfault"]);
+    registry_->CreateMonotonicCounter("cgroup.mem.pageFaults", MergeTags({{"id", "minor"}})).Set(stats["pgfault"]);
 
-    registry_->CreateMonotonicCounter("cgroup.mem.pageFaults", {{"id", "major"}}).Set(stats["pgmajfault"]);
+    registry_->CreateMonotonicCounter("cgroup.mem.pageFaults", MergeTags({{"id", "major"}})).Set(stats["pgmajfault"]);
 }
 
 void CGroup::MemoryStatsStdV2() noexcept
@@ -330,26 +456,26 @@ void CGroup::MemoryStatsStdV2() noexcept
     parse_kv_from_file(path_prefix_, "memory.stat", &stats);
 
     auto cache = stats["file"];
-    registry_->CreateGauge("mem.cached").Set(cache);
+    registry_->CreateGauge("mem.cached", MergeTags({})).Set(cache);
 
-    registry_->CreateGauge("mem.shared").Set(stats["shmem"]);
+    registry_->CreateGauge("mem.shared", MergeTags({})).Set(stats["shmem"]);
 
     if (mem_limit >= 0 && mem_usage >= 0)
     {
-        registry_->CreateGauge("mem.availReal").Set(mem_limit - mem_usage + cache);
-        registry_->CreateGauge("mem.freeReal").Set(mem_limit - mem_usage);
-        registry_->CreateGauge("mem.totalReal").Set(mem_limit);
+        registry_->CreateGauge("mem.availReal", MergeTags({})).Set(mem_limit - mem_usage + cache);
+        registry_->CreateGauge("mem.freeReal", MergeTags({})).Set(mem_limit - mem_usage);
+        registry_->CreateGauge("mem.totalReal", MergeTags({})).Set(mem_limit);
     }
 
     if (memsw_limit >= 0 && memsw_usage >= 0)
     {
-        registry_->CreateGauge("mem.availSwap").Set(memsw_limit - memsw_usage);
-        registry_->CreateGauge("mem.totalSwap").Set(memsw_limit);
+        registry_->CreateGauge("mem.availSwap", MergeTags({})).Set(memsw_limit - memsw_usage);
+        registry_->CreateGauge("mem.totalSwap", MergeTags({})).Set(memsw_limit);
     }
 
     if (mem_limit >= 0 && mem_usage >= 0 && memsw_limit >= 0 && memsw_usage >= 0)
     {
-        registry_->CreateGauge("mem.totalFree").Set((mem_limit - mem_usage) + (memsw_limit - memsw_usage) + cache);
+        registry_->CreateGauge("mem.totalFree", MergeTags({})).Set((mem_limit - mem_usage) + (memsw_limit - memsw_usage) + cache);
     }
 }
 
@@ -612,10 +738,10 @@ void CGroup::UpdateIOMetrics(const std::unordered_map<std::string, atlasagent::I
                             delta_rbytes, delta_rios, delta_wbytes, delta_wios);
 
             // Update byte and operation counters
-            registry_->CreateCounter("disk.io.bytes", {{"dev", currentStat.deviceName}, {"id", "read"}}).Increment(delta_rbytes);
-            registry_->CreateCounter("disk.io.bytes", {{"dev", currentStat.deviceName}, {"id", "write"}}).Increment(delta_wbytes);
-            registry_->CreateCounter("disk.io.ops", {{"dev", currentStat.deviceName}, {"id", "read"}, {"statistic", "count"}}).Increment(delta_rios);
-            registry_->CreateCounter("disk.io.ops", {{"dev", currentStat.deviceName}, {"id", "write"}, {"statistic", "count"}}).Increment(delta_wios);
+            registry_->CreateCounter("disk.io.bytes", MergeTags({{"dev", currentStat.deviceName}, {"id", "read"}})).Increment(delta_rbytes);
+            registry_->CreateCounter("disk.io.bytes", MergeTags({{"dev", currentStat.deviceName}, {"id", "write"}})).Increment(delta_wbytes);
+            registry_->CreateCounter("disk.io.ops", MergeTags({{"dev", currentStat.deviceName}, {"id", "read"}, {"statistic", "count"}})).Increment(delta_rios);
+            registry_->CreateCounter("disk.io.ops", MergeTags({{"dev", currentStat.deviceName}, {"id", "write"}, {"statistic", "count"}})).Increment(delta_wios);
 
             // Calculate throttle utilization if throttle data is available
             auto throttle_it = ioThrottles.find(deviceKey);
@@ -634,7 +760,7 @@ void CGroup::UpdateIOMetrics(const std::unordered_map<std::string, atlasagent::I
                     {
                         // Utilization = (delta / (limit * interval)) * 100
                         const auto utilization = (delta / (limit.value() * INTERVAL_SECONDS)) * PERCENT_MULTIPLIER;
-                        registry_->CreateDistributionSummary(metric_name, {{"dev", currentStat.deviceName}, {"id", operation}}).Record(utilization);
+                        registry_->CreateDistributionSummary(metric_name, MergeTags({{"dev", currentStat.deviceName}, {"id", operation}})).Record(utilization);
                     }
                 };
 
