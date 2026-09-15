@@ -4,26 +4,30 @@
 #include <lib/collectors/ethtool/src/ethtool.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 namespace
 {
 
 using atlasagent::Ethtool;
 using atlasagent::Logger;
 
+constexpr const char* kSysClassNet = "testdata/resources/sys/class/net";
+
 class EthtoolTest : public Ethtool
 {
    public:
-    explicit EthtoolTest(Registry* registry) : Ethtool{registry} {}
+    explicit EthtoolTest(Registry* registry, std::string path_prefix = kSysClassNet)
+        : Ethtool{registry, {}, std::move(path_prefix)}
+    {
+    }
 
     void stats(const std::vector<std::string>& nic_stats, const char* iface) noexcept
     {
         Ethtool::ethtool_stats(nic_stats, iface);
     }
 
-    std::vector<std::string> ifaces(const std::vector<std::string>& ip_links)
-    {
-        return Ethtool::enumerate_interfaces(ip_links);
-    }
+    std::vector<std::string> ifaces() noexcept { return Ethtool::enumerate_interfaces(); }
 };
 
 TEST(Ethtool, Stats)
@@ -93,24 +97,30 @@ TEST(Ethtool, StatsEmpty)
     EXPECT_EQ(messages.size(), 0);
 }
 
+// The fixture models a k8s node: two hardware NICs (with a `device` directory) alongside the
+// virtual interfaces that have none -- loopback, a docker bridge, and two pod veth peers whose
+// names contain "eth" and are longer than the 15 characters ethtool's ioctl path accepts.
 TEST(Ethtool, EnumerateInterfaces)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));
     auto r = Registry(config);
     EthtoolTest ethtool{&r};
-    std::vector<std::string> ip_links = {
-        "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000\n",
-        "   link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00\n",
-        "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP mode DEFAULT group default qlen 1000\n",
-        "   link/ether 0a:69:fb:fa:96:77 brd ff:ff:ff:ff:ff:ff\n",
-        "   altname enp0s5\n",
-        "   altname ens5\n",
-        "3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP mode DEFAULT group default qlen 1000\n",
-        "   link/ether 0a:69:fb:fa:96:78 brd ff:ff:ff:ff:ff:ff\n",
-        "   altname enp0s6\n",
-        "   altname ens6\n"};
+
+    // sorted here, not in the collector: directory order is arbitrary, and nothing downstream
+    // cares which interface is polled first
+    auto interfaces = ethtool.ifaces();
+    std::sort(interfaces.begin(), interfaces.end());
 
     std::vector<std::string> expected{"eth0", "eth1"};
-    EXPECT_EQ(ethtool.ifaces(ip_links), expected);
+    EXPECT_EQ(interfaces, expected);
+}
+
+TEST(Ethtool, EnumerateInterfacesMissingDirectory)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    EthtoolTest ethtool{&r, "testdata/resources/sys/class/does-not-exist"};
+
+    EXPECT_TRUE(ethtool.ifaces().empty());
 }
 }  // namespace

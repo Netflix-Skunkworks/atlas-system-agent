@@ -4,23 +4,28 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <lib/util/src/util.h>
 
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 namespace atlasagent
 {
 
 class Ethtool
 {
    public:
-    explicit Ethtool(Registry* registry, std::unordered_map<std::string, std::string> net_tags = {}) noexcept;
+    explicit Ethtool(Registry* registry, std::unordered_map<std::string, std::string> net_tags = {},
+                     std::string path_prefix = "/sys/class/net") noexcept;
 
     void collect() noexcept;
 
    private:
     Registry* registry_;
     const std::unordered_map<std::string, std::string> net_tags_;
-    std::vector<std::string> interfaces_;
+    std::string path_prefix_;
 
    protected:
-    std::vector<std::string> enumerate_interfaces(const std::vector<std::string>& lines);
+    std::vector<std::string> enumerate_interfaces() noexcept;
 
     void update_metric(const std::string& stat_line, MonotonicCounter metric);
 

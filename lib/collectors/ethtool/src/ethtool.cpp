@@ -1,49 +1,79 @@
 #include "ethtool.h"
 
+#include <absl/strings/str_join.h>
+
+#include <filesystem>
+#include <system_error>
+
 namespace atlasagent
 {
 
-Ethtool::Ethtool(Registry* registry, std::unordered_map<std::string, std::string> net_tags) noexcept
-    : registry_(registry), net_tags_{std::move(net_tags)}
+Ethtool::Ethtool(Registry* registry, std::unordered_map<std::string, std::string> net_tags,
+                 std::string path_prefix) noexcept
+    : registry_(registry), net_tags_{std::move(net_tags)}, path_prefix_{std::move(path_prefix)}
 {
 }
 
 void Ethtool::collect() noexcept
 {
-    if (can_execute("ethtool"))
+    if (can_execute("ethtool") == false)
     {
-        if (interfaces_.empty())
-        {
-            auto ip_links = read_output_lines("ip link show");
-            interfaces_ = enumerate_interfaces(ip_links);
-        }
+        return;
+    }
 
-        for (auto iface : interfaces_)
-        {
-            auto nic_stats = read_output_lines(fmt::format("ethtool -S {}", iface).c_str());
-            ethtool_stats(nic_stats, iface.c_str());
-        }
+    // Re-enumerated every cycle rather than cached once: this is a directory scan with no fork,
+    // and ENIs come and go at runtime (the AWS VPC CNI attaches and detaches them as pods are
+    // scheduled), so a list captured at startup goes stale.
+    const auto interfaces = enumerate_interfaces();
+    Logger()->debug("Collecting ethtool stats for [{}]", absl::StrJoin(interfaces, ", "));
+
+    for (const auto& iface : interfaces)
+    {
+        auto nic_stats = read_output_lines(fmt::format("ethtool -S {}", iface).c_str());
+        ethtool_stats(nic_stats, iface.c_str());
     }
 }
 
-std::vector<std::string> Ethtool::enumerate_interfaces(const std::vector<std::string>& lines)
+// Enumerate physical NICs from /sys/class/net, where every interface in the netns appears as an
+// entry named with its true kernel name. There is nothing to parse, and no way to produce a name
+// the kernel would not accept -- unlike scraping `ip link show`, whose `<name>@<peer>` display
+// format yielded names such as "veth1a2b3c4d@if2" that are not device names at all and that
+// `ethtool` rejects ("ioctl-only request, device name longer than 15 not supported").
+//
+// The filter is the `device` symlink, which points into the PCI/device tree and so exists only
+// for hardware-backed interfaces. Virtual interfaces do not have it: lo, the veth peer of every
+// pod on a k8s node, bridges, vxlan, dummy, bond. That keeps exactly the interfaces whose ENA
+// allowance counters this collector reads (eth0 plus any secondary ENIs) without matching on
+// interface names, which vary with instance type and kernel naming policy (eth0, ens5, enp0s5).
+std::vector<std::string> Ethtool::enumerate_interfaces() noexcept
 {
     std::vector<std::string> result;
-    std::size_t found;
-    for (const auto& line : lines)
+
+    std::error_code ec;
+    auto entry = std::filesystem::directory_iterator{path_prefix_, ec};
+    if (ec)
     {
-        if (line[0] == ' ')
+        Logger()->warn("Unable to list network interfaces in {}: {}", path_prefix_, ec.message());
+        return result;
+    }
+
+    const std::filesystem::directory_iterator end{};
+    for (; entry != end; entry.increment(ec))
+    {
+        if (ec)
+        {
+            Logger()->warn("Unable to finish listing network interfaces in {}: {}", path_prefix_, ec.message());
+            break;
+        }
+
+        std::error_code device_ec;
+        if (std::filesystem::exists(entry->path() / "device", device_ec) == false)
         {
             continue;
         }
-        found = line.find("eth");
-        if (found != std::string::npos)
-        {
-            std::vector<std::string> fields = absl::StrSplit(line, ' ');
-            auto iface = fields[1].substr(0, fields[1].size() - 1);
-            result.emplace_back(iface);
-        }
+        result.emplace_back(entry->path().filename().string());
     }
+
     return result;
 }
 
