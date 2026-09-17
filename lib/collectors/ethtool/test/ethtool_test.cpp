@@ -1,3 +1,4 @@
+#include <thirdparty/spectator-cpp/libs/utils/include/util.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <lib/collectors/ethtool/src/ethtool.h>
@@ -15,6 +16,16 @@ namespace
 using atlasagent::Ethtool;
 
 constexpr const char* kSysClassNet = "testdata/resources/sys/class/net";
+
+// Tags reach the writer in unordered_map iteration order, which is a hash detail rather than
+// anything the protocol fixes. ParseProtocolLine re-emits them sorted by key, so expectations can
+// be written as literal lines. An unparseable message is returned as-is, to fail with a readable
+// diff rather than throwing.
+std::string normalized(const std::string& message)
+{
+    const auto parsed = ParseProtocolLine(message);
+    return parsed.has_value() ? parsed->to_string() : message;
+}
 
 // Overrides the ethtool invocation so collect() can be driven end to end without the binary
 // installed: every interface enumerated from the fixture is recorded, and canned output is
@@ -82,12 +93,12 @@ TEST_F(EthtoolTest, Stats)
     auto messages = writer()->GetMessages();
 
     ASSERT_EQ(messages.size(), 6);
-    EXPECT_EQ(messages.at(0), "C:net.perf.bwAllowanceExceeded,id=in,iface=eth0:0.000000\n");
-    EXPECT_EQ(messages.at(1), "C:net.perf.bwAllowanceExceeded,id=out,iface=eth0:0.000000\n");
-    EXPECT_EQ(messages.at(2), "C:net.perf.ppsAllowanceExceeded,iface=eth0:0.000000\n");
-    EXPECT_EQ(messages.at(3), "C:net.perf.conntrackAllowanceExceeded,iface=eth0:0.000000\n");
-    EXPECT_EQ(messages.at(4), "g:net.perf.conntrackAllowanceAvailable,iface=eth0:100.000000\n");
-    EXPECT_EQ(messages.at(5), "C:net.perf.linklocalAllowanceExceeded,iface=eth0:0.000000\n");
+    EXPECT_EQ(normalized(messages.at(0)), "C:net.perf.bwAllowanceExceeded,id=in,iface=eth0:0.000000\n");
+    EXPECT_EQ(normalized(messages.at(1)), "C:net.perf.bwAllowanceExceeded,id=out,iface=eth0:0.000000\n");
+    EXPECT_EQ(normalized(messages.at(2)), "C:net.perf.ppsAllowanceExceeded,iface=eth0:0.000000\n");
+    EXPECT_EQ(normalized(messages.at(3)), "C:net.perf.conntrackAllowanceExceeded,iface=eth0:0.000000\n");
+    EXPECT_EQ(normalized(messages.at(4)), "g:net.perf.conntrackAllowanceAvailable,iface=eth0:100.000000\n");
+    EXPECT_EQ(normalized(messages.at(5)), "C:net.perf.linklocalAllowanceExceeded,iface=eth0:0.000000\n");
 
     writer()->Clear();
 
@@ -107,12 +118,12 @@ TEST_F(EthtoolTest, Stats)
     messages = writer()->GetMessages();
 
     ASSERT_EQ(messages.size(), 6);
-    EXPECT_EQ(messages.at(0), "C:net.perf.bwAllowanceExceeded,id=in,iface=eth0:5.000000\n");
-    EXPECT_EQ(messages.at(1), "C:net.perf.bwAllowanceExceeded,id=out,iface=eth0:10.000000\n");
-    EXPECT_EQ(messages.at(2), "C:net.perf.conntrackAllowanceExceeded,iface=eth0:15.000000\n");
-    EXPECT_EQ(messages.at(3), "g:net.perf.conntrackAllowanceAvailable,iface=eth0:110.000000\n");
-    EXPECT_EQ(messages.at(4), "C:net.perf.linklocalAllowanceExceeded,iface=eth0:20.000000\n");
-    EXPECT_EQ(messages.at(5), "C:net.perf.ppsAllowanceExceeded,iface=eth0:25.000000\n");
+    EXPECT_EQ(normalized(messages.at(0)), "C:net.perf.bwAllowanceExceeded,id=in,iface=eth0:5.000000\n");
+    EXPECT_EQ(normalized(messages.at(1)), "C:net.perf.bwAllowanceExceeded,id=out,iface=eth0:10.000000\n");
+    EXPECT_EQ(normalized(messages.at(2)), "C:net.perf.conntrackAllowanceExceeded,iface=eth0:15.000000\n");
+    EXPECT_EQ(normalized(messages.at(3)), "g:net.perf.conntrackAllowanceAvailable,iface=eth0:110.000000\n");
+    EXPECT_EQ(normalized(messages.at(4)), "C:net.perf.linklocalAllowanceExceeded,iface=eth0:20.000000\n");
+    EXPECT_EQ(normalized(messages.at(5)), "C:net.perf.ppsAllowanceExceeded,iface=eth0:25.000000\n");
 }
 
 TEST_F(EthtoolTest, StatsEmpty)
@@ -143,7 +154,7 @@ TEST_F(EthtoolTest, StatsPreservesNetworkTags)
 
     const auto messages = writer()->GetMessages();
     ASSERT_EQ(messages.size(), 1);
-    EXPECT_EQ(messages.at(0),
+    EXPECT_EQ(normalized(messages.at(0)),
               "C:net.perf.bwAllowanceExceeded,id=in,iface=eth0,nf.app=test-app,nf.region=us-east-1:3.000000\n");
 }
 
@@ -186,8 +197,13 @@ TEST_F(EthtoolTest, CollectsEveryEnumeratedInterface)
     const std::vector<std::string> expected{"eth0", "eth1"};
     EXPECT_EQ(polled, expected);
 
-    auto messages = writer()->GetMessages();
+    std::vector<std::string> messages;
+    for (const auto& message : writer()->GetMessages())
+    {
+        messages.push_back(normalized(message));
+    }
     std::sort(messages.begin(), messages.end());
+
     ASSERT_EQ(messages.size(), 2);
     EXPECT_EQ(messages.at(0), "C:net.perf.bwAllowanceExceeded,id=in,iface=eth0:1.000000\n");
     EXPECT_EQ(messages.at(1), "C:net.perf.ppsAllowanceExceeded,iface=eth1:2.000000\n");
