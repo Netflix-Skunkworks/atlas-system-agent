@@ -79,6 +79,10 @@ class CGroup
     // stays empty and Titus's wire output is byte-for-byte unaffected.
     void SetExtraTags(std::unordered_map<std::string, std::string> tags) noexcept { extra_tags_ = std::move(tags); }
 
+    // Read-only view of the tags last passed to SetExtraTags(), for debug tooling that inspects exactly
+    // what is merged into every metric (e.g. pod_monitor/bin/compare-container-tags.cpp).
+    [[nodiscard]] const std::unordered_map<std::string, std::string>& ExtraTags() const noexcept { return extra_tags_; }
+
     // Lets a caller (e.g. a per-pod monitor) supply the CPU count directly instead of reading the
     // TITUS_NUM_CPU environment variable. Titus code never calls this, so GetNumCpu() is unchanged
     // for Titus.

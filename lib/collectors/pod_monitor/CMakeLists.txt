@@ -82,3 +82,18 @@ target_link_libraries(mock-agent
     logger
     spectator-registry
 )
+
+# Standalone debug tool for comparing, per pod on a real node, the common tags PodMonitor applies to
+# each container's metrics: which tags are the same on all of a pod's containers and which differ;
+# not part of the atlas_system_agent binary and not run by ctest.
+add_executable(compare-container-tags
+    bin/compare-container-tags.cpp
+)
+
+target_link_libraries(compare-container-tags
+    pod_monitor
+    fmt::fmt
+    HttpClient
+    logger
+    spectator-registry
+)
