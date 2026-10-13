@@ -193,7 +193,7 @@ int main(int argc, char* const argv[])
     if (options.verbose)
     {
         logger->set_level(spdlog::level::debug);
-        Logger::GetLogger()->set_level(spdlog::level::debug);
+        spectator::SetLogLevel(spdlog::level::debug);
     }
 
     atlasagent::HttpClient::GlobalInit();
