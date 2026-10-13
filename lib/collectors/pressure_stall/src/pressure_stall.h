@@ -10,14 +10,14 @@ namespace atlasagent
 class PressureStall
 {
    public:
-    explicit PressureStall(Registry* registry, std::string path_prefix = "/proc/pressure") noexcept;
+    explicit PressureStall(spectator::Registry* registry, std::string path_prefix = "/proc/pressure") noexcept;
 
     void set_prefix(std::string new_prefix) noexcept;
 
     void collect() noexcept;
 
    private:
-    Registry* registry_;
+    spectator::Registry* registry_;
     std::string path_prefix_;
     static constexpr double MICROS = 1000 * 1000.0;
 };

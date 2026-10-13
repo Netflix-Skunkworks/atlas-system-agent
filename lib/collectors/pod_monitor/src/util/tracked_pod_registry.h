@@ -40,7 +40,7 @@ struct TrackedContainer
     // `path` is COPIED into cgroup and only then moved into cgroup_path -- members initialize in
     // declaration order, so cgroup is built first. Do not std::move() it into cgroup, or
     // cgroup_path would be constructed from a moved-from value.
-    TrackedContainer(Registry* registry, std::filesystem::path path, std::string name) noexcept
+    TrackedContainer(spectator::Registry* registry, std::filesystem::path path, std::string name) noexcept
         : cgroup(registry, path.string()),
           cgroup_path(std::move(path)),
           container_name(std::move(name))
@@ -74,7 +74,7 @@ using PodTrackedMap = absl::flat_hash_map<std::string, TrackedPod>;
 class TrackedPodRegistry
 {
    public:
-    explicit TrackedPodRegistry(Registry* registry) noexcept;
+    explicit TrackedPodRegistry(spectator::Registry* registry) noexcept;
 
     // Applies one successful active snapshot before subsequent emitter calls. Containers absent
     // from active_pods are evicted, including entries whose current kubelet status could not be

@@ -47,7 +47,7 @@ std::string get_dev_from_device(const std::string& device);
 class Disk
 {
    public:
-    explicit Disk(Registry* registry, std::string path_prefix = "") noexcept
+    explicit Disk(spectator::Registry* registry, std::string path_prefix = "") noexcept
         : registry_(registry), path_prefix_(std::move(path_prefix))
     {
     }
@@ -56,11 +56,11 @@ class Disk
     void disk_stats() noexcept;
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
    private:
-    Registry* registry_;
+    spectator::Registry* registry_;
     std::string path_prefix_;
     absl::Time last_updated_{absl::UnixEpoch()};
     std::unordered_map<std::string, u_long> last_ms_doing_io{};
-    std::unordered_map<MeterId, std::shared_ptr<MonotonicTimer>> monotonic_timers_{};
+    std::unordered_map<spectator::MeterId, std::shared_ptr<MonotonicTimer>> monotonic_timers_{};
 
    protected:
     // protected for testing

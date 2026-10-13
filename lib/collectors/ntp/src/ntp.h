@@ -31,15 +31,15 @@ template <typename Clock = detail::abseil_clock>
 class Ntp
 {
    public:
-    explicit Ntp(Registry* registry) noexcept;
+    explicit Ntp(spectator::Registry* registry) noexcept;
 
     void collect() noexcept;
 
    private:
-    Registry* registry_;
-    Gauge lastSampleAge_;
-    Gauge estimatedError_;
-    Gauge unsynchronized_;
+    spectator::Registry* registry_;
+    spectator::Gauge lastSampleAge_;
+    spectator::Gauge estimatedError_;
+    spectator::Gauge unsynchronized_;
 
    protected:
     // for testing

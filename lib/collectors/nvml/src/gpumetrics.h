@@ -14,7 +14,7 @@ namespace atlasagent
 
 namespace detail
 {
-inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
+inline auto gauge(spectator::Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
     std::unordered_map<std::string, std::string> tags = {
         {"gpu", fmt::format("{}", gpu)},
@@ -33,12 +33,15 @@ template <typename Lib>
 class GpuMetrics
 {
    public:
-    GpuMetrics(Registry* registry, std::unique_ptr<Lib> nvml) noexcept : registry_(registry), nvml_(std::move(nvml)) {}
+    GpuMetrics(spectator::Registry* registry, std::unique_ptr<Lib> nvml) noexcept
+        : registry_(registry), nvml_(std::move(nvml))
+    {
+    }
 
     // Availability-aware factory: loads the NVML library and initializes it, logging along the way.
     // Returns std::nullopt when the library is unavailable or fails to initialize, so callers can
     // skip GPU collection. The mirror of GpuMetricsAMD::Create().
-    static std::optional<GpuMetrics> Create(Registry* registry)
+    static std::optional<GpuMetrics> Create(spectator::Registry* registry)
     {
         std::unique_ptr<Lib> lib;
         try
@@ -124,7 +127,7 @@ class GpuMetrics
     }
 
    private:
-    Registry* registry_;
+    spectator::Registry* registry_;
     std::unique_ptr<Lib> nvml_;
 };
 

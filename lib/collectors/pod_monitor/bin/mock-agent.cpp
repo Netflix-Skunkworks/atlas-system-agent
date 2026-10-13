@@ -21,6 +21,10 @@
 #include <thread>
 #include <unordered_map>
 
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+
 int main(int argc, char** argv)
 {
     // Matches AtlasAgent/src/atlas-agent.cpp's VERBOSE_AGENT convention -- set it to see the

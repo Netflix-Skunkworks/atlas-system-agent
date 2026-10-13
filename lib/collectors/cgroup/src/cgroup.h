@@ -48,7 +48,7 @@ struct CpuQuotaResult
 class CGroup
 {
    public:
-    explicit CGroup(Registry* registry, std::string path_prefix = "/sys/fs/cgroup") noexcept
+    explicit CGroup(spectator::Registry* registry, std::string path_prefix = "/sys/fs/cgroup") noexcept
         : path_prefix_(std::move(path_prefix)), registry_(registry)
     {
     }
@@ -128,7 +128,7 @@ class CGroup
     // extra_tags_ and local_tags, with local_tags winning on key collision.
     std::unordered_map<std::string, std::string> MergeTags(const std::unordered_map<std::string, std::string>& local_tags) const noexcept;
 
-    Registry* registry_;
+    spectator::Registry* registry_;
 
     // Per-instance delta-tracking state. These were function-local `static` variables (and, for
     // I/O, a file-scope `static` map) shared by every CGroup instance in the process, so concurrent

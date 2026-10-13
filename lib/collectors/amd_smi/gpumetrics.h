@@ -24,7 +24,7 @@ namespace atlasagent
 namespace amd_smi_detail
 {
 
-inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
+inline auto gauge(spectator::Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
     std::unordered_map<std::string, std::string> tags = {
         {"gpu", fmt::format("{}", gpu)},
@@ -37,7 +37,7 @@ inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const 
     return registry->CreateGauge(name, tags);
 }
 
-inline auto counter(Registry* registry, const char* name, unsigned int gpu,
+inline auto counter(spectator::Registry* registry, const char* name, unsigned int gpu,
                     const char* id = nullptr)
 {
     std::unordered_map<std::string, std::string> tags = {
@@ -58,20 +58,20 @@ inline auto counter(Registry* registry, const char* name, unsigned int gpu,
 // per-tick tag-map allocation and registry lookup.
 struct PerGpuMeters
 {
-    Gauge usedMemory;
-    Gauge freeMemory;
-    Gauge totalMemory;
-    Gauge utilization;
-    Gauge memoryActivity;
-    Gauge gfxClock;
-    Gauge memoryClock;
-    Gauge power;
-    Counter pcieIn;
-    Counter pcieOut;
-    Counter xgmiIn;
-    Counter xgmiOut;
+    spectator::Gauge usedMemory;
+    spectator::Gauge freeMemory;
+    spectator::Gauge totalMemory;
+    spectator::Gauge utilization;
+    spectator::Gauge memoryActivity;
+    spectator::Gauge gfxClock;
+    spectator::Gauge memoryClock;
+    spectator::Gauge power;
+    spectator::Counter pcieIn;
+    spectator::Counter pcieOut;
+    spectator::Counter xgmiIn;
+    spectator::Counter xgmiOut;
 
-    PerGpuMeters(Registry* registry, unsigned int gpu)
+    PerGpuMeters(spectator::Registry* registry, unsigned int gpu)
         : usedMemory{amd_smi_detail::gauge(registry, "gpu.usedMemory", gpu)}
         , freeMemory{amd_smi_detail::gauge(registry, "gpu.freeMemory", gpu)}
         , totalMemory{amd_smi_detail::gauge(registry, "gpu.totalMemory", gpu)}
@@ -122,7 +122,7 @@ class GpuMetricsAMD
     GpuMetricsAMD& operator=(GpuMetricsAMD&&) = delete;
 
     // Returns std::nullopt if AMD SMI is unavailable or no AMD GPUs are present.
-    static std::optional<GpuMetricsAMD> Create(Registry* registry) noexcept;
+    static std::optional<GpuMetricsAMD> Create(spectator::Registry* registry) noexcept;
 
     void GPUMetrics() noexcept;
 
@@ -158,7 +158,7 @@ class GpuMetricsAMD
         FirmwareSupport xgmi;
     };
 
-    GpuMetricsAMD(Registry* registry, std::unique_ptr<AmdSmi> smi, uint32_t count) noexcept;
+    GpuMetricsAMD(spectator::Registry* registry, std::unique_ptr<AmdSmi> smi, uint32_t count) noexcept;
 
     void Collect(uint32_t gpu_id) noexcept;
     void RecordMemory(uint32_t gpu_id, const AmdSmiMemory& memory) noexcept;
@@ -170,8 +170,8 @@ class GpuMetricsAMD
     void RecordXgmi(uint32_t gpu_id, const amdsmi_gpu_metrics_t& m) noexcept;
 
     std::unique_ptr<AmdSmi> smi_;
-    Gauge gpuCount_;
-    DistributionSummary temperature_;
+    spectator::Gauge gpuCount_;
+    spectator::DistributionSummary temperature_;
     std::vector<PerGpuMeters> meters_;
     std::vector<std::optional<XgmiSample>> last_xgmi_;
     std::vector<GpuSupport> support_;

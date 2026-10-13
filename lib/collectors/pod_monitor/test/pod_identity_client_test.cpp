@@ -9,6 +9,11 @@
 #include <string>
 #include <utility>
 
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTypes;
+
 namespace atlasagent::pod_monitor_test
 {
 

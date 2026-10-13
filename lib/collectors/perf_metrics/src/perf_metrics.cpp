@@ -1,5 +1,8 @@
 #include "perf_metrics.h"
 
+using spectator::DistributionSummary;
+using spectator::Registry;
+
 namespace atlasagent
 {
 

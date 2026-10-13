@@ -86,7 +86,7 @@ class PodIdentityClient : public PodIdentitySource
 {
    public:
     // Performs no I/O: stores the URL and constructs the HTTP client used by later fetches.
-    explicit PodIdentityClient(Registry* registry,
+    explicit PodIdentityClient(spectator::Registry* registry,
                                 std::string kubelet_url = PodIdentityClientConstants::KubeletUrl) noexcept;
 
     // One synchronous, uncached logical GET to kubelet's local /pods, subject to HttpClient's retry

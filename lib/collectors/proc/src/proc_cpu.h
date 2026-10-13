@@ -98,7 +98,7 @@ class CpuGaugesTemplate
 {
    public:
     template <typename CreateGaugeFn>
-    CpuGaugesTemplate(Registry* registry, const char* name, CreateGaugeFn createGauge)
+    CpuGaugesTemplate(spectator::Registry* registry, const char* name, CreateGaugeFn createGauge)
         : user_gauge(createGauge(registry, name, {{"id", "user"}})),
           system_gauge(createGauge(registry, name, {{"id", "system"}})),
           stolen_gauge(createGauge(registry, name, {{"id", "stolen"}})),
@@ -128,18 +128,18 @@ class CpuGaugesTemplate
 };
 
 // Factory functions for easy construction
-inline CpuGaugesTemplate<Gauge> CreateCpuGauges(Registry* registry, const char* name)
+inline CpuGaugesTemplate<spectator::Gauge> CreateCpuGauges(spectator::Registry* registry, const char* name)
 {
-    return CpuGaugesTemplate<Gauge>(
+    return CpuGaugesTemplate<spectator::Gauge>(
         registry, name,
-        [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
+        [](spectator::Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
         { return reg->CreateGauge(n, tags); });
 }
 
-inline CpuGaugesTemplate<MaxGauge> CreatePeakCpuGauges(Registry* registry, const char* name)
+inline CpuGaugesTemplate<spectator::MaxGauge> CreatePeakCpuGauges(spectator::Registry* registry, const char* name)
 {
-    return CpuGaugesTemplate<MaxGauge>(
+    return CpuGaugesTemplate<spectator::MaxGauge>(
         registry, name,
-        [](Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
+        [](spectator::Registry* reg, const char* n, const std::unordered_map<std::string, std::string>& tags)
         { return reg->CreateMaxGauge(n, tags); });
 }

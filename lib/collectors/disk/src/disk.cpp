@@ -7,6 +7,8 @@
 #include <sys/statvfs.h>
 #include <unordered_set>
 
+using spectator::MeterId;
+
 namespace atlasagent
 {
 

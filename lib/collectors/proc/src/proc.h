@@ -8,7 +8,7 @@ namespace atlasagent
 class Proc
 {
    public:
-    Proc(Registry* registry, std::unordered_map<std::string, std::string> net_tags,
+    Proc(spectator::Registry* registry, std::unordered_map<std::string, std::string> net_tags,
          std::string path_prefix = "/proc") noexcept
         : registry_(registry), net_tags_{std::move(net_tags)}, path_prefix_(std::move(path_prefix))
     {
@@ -54,7 +54,7 @@ class Proc
     void parse_load_avg(const char* buf) noexcept;
     void parse_tcp_connections() noexcept;
 
-    Registry* registry_;
+    spectator::Registry* registry_;
     const std::unordered_map<std::string, std::string> net_tags_;
     std::string path_prefix_;
 };

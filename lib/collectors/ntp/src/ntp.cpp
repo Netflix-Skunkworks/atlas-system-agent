@@ -1,5 +1,7 @@
 #include "ntp.h"
 
+using spectator::Registry;
+
 namespace atlasagent
 {
 

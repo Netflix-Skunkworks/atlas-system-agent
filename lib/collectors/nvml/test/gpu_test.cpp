@@ -9,6 +9,12 @@ using atlasagent::NvmlDeviceHandle;
 using atlasagent::NvmlMemory;
 using atlasagent::NvmlPerfState;
 using atlasagent::NvmlUtilization;
+using spectator::Config;
+using spectator::MemoryWriter;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTestHelper;
+using spectator::WriterTypes;
 
 namespace
 {

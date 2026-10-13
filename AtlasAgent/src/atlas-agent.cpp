@@ -21,6 +21,11 @@
 #include <random>
 #include <utility>
 
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTypes;
+
 terminator runner;
 
 static void handle_signal(int signal)

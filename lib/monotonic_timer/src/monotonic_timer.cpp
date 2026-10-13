@@ -1,6 +1,9 @@
 
 #include "monotonic_timer.h"
 
+using spectator::MeterId;
+using spectator::Registry;
+
 namespace atlasagent
 {
 

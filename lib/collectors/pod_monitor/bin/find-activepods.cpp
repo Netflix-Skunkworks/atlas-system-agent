@@ -19,6 +19,11 @@
 #include <utility>
 #include <vector>
 
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTypes;
+
 namespace
 {
 

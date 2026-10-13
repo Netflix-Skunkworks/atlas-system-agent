@@ -4,6 +4,10 @@
 #include <lib/logger/src/logger.h>
 
 using atlasagent::Logger;
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTypes;
 
 int main()
 {

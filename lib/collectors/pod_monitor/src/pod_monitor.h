@@ -34,11 +34,11 @@ struct PodRefreshResult
 class PodMonitor
 {
    public:
-    explicit PodMonitor(Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
+    explicit PodMonitor(spectator::Registry* registry, std::string path_prefix = "/sys/fs/cgroup",
                          std::string kubelet_url = PodIdentityClientConstants::KubeletUrl) noexcept;
 
     // Injection seam for hermetic tests and alternate probe adapters. PodMonitor owns both sources.
-    PodMonitor(Registry* registry, std::unique_ptr<PodCgroupSource> cgroup_source,
+    PodMonitor(spectator::Registry* registry, std::unique_ptr<PodCgroupSource> cgroup_source,
                std::unique_ptr<PodIdentitySource> identity_source, std::string k8s_cluster) noexcept;
 
     // Performs both external probes and applies a new active snapshot only when both succeed. Any

@@ -10,6 +10,10 @@
 #include <string_view>
 #include <system_error>
 
+using spectator::Counter;
+using spectator::Gauge;
+using spectator::Registry;
+
 namespace atlasagent
 {
 

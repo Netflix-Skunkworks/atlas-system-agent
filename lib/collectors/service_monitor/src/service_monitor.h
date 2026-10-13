@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <vector>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
+#include <fmt/format.h>
 
 #include "cpu_rate_tracker.h"
 #include "service_monitor_utils.h"
@@ -46,7 +47,7 @@ inline void maybeAddStatus(std::unordered_map<std::string, std::string>& tags, c
     }
 }
 
-inline auto gauge(Registry* registry, const std::string_view name, const std::string_view serviceName,
+inline auto gauge(spectator::Registry* registry, const std::string_view name, const std::string_view serviceName,
                   const std::string_view status = {})
 {
     auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)}};
@@ -56,7 +57,7 @@ inline auto gauge(Registry* registry, const std::string_view name, const std::st
 
 // Scoped gauge: the same metric name is published for both the main PID ("process") and the whole
 // cgroup ("service"); the scope tag tells them apart.
-inline auto gaugeScoped(Registry* registry, const std::string_view name, const std::string_view serviceName,
+inline auto gaugeScoped(spectator::Registry* registry, const std::string_view name, const std::string_view serviceName,
                         const std::string_view scope, const std::string_view status = {})
 {
     auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)},
@@ -65,8 +66,9 @@ inline auto gaugeScoped(Registry* registry, const std::string_view name, const s
     return registry->CreateGauge(std::string(name), tags, ServiceMonitorConstants::GaugeTTLSeconds);
 }
 
-inline auto gaugeServiceState(Registry* registry, const std::string_view name, const std::string_view serviceName,
-                              const std::string_view state, const std::string_view status = {})
+inline auto gaugeServiceState(spectator::Registry* registry, const std::string_view name,
+                              const std::string_view serviceName, const std::string_view state,
+                              const std::string_view status = {})
 {
     auto tags = std::unordered_map<std::string, std::string>{{"service.name", fmt::format("{}", serviceName)}};
     tags.emplace("state", fmt::format("{}", state));
@@ -86,7 +88,7 @@ struct ServiceCpuState
 class ServiceMonitor
 {
    public:
-    ServiceMonitor(Registry* registry, std::vector<std::regex> config, unsigned int max_services);
+    ServiceMonitor(spectator::Registry* registry, std::vector<std::regex> config, unsigned int max_services);
     ~ServiceMonitor() = default;
 
     // Abide by the C++ rule of 5
@@ -99,7 +101,7 @@ class ServiceMonitor
 
     // Availability-aware factory: builds a monitor only when a valid config directory is found (logging
     // when monitoring is disabled), otherwise returns nullopt.
-    static std::optional<ServiceMonitor> Create(Registry* registry, unsigned int max_services);
+    static std::optional<ServiceMonitor> Create(spectator::Registry* registry, unsigned int max_services);
 
     // Gathers metrics from `self` only when present; a no-op when disabled, logging on gather failure.
     // The mirror of Create(): it owns the has_value() guard so callers don't repeat it.
@@ -129,7 +131,7 @@ class ServiceMonitor
     bool collect_cgroup_metrics(const std::string& service, const ServiceProperties& props,
                                 std::chrono::steady_clock::time_point now, CpuRateTracker<std::string>& cpu) const;
 
-    Registry* registry_;
+    spectator::Registry* registry_;
     std::vector<std::regex> config_;
     unsigned int maxMonitoredServices{};
     std::unordered_map<std::string, ServiceCpuState> cpuState_{};

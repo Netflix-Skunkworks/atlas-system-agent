@@ -12,6 +12,8 @@
 #include <filesystem>
 #include <charconv>
 
+using spectator::Registry;
+
 Perfspect::Perfspect(Registry* registry, const std::pair<char, char>& instanceInfo)
     : registry_(registry),
       isAmd(instanceInfo.second == PerfspectConstants::amdSymbol),
