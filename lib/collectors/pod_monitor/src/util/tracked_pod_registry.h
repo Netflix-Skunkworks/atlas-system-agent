@@ -145,7 +145,7 @@ class TrackedPodRegistry
                               EmitFn&& emit) noexcept;
 
     // Read by Reconcile() to construct each newly admitted container's own CGroup instance.
-    Registry* registry_;
+    spectator::Registry* registry_;
     PodTrackedMap tracked_pods_;
 };
 
