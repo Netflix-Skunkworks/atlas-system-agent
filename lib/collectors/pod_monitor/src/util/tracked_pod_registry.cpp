@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <utility>
 
+using spectator::Registry;
+
 namespace atlasagent
 {
 

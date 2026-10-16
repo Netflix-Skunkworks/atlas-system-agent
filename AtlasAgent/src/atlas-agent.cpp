@@ -21,6 +21,11 @@
 #include <random>
 #include <utility>
 
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTypes;
+
 terminator runner;
 
 static void handle_signal(int signal)
@@ -193,7 +198,7 @@ int main(int argc, char* const argv[])
     if (options.verbose)
     {
         logger->set_level(spdlog::level::debug);
-        Logger::GetLogger()->set_level(spdlog::level::debug);
+        spectator::SetLogLevel(spdlog::level::debug);
     }
 
     atlasagent::HttpClient::GlobalInit();

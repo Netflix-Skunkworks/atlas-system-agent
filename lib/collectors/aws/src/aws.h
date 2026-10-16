@@ -56,7 +56,7 @@ inline std::string get_iam_endpoint() { return fmt::format("{}/{}", get_metadata
 class Aws
 {
    public:
-    explicit Aws(Registry* registry) noexcept
+    explicit Aws(spectator::Registry* registry) noexcept
         : registry_(registry),
           executor_{detail::get_netflix_executor()},
           token_endpoint_{detail::get_token_endpoint()},
@@ -113,7 +113,7 @@ class Aws
     }
 
    private:
-    Registry* registry_;
+    spectator::Registry* registry_;
     std::string executor_;
     std::string token_endpoint_;
     std::string iam_endpoint_;

@@ -1,5 +1,7 @@
 #include "cpu_freq.h"
 
+using spectator::Registry;
+
 namespace atlasagent
 {
 

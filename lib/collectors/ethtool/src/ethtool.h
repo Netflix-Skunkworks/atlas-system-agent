@@ -13,7 +13,7 @@ namespace atlasagent
 class Ethtool
 {
    public:
-    explicit Ethtool(Registry* registry, std::unordered_map<std::string, std::string> net_tags = {},
+    explicit Ethtool(spectator::Registry* registry, std::unordered_map<std::string, std::string> net_tags = {},
                      std::string path_prefix = "/sys/class/net") noexcept;
 
     virtual ~Ethtool() = default;
@@ -30,7 +30,7 @@ class Ethtool
     virtual std::vector<std::string> run_ethtool(const std::string& iface);
 
    private:
-    Registry* registry_;
+    spectator::Registry* registry_;
     std::unordered_map<std::string, std::string> net_tags_;
     std::string path_prefix_;
 };

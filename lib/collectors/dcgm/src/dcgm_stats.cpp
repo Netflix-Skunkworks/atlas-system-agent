@@ -7,6 +7,7 @@
 
 using atlasagent::GetLogger;
 using atlasagent::Logger;
+using spectator::Registry;
 
 std::optional<GpuMetricsDCGM> GpuMetricsDCGM::Create(Registry* registry)
 {

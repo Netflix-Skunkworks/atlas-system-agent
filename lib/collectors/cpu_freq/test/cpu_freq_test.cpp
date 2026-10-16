@@ -7,6 +7,13 @@
 #include <gtest/gtest.h>
 #include <set>
 
+using spectator::Config;
+using spectator::MemoryWriter;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTestHelper;
+using spectator::WriterTypes;
+
 namespace
 {
 using atlasagent::CpuFreq;

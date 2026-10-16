@@ -46,7 +46,7 @@ inline absl::string_view path_from(absl::string_view url) noexcept
 class LogEntry
 {
    public:
-    LogEntry(Registry* registry, const std::string& method, const std::string& url)
+    LogEntry(spectator::Registry* registry, const std::string& method, const std::string& url)
         : registry_{registry},
           start_{absl::Now()},
           id_{"ipc.client.call",
@@ -85,9 +85,9 @@ class LogEntry
     }
 
    private:
-    Registry* registry_;
+    spectator::Registry* registry_;
     absl::Time start_;
-    MeterId id_;
+    spectator::MeterId id_;
 
     static const std::string& attempt(int attempt_number)
     {

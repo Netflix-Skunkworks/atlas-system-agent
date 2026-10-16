@@ -219,7 +219,7 @@ class PerfCounter
 class PerfMetrics
 {
    public:
-    PerfMetrics(Registry* registry, const std::string path_prefix);
+    PerfMetrics(spectator::Registry* registry, const std::string path_prefix);
 
     bool open_perf_counters_if_needed();
 
@@ -230,7 +230,7 @@ class PerfMetrics
 
    private:
     bool disabled_ = true;
-    Registry* registry_;
+    spectator::Registry* registry_;
     std::string path_prefix_;
     std::vector<bool> online_cpus_;
     UnixFile pid_{-1};
@@ -242,20 +242,20 @@ class PerfMetrics
     PerfCounter branch_misses{PERF_COUNT_HW_BRANCH_MISSES};
 
     // instructions
-    DistributionSummary instructions_ds_;
+    spectator::DistributionSummary instructions_ds_;
 
     // cycles
-    DistributionSummary cycles_ds_;
+    spectator::DistributionSummary cycles_ds_;
 
     // cache miss rate
-    DistributionSummary cache_ds_;
+    spectator::DistributionSummary cache_ds_;
 
     // branch miss rate
-    DistributionSummary branch_ds_;
+    spectator::DistributionSummary branch_ds_;
 
-    void update_ds(PerfCounter& a, const DistributionSummary& ds, const char* name);
+    void update_ds(PerfCounter& a, const spectator::DistributionSummary& ds, const char* name);
 
-    static void update_rate(PerfCounter& a, PerfCounter& b, const DistributionSummary& ds, const char* name);
+    static void update_rate(PerfCounter& a, PerfCounter& b, const spectator::DistributionSummary& ds, const char* name);
 };
 
 }  // namespace atlasagent

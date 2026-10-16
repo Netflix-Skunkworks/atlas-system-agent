@@ -8,6 +8,8 @@
 
 #include <utility>
 
+using spectator::Registry;
+
 namespace atlasagent
 {
 

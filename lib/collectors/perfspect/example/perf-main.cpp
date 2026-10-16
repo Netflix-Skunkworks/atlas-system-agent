@@ -4,6 +4,10 @@
 #include <lib/logger/src/logger.h>
 
 using atlasagent::Logger;
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+using spectator::WriterTypes;
 
 int main()
 {
@@ -17,7 +21,7 @@ int main()
     auto instanceInfo = Perfspect::IsValidInstance();
     if (instanceInfo.has_value() == false)
     {
-        Logger::error("Could not run PerfSpect on this machine.");
+        logger->error("Could not run PerfSpect on this machine.");
         return 1;
     }
 

@@ -9,15 +9,15 @@ namespace atlasagent
 class MonotonicTimer
 {
    public:
-    MonotonicTimer(Registry* registry, const MeterId& id);
+    MonotonicTimer(spectator::Registry* registry, const spectator::MeterId& id);
 
     void update(absl::Duration monotonic_time, int64_t monotonic_count);
 
    private:
     absl::Duration prev_time;
     int64_t prev_count{};
-    Counter count_;
-    Counter total_time_;
+    spectator::Counter count_;
+    spectator::Counter total_time_;
 };
 
 }  // namespace atlasagent

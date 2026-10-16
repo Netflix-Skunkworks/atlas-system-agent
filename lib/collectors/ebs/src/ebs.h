@@ -1,6 +1,8 @@
 #pragma once
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
+#include <fmt/format.h>
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -83,21 +85,21 @@ static const std::vector<std::string> AtlasNamingConvention = {
     "us_00524288_01048576", "us_01048576_02097152", "us_02097152_04194304", "us_04194304_08388608",
     "us_08388608_16777216", "us_16777216_33554432", "us_33554432_67108864", "us_67108864_MAX"};
 
-inline auto ebsGauge(Registry* registry, const std::string_view name, const std::string_view deviceName)
+inline auto ebsGauge(spectator::Registry* registry, const std::string_view name, const std::string_view deviceName)
 {
     std::unordered_map<std::string, std::string> tags = {{"dev", fmt::format("{}", deviceName)}};
     return registry->CreateGauge(std::string(name), tags);
 }
 
-inline auto ebsMonocounter(Registry* registry, const std::string_view name, const std::string_view deviceName,
-                           const std::string_view id)
+inline auto ebsMonocounter(spectator::Registry* registry, const std::string_view name,
+                           const std::string_view deviceName, const std::string_view id)
 {
     std::unordered_map<std::string, std::string> tags = {{"dev", fmt::format("{}", deviceName)},
                                                          {"id", fmt::format("{}", id)}};
     return registry->CreateMonotonicCounter(std::string(name), tags);
 }
 
-inline auto ebsHistogram(Registry* registry, const std::string_view name, const std::string_view deviceName,
+inline auto ebsHistogram(spectator::Registry* registry, const std::string_view name, const std::string_view deviceName,
                          const std::string_view id, const std::string_view bin)
 {
     std::unordered_map<std::string, std::string> tags = {
@@ -111,19 +113,19 @@ class EBSCollector
     // TODO: Change config to a vector to improve performance
     // PreReq: Break collect_system_metrics into more functions
     std::unordered_set<std::string> config;
-    Registry* registry_;
+    spectator::Registry* registry_;
     bool query_stats_from_device(const std::string& device, nvme_get_amzn_stats_logpage& stats);
     bool update_metrics(const std::string& devicePath, const nvme_get_amzn_stats_logpage& stats);
     bool handle_histogram(const ebs_nvme_histogram& histogram, const std::string& devicePath, const std::string& id);
 
    public:
-    EBSCollector(Registry* registry, const std::unordered_set<std::string>& config);
+    EBSCollector(spectator::Registry* registry, const std::unordered_set<std::string>& config);
 
     bool gather_metrics();
 
     // Availability-aware factory: builds a collector only when a valid config directory is found (logging
     // when monitoring is disabled), otherwise returns nullopt.
-    static std::optional<EBSCollector> Create(Registry* registry);
+    static std::optional<EBSCollector> Create(spectator::Registry* registry);
 
     // Gathers metrics from `self` only when present; a no-op when disabled, logging on gather failure.
     // The mirror of Create(): it owns the has_value() guard so callers don't repeat it.

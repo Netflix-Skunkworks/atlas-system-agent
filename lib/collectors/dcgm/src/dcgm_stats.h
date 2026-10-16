@@ -32,7 +32,7 @@ struct DCGMConstants
 
 namespace detail
 {
-inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
+inline auto gauge(spectator::Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
     std::unordered_map<std::string, std::string> tagMap = {
         {"gpu", fmt::format("{}", gpu)},
@@ -45,7 +45,7 @@ inline auto gauge(Registry* registry, const char* name, unsigned int gpu, const 
     return registry->CreateGauge(name, tagMap);
 }
 
-inline auto counter(Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
+inline auto counter(spectator::Registry* registry, const char* name, unsigned int gpu, const char* id = nullptr)
 {
     std::unordered_map<std::string, std::string> tagMap = {
         {"gpu", fmt::format("{}", gpu)},
@@ -62,7 +62,7 @@ inline auto counter(Registry* registry, const char* name, unsigned int gpu, cons
 class GpuMetricsDCGM
 {
    public:
-    GpuMetricsDCGM(Registry* registry) : registry_{registry} {};
+    GpuMetricsDCGM(spectator::Registry* registry) : registry_{registry} {};
     ~GpuMetricsDCGM(){};
 
     // Abide by the C++ rule of 5
@@ -74,7 +74,7 @@ class GpuMetricsDCGM
 
     // Availability-aware factory: builds a collector only when the dcgmi binary is present (logging the
     // decision and the current service state), otherwise returns nullopt.
-    static std::optional<GpuMetricsDCGM> Create(Registry* registry);
+    static std::optional<GpuMetricsDCGM> Create(spectator::Registry* registry);
 
     // Gathers metrics from `self` only when present and the DCGM service is running; a no-op otherwise,
     // logging on gather failure. The mirror of Create(): it owns the has_value() guard.
@@ -82,5 +82,5 @@ class GpuMetricsDCGM
 
    private:
     bool update_metrics(std::map<int, std::vector<double>>& dataMap);
-    Registry* registry_;
+    spectator::Registry* registry_;
 };

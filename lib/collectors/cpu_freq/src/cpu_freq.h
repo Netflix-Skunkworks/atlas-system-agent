@@ -26,12 +26,13 @@ inline bool is_directory(const std::string& directory)
 class CpuFreq
 {
    public:
-    explicit CpuFreq(Registry* registry, std::string path_prefix = "/sys/devices/system/cpu/cpufreq") noexcept;
+    explicit CpuFreq(spectator::Registry* registry,
+                     std::string path_prefix = "/sys/devices/system/cpu/cpufreq") noexcept;
 
     void Stats() noexcept;
 
    private:
-    Registry* registry_;
+    spectator::Registry* registry_;
     std::string path_prefix_;
     bool enabled_;
 };

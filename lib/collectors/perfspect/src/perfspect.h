@@ -56,7 +56,7 @@ std::optional<std::pair<char, char>> ParseProductName(const std::string& product
 class Perfspect
 {
    public:
-    Perfspect(Registry* registry, const std::pair<char, char>& instanceInfo);
+    Perfspect(spectator::Registry* registry, const std::pair<char, char>& instanceInfo);
     ~Perfspect() { CleanupProcess(); };
 
     // Abide by the C++ rule of 5
@@ -70,7 +70,7 @@ class Perfspect
 
     // Availability-aware factory: builds a collector only on a valid instance (logging when monitoring
     // is disabled), otherwise returns nullopt.
-    static std::optional<Perfspect> Create(Registry* registry);
+    static std::optional<Perfspect> Create(spectator::Registry* registry);
 
     // Gathers metrics from `self` only when present; a no-op when the feature is disabled. The mirror
     // of Create(): it owns the has_value() guard so callers don't repeat it.
@@ -84,7 +84,7 @@ class Perfspect
     void SendMetrics(const PerfspectData& data);
     bool StartScript();
 
-    Registry* registry_;
+    spectator::Registry* registry_;
     bool firstIteration{true};
     bool isAmd{false};
     char version;
@@ -99,8 +99,8 @@ class Perfspect
     boost::system::error_code lastAsyncError;
 
     // Metrics
-    Gauge cpuFrequencyGauge;
-    Counter cyclesCounter;
-    Counter instructionsCounter;
-    Counter l2CacheMissesCounter;
+    spectator::Gauge cpuFrequencyGauge;
+    spectator::Counter cyclesCounter;
+    spectator::Counter instructionsCounter;
+    spectator::Counter l2CacheMissesCounter;
 };

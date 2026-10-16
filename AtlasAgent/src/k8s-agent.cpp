@@ -25,6 +25,10 @@
 #include <unordered_set>
 #include <vector>
 
+using spectator::Config;
+using spectator::Registry;
+using spectator::WriterConfig;
+
 static void gather_peak_system_metrics(atlasagent::Proc* proc, const bool fiveSecondMetricsEnabled,
                                        const bool sixtySecondMetricsEnabled)
 {
