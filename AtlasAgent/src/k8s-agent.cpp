@@ -67,8 +67,12 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     // Declared here rather than threaded down from main() because PodMonitor is the only collector
     // that must not carry the node's identity. Same spectatord socket, so metrics from both
     // registries still land in the same place.
+    // A separate Registry is not enough on its own: Config adds nf.container and nf.process from this
+    // agent's own environment, and those win over per-meter tags, so they would overwrite the
+    // per-container nf.container that TrackedPodRegistry sets and merge every container into one
+    // series. includeEnvTags=false keeps them out.
     std::unordered_map<std::string, std::string> common_tags{{"metric-type", "pod-container"}};
-    Config pod_monitor_config(WriterConfig(K8sAgentConstants::SpectatordSocket), common_tags);
+    Config pod_monitor_config(WriterConfig(K8sAgentConstants::SpectatordSocket), common_tags, false);
     Registry pod_monitor_registry(pod_monitor_config);
     atlasagent::PodMonitor podMonitor{&pod_monitor_registry};
 

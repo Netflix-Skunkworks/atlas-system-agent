@@ -41,8 +41,9 @@ bool can_execute(const std::string& program);
 std::unordered_map<std::string, std::string> parse_tags(const char* s);
 
 // Netflix/EC2 identity metadata from the environment, as spectator tags (nf.account, nf.app,
-// nf.asg, nf.cluster, nf.container, nf.node, nf.process, nf.region, nf.shard1, nf.shard2, nf.stack,
-// nf.vmtype, nf.zone). A tag is omitted when none of its candidate environment variables are set.
+// nf.asg, nf.cluster, nf.node, nf.region, nf.shard1, nf.shard2, nf.stack, nf.vmtype, nf.zone).
+// A tag is omitted when none of its candidate environment variables are set. Never nf.container or
+// nf.process: those name the container and process a metric describes, not the node.
 std::unordered_map<std::string, std::string> get_common_tags();
 
 bool is_service_running(const char* serviceName);

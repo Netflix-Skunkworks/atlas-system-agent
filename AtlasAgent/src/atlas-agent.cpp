@@ -204,7 +204,10 @@ int main(int argc, char* const argv[])
     atlasagent::HttpClient::GlobalInit();
 
 #if defined(AGENT_FLAVOR_K8S)
-    Config config(WriterConfig(K8sAgentConstants::SpectatordSocket), common_tags);
+    // includeEnvTags=false: otherwise spectator-cpp adds nf.container/nf.process from this agent's own
+    // environment. Node series share names with the pod monitor's per-container series (sys.cpu.utilization,
+    // mem.availReal, disk.io.bytes), so the agent's container name would mix them into nf.container queries.
+    Config config(WriterConfig(K8sAgentConstants::SpectatordSocket), common_tags, false);
 #else
     Config config(WriterConfig(WriterTypes::Unix), common_tags);
 #endif
