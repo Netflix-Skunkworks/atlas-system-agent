@@ -696,7 +696,8 @@ class ScopedEnv
 };
 
 // Every variable spectator-cpp's Config reads for nf.container and nf.process, set to the agent's
-// own name -- what the agent's container would carry once the platform sets them.
+// own name -- what the agent's environment would hold if Compute mistakenly set them on the node,
+// which is a host, not a container.
 struct AgentIdentityEnv
 {
     ScopedEnv netflix_container{"NETFLIX_CONTAINER_NAME", "atlas-agent"};
@@ -727,8 +728,8 @@ std::vector<std::string> EmitTwoContainerMemoryStats(const Config& config)
 }
 
 // The pod monitor's Registry passes includeEnvTags=false (k8s-agent.cpp). Without it, Config adds
-// nf.container and nf.process from the agent's own environment, those win over per-meter tags, and
-// every container on the node would report as the agent's container.
+// nf.container and nf.process from the agent's own environment when their variables are set, those
+// win over per-meter tags, and every container on the node would report under that one nf.container.
 TEST(TrackedPodRegistryEnv, AgentIdentityEnvNeverOverridesPerContainerTag)
 {
     AgentIdentityEnv env;
