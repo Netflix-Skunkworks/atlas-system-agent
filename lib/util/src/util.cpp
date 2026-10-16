@@ -351,9 +351,7 @@ std::unordered_map<std::string, std::string> get_common_tags()
     static constexpr const char* kApp[] = {"NETFLIX_APP"};
     static constexpr const char* kAsg[] = {"NETFLIX_AUTO_SCALE_GROUP"};
     static constexpr const char* kCluster[] = {"NETFLIX_CLUSTER"};
-    static constexpr const char* kContainer[] = {"TITUS_CONTAINER_NAME"};
     static constexpr const char* kNode[] = {"NETFLIX_INSTANCE_ID", "TITUS_TASK_INSTANCE_ID", "EC2_INSTANCE_ID"};
-    static constexpr const char* kProcess[] = {"NETFLIX_PROCESS_NAME"};
     static constexpr const char* kRegion[] = {"NETFLIX_REGION", "EC2_REGION"};
     static constexpr const char* kShard1[] = {"NETFLIX_SHARD1"};
     static constexpr const char* kShard2[] = {"NETFLIX_SHARD2"};
@@ -361,12 +359,13 @@ std::unordered_map<std::string, std::string> get_common_tags()
     static constexpr const char* kVmtype[] = {"EC2_INSTANCE_TYPE"};
     static constexpr const char* kZone[] = {"EC2_AVAILABILITY_ZONE"};
 
+    // No nf.container or nf.process: node metrics describe the node, not a container or process (the
+    // node registry also opts out of spectator-cpp's environment lookup; see main() in atlas-agent.cpp).
     static constexpr TagMapping kMappings[] = {
         {"nf.account", kAccount},     {"nf.app", kApp},         {"nf.asg", kAsg},
-        {"nf.cluster", kCluster},     {"nf.container", kContainer}, {"nf.node", kNode},
-        {"nf.process", kProcess},     {"nf.region", kRegion},   {"nf.shard1", kShard1},
-        {"nf.shard2", kShard2},       {"nf.stack", kStack},     {"nf.vmtype", kVmtype},
-        {"nf.zone", kZone},
+        {"nf.cluster", kCluster},     {"nf.node", kNode},       {"nf.region", kRegion},
+        {"nf.shard1", kShard1},       {"nf.shard2", kShard2},   {"nf.stack", kStack},
+        {"nf.vmtype", kVmtype},       {"nf.zone", kZone},
     };
 
     std::unordered_map<std::string, std::string> tags;

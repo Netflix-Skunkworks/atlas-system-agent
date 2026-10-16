@@ -203,10 +203,16 @@ int main(int argc, char* const argv[])
 
     atlasagent::HttpClient::GlobalInit();
 
+    // includeEnvTags=false for the k8s and system agents: their metrics describe the Kubernetes node or the EC2
+    // instance. If Compute sets NETFLIX_CONTAINER_NAME or TITUS_CONTAINER_NAME there, that is a mistake, because the
+    // node and EC2 instances are hosts, not containers. The pod monitor's Registry opts out too (k8s-agent.cpp). The
+    // Titus agent keeps the default because it runs in a container.
 #if defined(AGENT_FLAVOR_K8S)
-    Config config(WriterConfig(K8sAgentConstants::SpectatordSocket), common_tags);
-#else
+    Config config(WriterConfig(K8sAgentConstants::SpectatordSocket), common_tags, false);
+#elif defined(AGENT_FLAVOR_TITUS)
     Config config(WriterConfig(WriterTypes::Unix), common_tags);
+#else
+    Config config(WriterConfig(WriterTypes::Unix), common_tags, false);
 #endif
     Registry registry(config);
 #if defined(AGENT_FLAVOR_TITUS)

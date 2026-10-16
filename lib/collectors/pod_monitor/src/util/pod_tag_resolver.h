@@ -13,13 +13,13 @@ namespace atlasagent
 // and app; nf.stack uses app.kubernetes.io/instance; nf.detail uses app.kubernetes.io/component.
 //
 // Returns nullopt (Gating: no metrics for any container in this pod) if none of
-// nf.app/nf.stack/nf.detail resolved. nf.node/nf.process are excluded from that decision because
+// nf.app/nf.stack/nf.detail resolved. nf.node/nf.container are excluded from that decision because
 // they are derived from pod/container names rather than the app-identity annotations and labels;
 // either tag may still be absent when its source string is empty.
 // Otherwise returns whichever of nf.app/nf.stack/nf.cluster resolved, nf.node=pod_name if non-empty,
 // and k8s.cluster.name if k8s_cluster is non-empty. nf.cluster uses the *primary* annotations only,
 // so a stack/detail resolved via label fallback is left out of its suffix even though nf.stack still
-// reflects it (deliberate -- see BuildNfCluster). nf.process is per-container, set by the caller.
+// reflects it (deliberate -- see BuildNfCluster). nf.container is per-container, set by the caller.
 // Resolved nf.detail participates in Gating, and the primary detail annotation can contribute to
 // nf.cluster, but nf.detail itself is not returned. Its tag-emplace and nf.platform's are disabled
 // in the .cpp pending a "todo uncomment later".

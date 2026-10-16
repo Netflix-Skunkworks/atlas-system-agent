@@ -102,7 +102,7 @@ class TrackedPodRegistry
     // Emits CGroup::MemoryStatsV2 (cgroup.mem.*) and CGroup::MemoryStatsStdV2 (mem.*, NOT
     // cgroup.mem.*, despite both reading memory.current/memory.max/memory.stat) for every LIVE
     // tracked container (see ContainerIsLive), tagged with the pod tags supplied by the active
-    // snapshot and its own nf.process. Never changes tracked membership; call Reconcile() first to
+    // snapshot and its own nf.container. Never changes tracked membership; call Reconcile() first to
     // include a pod/container admitted this cycle.
     void EmitMemoryStats() noexcept;
 

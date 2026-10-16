@@ -140,7 +140,9 @@ class TempCgroupTree
 class TrackedPodRegistryTest : public testing::Test
 {
    protected:
-    Config config{WriterConfig(WriterTypes::Memory)};
+    // includeEnvTags=false, like the pod monitor's Registry in k8s-agent.cpp, so a build host's
+    // NETFLIX_CONTAINER_NAME or TITUS_CONTAINER_NAME cannot replace the per-container nf.container.
+    Config config{WriterConfig(WriterTypes::Memory), {}, false};
     Registry r{config};
     MemoryWriter* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
 };
@@ -241,16 +243,20 @@ TEST_F(TrackedPodRegistryTest, PerContainerTagsReachEmittedLinesWithSharedPodTag
     auto messages = memoryWriter->GetMessages();
     ASSERT_FALSE(messages.empty());
 
-    // Each container is disambiguated by its own nf.process...
-    EXPECT_TRUE(AnyLineContains(messages, "nf.process=main"));
-    EXPECT_TRUE(AnyLineContains(messages, "nf.process=sidecar"));
+    // Each container is disambiguated by its own nf.container (its Kubernetes container name, the
+    // same value the thin clients send)...
+    EXPECT_TRUE(AnyLineContains(messages, "nf.container=main"));
+    EXPECT_TRUE(AnyLineContains(messages, "nf.container=sidecar"));
+    // ...and never by nf.process, which names one process inside a container and is set only by
+    // the thin clients.
+    EXPECT_FALSE(AnyLineContains(messages, "nf.process="));
 
     // ...while BOTH carry the pod-level tags -- the assertion that matters. ReconcileContainers
     // copies active.tags per iteration and std::move()s that copy into SetExtraTags: hoisting it
     // out of the loop as an "optimization" would leave every container after the first with an
     // empty tag map -- metrics that still publish, but silently unattributable to any app.
-    EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.process=main", "nf.app=myapp", "nf.stack=mystack"}));
-    EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.process=sidecar", "nf.app=myapp", "nf.stack=mystack"}));
+    EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.container=main", "nf.app=myapp", "nf.stack=mystack"}));
+    EXPECT_TRUE(AnyLineContainsAll(messages, {"nf.container=sidecar", "nf.app=myapp", "nf.stack=mystack"}));
 }
 
 TEST_F(TrackedPodRegistryTest, InjectsNamespaceAndRejectsMissingPodIdentity)
@@ -653,6 +659,100 @@ TEST_F(TrackedPodRegistryTest, EmitMethodsAreNoOpsWithNothingTracked)
     EXPECT_NO_FATAL_FAILURE(registry.EmitIOStats());
     EXPECT_NO_FATAL_FAILURE(registry.EmitMemoryStats());
     EXPECT_TRUE(memoryWriter->GetMessages().empty());
+}
+
+// Sets an env var for a scope and restores the prior value (or unsets it). gtest runs every test
+// in one process, so a leaked setenv would be visible to the tests that follow.
+class ScopedEnv
+{
+   public:
+    ScopedEnv(const char* name, const char* value) : name_(name)
+    {
+        if (const char* prior = std::getenv(name); prior != nullptr)
+        {
+            had_prior_ = true;
+            prior_ = prior;
+        }
+        setenv(name, value, 1);
+    }
+    ~ScopedEnv()
+    {
+        if (had_prior_)
+        {
+            setenv(name_, prior_.c_str(), 1);
+        }
+        else
+        {
+            unsetenv(name_);
+        }
+    }
+    ScopedEnv(const ScopedEnv&) = delete;
+    ScopedEnv& operator=(const ScopedEnv&) = delete;
+
+   private:
+    const char* name_;
+    bool had_prior_ = false;
+    std::string prior_;
+};
+
+// Every variable spectator-cpp's Config reads for nf.container and nf.process, set to the agent's
+// own name -- what the agent's environment would hold if Compute mistakenly set them on the node,
+// which is a host, not a container.
+struct AgentIdentityEnv
+{
+    ScopedEnv netflix_container{"NETFLIX_CONTAINER_NAME", "atlas-agent"};
+    ScopedEnv titus_container{"TITUS_CONTAINER_NAME", "atlas-agent"};
+    ScopedEnv netflix_process{"NETFLIX_PROCESS_NAME", "atlas-agent"};
+    ScopedEnv titus_process{"TITUS_PROCESS_NAME", "atlas-agent"};
+};
+
+// Tracks the two-container fixture pod and returns its memory-stat lines, emitted through a Registry
+// built from `config`. Config reads the environment when it is constructed, so callers build it
+// after setting any variables. Constructing a Registry re-initializes the process-wide writer, so the
+// writer is fetched only after the Registry exists (see WRITER DISCIPLINE above).
+std::vector<std::string> EmitTwoContainerMemoryStats(const Config& config)
+{
+    Registry r{config};
+    auto* memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    atlasagent::TrackedPodRegistry registry{&r};
+    const auto cgroup_path = Pod1SlicePath("systemd_pod_with_two_containers");
+    registry.Reconcile(OnePodPlan(kPod1Uid, cgroup_path,
+                                  ContainerScopes(cgroup_path, {ContainerId('a'), ContainerId('b')}),
+                                  {{ContainerId('a'), "main"}, {ContainerId('b'), "sidecar"}},
+                                  {{"netflix.com/app", "myapp"}}));
+
+    memoryWriter->Clear();
+    registry.EmitMemoryStats();
+    return memoryWriter->GetMessages();
+}
+
+// The pod monitor's Registry passes includeEnvTags=false (k8s-agent.cpp). Without it, Config adds
+// nf.container and nf.process from the agent's own environment when their variables are set, those
+// win over per-meter tags, and every container on the node would report under that one nf.container.
+TEST(TrackedPodRegistryEnv, AgentIdentityEnvNeverOverridesPerContainerTag)
+{
+    AgentIdentityEnv env;
+    auto messages = EmitTwoContainerMemoryStats(Config{WriterConfig(WriterTypes::Memory), {}, false});
+    ASSERT_FALSE(messages.empty());
+
+    EXPECT_TRUE(AnyLineContains(messages, "nf.container=main"));
+    EXPECT_TRUE(AnyLineContains(messages, "nf.container=sidecar"));
+    EXPECT_FALSE(AnyLineContains(messages, "atlas-agent"));
+    EXPECT_FALSE(AnyLineContains(messages, "nf.process="));
+}
+
+// Control for the test above: with the default Config, the same environment does replace the
+// per-container tag. Without this, that test would also pass if the variables never reached Config.
+TEST(TrackedPodRegistryEnv, DefaultConfigLetsAgentIdentityOverridePerContainerTag)
+{
+    AgentIdentityEnv env;
+    auto messages = EmitTwoContainerMemoryStats(Config{WriterConfig(WriterTypes::Memory)});
+    ASSERT_FALSE(messages.empty());
+
+    EXPECT_TRUE(AnyLineContains(messages, "nf.container=atlas-agent"));
+    EXPECT_FALSE(AnyLineContains(messages, "nf.container=main"));
+    EXPECT_FALSE(AnyLineContains(messages, "nf.container=sidecar"));
 }
 
 }  // namespace

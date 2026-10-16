@@ -106,7 +106,7 @@ std::optional<std::unordered_map<std::string, std::string>> ResolvePodTags(
     if (!nf_app.has_value() && !nf_stack.has_value() && !nf_detail.has_value())
     {
         // Gating: none of the three identity-bearing keys resolved (annotation or label fallback)
-        // -- no metrics for any container in this pod. nf.node/nf.process are deliberately NOT part
+        // -- no metrics for any container in this pod. nf.node/nf.container are deliberately NOT part
         // of this check; see this function's declaration for why.
         return std::nullopt;
     }
