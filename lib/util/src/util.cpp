@@ -359,8 +359,8 @@ std::unordered_map<std::string, std::string> get_common_tags()
     static constexpr const char* kVmtype[] = {"EC2_INSTANCE_TYPE"};
     static constexpr const char* kZone[] = {"EC2_AVAILABILITY_ZONE"};
 
-    // No nf.container or nf.process: they name the container and process a metric describes, and
-    // node metrics describe the node, not the agent's own container (see main() in atlas-agent.cpp).
+    // No nf.container or nf.process: node metrics describe the node, not a container or process (the
+    // node registry also opts out of spectator-cpp's environment lookup; see main() in atlas-agent.cpp).
     static constexpr TagMapping kMappings[] = {
         {"nf.account", kAccount},     {"nf.app", kApp},         {"nf.asg", kAsg},
         {"nf.cluster", kCluster},     {"nf.node", kNode},       {"nf.region", kRegion},

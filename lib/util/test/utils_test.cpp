@@ -166,8 +166,8 @@ TEST(Utils, GetCommonTagsTrimsSurroundingWhitespace)
     EXPECT_EQ(tags.at("nf.stack"), "prod");
 }
 
-// get_common_tags() feeds the node registry. nf.container and nf.process name the container and
-// process a metric describes, so the agent's own values must never be stamped on node metrics.
+// get_common_tags() feeds the node registry, whose metrics describe the node, not a container or
+// process, so it must never map nf.container or nf.process.
 TEST(Utils, GetCommonTagsNeverSetsContainerOrProcessTags)
 {
     ScopedEnv app{"NETFLIX_APP", "atlas-agent"};
