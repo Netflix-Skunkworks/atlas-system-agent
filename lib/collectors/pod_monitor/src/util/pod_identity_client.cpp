@@ -236,7 +236,7 @@ PodIdentityResult PodIdentityClient::ParsePodList(const std::string& json) noexc
             }
             // NOT parsed: status.ephemeralContainerStatuses[] (kubectl debug containers). Those do
             // get their own cgroup scope, so they land on the unmatched-identity path. Including
-            // them would create a new nf.process series for each debug session.
+            // them would create a new nf.container series for each debug session.
         }
 
         result.emplace(metadata["uid"].GetString(), std::move(identity));

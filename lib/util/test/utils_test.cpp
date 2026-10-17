@@ -165,4 +165,21 @@ TEST(Utils, GetCommonTagsTrimsSurroundingWhitespace)
     ASSERT_TRUE(tags.contains("nf.stack"));
     EXPECT_EQ(tags.at("nf.stack"), "prod");
 }
+
+// get_common_tags() feeds the node registry, whose metrics describe the node, not a container or
+// process, so it must never map nf.container or nf.process.
+TEST(Utils, GetCommonTagsNeverSetsContainerOrProcessTags)
+{
+    ScopedEnv app{"NETFLIX_APP", "atlas-agent"};
+    ScopedEnv netflix_container{"NETFLIX_CONTAINER_NAME", "atlas-agent"};
+    ScopedEnv titus_container{"TITUS_CONTAINER_NAME", "atlas-agent"};
+    ScopedEnv netflix_process{"NETFLIX_PROCESS_NAME", "atlas-agent"};
+    ScopedEnv titus_process{"TITUS_PROCESS_NAME", "atlas-agent"};
+
+    auto tags = atlasagent::get_common_tags();
+    // Control: the environment is read, so the omissions below are not vacuous.
+    EXPECT_TRUE(tags.contains("nf.app"));
+    EXPECT_FALSE(tags.contains("nf.container"));
+    EXPECT_FALSE(tags.contains("nf.process"));
+}
 }  // namespace

@@ -137,7 +137,7 @@ void TrackedPodRegistry::ReconcileContainers(const std::string& uid, TrackedPod&
         }
 
         auto container_tags = active.tags;
-        container_tags["nf.process"] = active_container.name;
+        container_tags["nf.container"] = active_container.name;
 
         auto [cit, container_inserted] = pod.containers.try_emplace(
             container_id, registry_, active_container.cgroup_path, active_container.name);

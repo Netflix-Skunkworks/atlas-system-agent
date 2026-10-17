@@ -32,7 +32,9 @@ TEST(PodTagResolver, ResolvePodTagsPrimaryTierOnly)
     // nf.platform's tag-emplace is likewise currently disabled.
     EXPECT_FALSE(result->contains("nf.platform"));
     EXPECT_FALSE(result->contains("k8s.cluster.name"));
-    // nf.process is per-container, applied by the caller (TrackedPodRegistry) -- never set here.
+    // nf.container is per-container, applied by the caller (TrackedPodRegistry) -- never set here.
+    EXPECT_FALSE(result->contains("nf.container"));
+    // nf.process names one process inside a container; only the thin clients set it.
     EXPECT_FALSE(result->contains("nf.process"));
 }
 
