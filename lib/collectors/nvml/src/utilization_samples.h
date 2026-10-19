@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace atlasagent
@@ -71,29 +72,26 @@ inline NvmlRet ReadGpuUtilizationSamples(NvmlGetSamples get_samples, NvmlDeviceH
             return NvmlRet::Success;
         }
 
-        samples->resize(count);
-        result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, samples->data());
+        std::vector<NvmlSample> buffer(count);
+        result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, buffer.data());
         if (result == NvmlRet::ErrorInsufficientSize)
         {
-            samples->clear();
             continue;
         }
         if (result == NvmlRet::ErrorNotFound)
         {
-            samples->clear();
             return NvmlRet::Success;
         }
         if (result != NvmlRet::Success)
         {
-            samples->clear();
             return result;
         }
-        if (value_type != NvmlValueType::UnsignedInt || count > samples->size())
+        if (value_type != NvmlValueType::UnsignedInt || count > buffer.size())
         {
-            samples->clear();
             return NvmlRet::ErrorInvalidArgument;
         }
-        samples->resize(count);
+        buffer.resize(count);
+        *samples = std::move(buffer);
         return NvmlRet::Success;
     }
     return NvmlRet::ErrorInsufficientSize;
