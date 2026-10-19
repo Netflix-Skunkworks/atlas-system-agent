@@ -42,7 +42,7 @@ add_test(
 # These tests need neither an NVIDIA driver nor a GPU.
 add_executable(utilization_samples_test test/utilization_samples_test.cpp)
 target_include_directories(utilization_samples_test PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(utilization_samples_test gtest::gtest_main)
+target_link_libraries(utilization_samples_test GTest::Main)
 add_test(NAME utilization_samples_test COMMAND utilization_samples_test)
 
 #-- test_nvml executable
