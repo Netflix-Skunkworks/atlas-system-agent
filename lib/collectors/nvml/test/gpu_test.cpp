@@ -5,6 +5,9 @@
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 #include <gtest/gtest.h>
 
+#include <condition_variable>
+#include <mutex>
+
 using atlasagent::NvmlDeviceHandle;
 using atlasagent::NvmlMemory;
 using atlasagent::NvmlPerfState;
@@ -71,13 +74,25 @@ class TestNvml
     atlasagent::NvmlRet sample_result{atlasagent::NvmlRet::ErrorNotSupported};
     std::vector<atlasagent::NvmlSample> sample_batch;
     std::vector<unsigned long long> cursors;
+    std::mutex sample_mutex;
+    std::condition_variable sample_polled;
 
     atlasagent::NvmlRet get_gpu_utilization_samples(NvmlDeviceHandle, unsigned long long last_seen,
                                                     std::vector<atlasagent::NvmlSample>* samples)
     {
-        cursors.push_back(last_seen);
+        {
+            std::lock_guard lock(sample_mutex);
+            cursors.push_back(last_seen);
+        }
+        sample_polled.notify_all();
         *samples = sample_batch;
         return sample_result;
+    }
+
+    bool WaitForPolls(std::size_t count, std::chrono::steady_clock::duration timeout)
+    {
+        std::unique_lock lock(sample_mutex);
+        return sample_polled.wait_for(lock, timeout, [&] { return cursors.size() >= count; });
     }
 
     bool get_performance_state(NvmlDeviceHandle device, NvmlPerfState* perf_state) noexcept
@@ -267,11 +282,11 @@ TEST(GpuSamplingWorker, PollsWhileMinutePublisherIsIdleAndStopsPromptly)
     nvml->device_count = 1;
     std::optional<atlasagent::GpuMetrics<TestNvml>> collector{std::in_place, &registry, std::move(lib)};
     auto worker = atlasagent::GpuMetrics<TestNvml>::StartPolling(collector);
-    std::this_thread::sleep_for(std::chrono::milliseconds(5200));
+    auto polled = nvml->WaitForPolls(2, std::chrono::seconds(10));
     auto start = std::chrono::steady_clock::now();
     worker = std::jthread{};  // request stop and join, interrupting the 5s wait
+    EXPECT_TRUE(polled);  // initial baseline plus a background poll
     EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(1));
-    EXPECT_GE(nvml->cursors.size(), 2u);  // initial baseline plus a background poll
 }
 
 }  // namespace
