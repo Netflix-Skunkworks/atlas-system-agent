@@ -2,6 +2,8 @@
 
 #include "nvml.h"
 #include "utilization_samples.h"
+#include <absl/base/thread_annotations.h>
+#include <absl/synchronization/mutex.h>
 #include <lib/logger/src/logger.h>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
@@ -111,7 +113,7 @@ class GpuMetrics
 
     void poll_samples() noexcept
     {
-        std::lock_guard lock(sample_data_->mutex);
+        absl::MutexLock lock(&sample_data_->mutex);
         unsigned int count;
         if (!nvml_->get_count(&count))
         {
@@ -168,7 +170,7 @@ class GpuMetrics
         // interval. Empty intervals emit nothing, rather than a false zero.
         std::vector<std::pair<unsigned int, double>> averages;
         {
-            std::lock_guard lock(sample_data_->mutex);
+            absl::MutexLock lock(&sample_data_->mutex);
             for (auto& [index, state] : sample_data_->states)
             {
                 if (auto average = state.window.Publish())
@@ -235,8 +237,9 @@ class GpuMetrics
 
     struct SampleData
     {
-        std::mutex mutex;
-        std::unordered_map<unsigned int, SampleState> states;
+        // TODO: Build with Clang -Wthread-safety to check the guard annotation.
+        absl::Mutex mutex;
+        std::unordered_map<unsigned int, SampleState> states ABSL_GUARDED_BY(mutex);
     };
 
     // Heap storage keeps the collector movable for the availability factory.

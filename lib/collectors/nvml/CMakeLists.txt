@@ -13,6 +13,7 @@ target_include_directories(nvml
 target_link_libraries(nvml
     fmt::fmt
     absl::time
+    absl::synchronization
     spdlog::spdlog
     spectator-registry
     ${CMAKE_DL_LIBS}
