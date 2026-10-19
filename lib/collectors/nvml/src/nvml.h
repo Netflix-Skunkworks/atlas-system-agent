@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace atlasagent
 {
@@ -50,6 +51,8 @@ enum NvmlRet
     ErrorUnknown = 999
 };
 
+struct NvmlSample;
+
 class Nvml
 {
    public:
@@ -63,6 +66,8 @@ class Nvml
 
     bool get_memory_info(NvmlDeviceHandle device, NvmlMemory* memory) noexcept;
     bool get_utilization_rates(NvmlDeviceHandle device, NvmlUtilization* utilization) noexcept;
+    NvmlRet get_gpu_utilization_samples(NvmlDeviceHandle device, unsigned long long last_seen,
+                                        std::vector<NvmlSample>* samples);
     bool get_performance_state(NvmlDeviceHandle device, NvmlPerfState* perf_state) noexcept;
     bool get_temperature(NvmlDeviceHandle device, unsigned int* temperature) noexcept;
     bool get_name(NvmlDeviceHandle device, std::string* name) noexcept;
