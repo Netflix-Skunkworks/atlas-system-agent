@@ -7,6 +7,7 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <ranges>
 
 using atlasagent::NvmlDeviceHandle;
 using atlasagent::NvmlMemory;
@@ -33,6 +34,10 @@ class TestNvml
 
     bool get_by_index(unsigned int index, NvmlDeviceHandle* device) noexcept
     {
+        if (index == unavailable_index)
+        {
+            return false;
+        }
         *device = reinterpret_cast<NvmlDeviceHandle>(index + handle_offset);
         return true;
     }
@@ -71,6 +76,7 @@ class TestNvml
 
     unsigned int device_count{2};
     unsigned int handle_offset{0};
+    unsigned int unavailable_index{~0u};
     atlasagent::NvmlRet sample_result{atlasagent::NvmlRet::ErrorNotSupported};
     std::vector<atlasagent::NvmlSample> sample_batch;
     std::vector<unsigned long long> cursors;
@@ -129,6 +135,25 @@ class TestNvml
 
     bool get_fan_speed(NvmlDeviceHandle device, unsigned int* speed) noexcept { return false; }
 };
+
+static_assert(std::ranges::input_range<atlasagent::NvmlDevices<TestNvml>>);
+
+TEST(GpuDevices, SkipsUnavailableIndicesAndKeepsDeviceIndex)
+{
+    TestNvml nvml;
+    nvml.device_count = 3;
+    nvml.unavailable_index = 1;
+    std::vector<std::pair<unsigned int, NvmlDeviceHandle>> devices;
+    for (auto [index, handle] : atlasagent::NvmlDevices(nvml, nvml.device_count))
+    {
+        devices.emplace_back(index, handle);
+    }
+    ASSERT_EQ(2u, devices.size());
+    EXPECT_EQ(0u, devices[0].first);
+    EXPECT_EQ(nullptr, devices[0].second);  // a null handle is valid when lookup succeeds
+    EXPECT_EQ(2u, devices[1].first);
+    EXPECT_EQ(reinterpret_cast<NvmlDeviceHandle>(2), devices[1].second);
+}
 
 TEST(Gpu, Metrics)
 {
