@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -43,8 +44,8 @@ enum class NvmlValueType : int
 using NvmlGetSamples = NvmlRet (*)(NvmlDeviceHandle, NvmlSamplingType, unsigned long long, NvmlValueType*,
                                    unsigned int*, NvmlSample*);
 
-// The ring may grow between the size query and retrieval. Retry insufficient
-// capacity a bounded number of times, without advancing the caller's cursor.
+// Leave room for samples added between the size query and retrieval. If even
+// that is insufficient, the next poll retries with the same cursor.
 inline NvmlRet ReadGpuUtilizationSamples(NvmlGetSamples get_samples, NvmlDeviceHandle device,
                                          unsigned long long last_seen, std::vector<NvmlSample>* samples)
 {
@@ -54,47 +55,41 @@ inline NvmlRet ReadGpuUtilizationSamples(NvmlGetSamples get_samples, NvmlDeviceH
         return NvmlRet::ErrorFunctionNotFound;
     }
 
-    for (int attempt = 0; attempt < 3; ++attempt)
+    unsigned int count = 0;
+    NvmlValueType value_type{};
+    auto result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, nullptr);
+    if (result == NvmlRet::ErrorNotFound)
     {
-        unsigned int count = 0;
-        NvmlValueType value_type{};
-        auto result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, nullptr);
-        if (result == NvmlRet::ErrorNotFound)
-        {
-            return NvmlRet::Success;  // no new data, not a zero-utilization sample
-        }
-        if (result != NvmlRet::Success && result != NvmlRet::ErrorInsufficientSize)
-        {
-            return result;
-        }
-        if (count == 0)
-        {
-            return NvmlRet::Success;
-        }
-
-        std::vector<NvmlSample> buffer(count);
-        result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, buffer.data());
-        if (result == NvmlRet::ErrorInsufficientSize)
-        {
-            continue;
-        }
-        if (result == NvmlRet::ErrorNotFound)
-        {
-            return NvmlRet::Success;
-        }
-        if (result != NvmlRet::Success)
-        {
-            return result;
-        }
-        if (value_type != NvmlValueType::UnsignedInt || count > buffer.size())
-        {
-            return NvmlRet::ErrorInvalidArgument;
-        }
-        buffer.resize(count);
-        *samples = std::move(buffer);
+        return NvmlRet::Success;  // no new data, not a zero-utilization sample
+    }
+    if (result != NvmlRet::Success && result != NvmlRet::ErrorInsufficientSize)
+    {
+        return result;
+    }
+    if (count == 0)
+    {
         return NvmlRet::Success;
     }
-    return NvmlRet::ErrorInsufficientSize;
+
+    constexpr unsigned int kHeadroom = 16;
+    count += std::min(kHeadroom, std::numeric_limits<unsigned int>::max() - count);
+    std::vector<NvmlSample> buffer(count);
+    result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, buffer.data());
+    if (result == NvmlRet::ErrorNotFound)
+    {
+        return NvmlRet::Success;
+    }
+    if (result != NvmlRet::Success)
+    {
+        return result;
+    }
+    if (value_type != NvmlValueType::UnsignedInt || count > buffer.size())
+    {
+        return NvmlRet::ErrorInvalidArgument;
+    }
+    buffer.resize(count);
+    *samples = std::move(buffer);
+    return NvmlRet::Success;
 }
 
 // One accumulator per GPU. Polls contribute individual samples, not equally

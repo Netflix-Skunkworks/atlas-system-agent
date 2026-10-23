@@ -121,14 +121,19 @@ struct FakeSamples
             return result;
         }
         ++reads;
-        EXPECT_EQ(2u, *count);
-        if (always_grows || (grows && reads == 1))
+        EXPECT_GE(*count, 3u);
+        if (always_grows)
         {
-            *count = 3;
+            ++*count;
             return NvmlRet::ErrorInsufficientSize;
         }
         samples[0] = Sample(43, 20);
         samples[1] = Sample(44, 80);
+        if (grows)
+        {
+            samples[2] = Sample(45, 50);
+        }
+        *count = grows ? 3 : 2;
         return result;
     }
 };
@@ -183,20 +188,22 @@ TEST_F(GpuSampleRead, UnsupportedAndTransientErrors)
     }
 }
 
-TEST_F(GpuSampleRead, RetriesIfRingGrows)
+TEST_F(GpuSampleRead, ReadsSamplesAddedAfterSizeQuery)
 {
     FakeSamples::grows = true;
     EXPECT_EQ(NvmlRet::Success, Read());
-    EXPECT_EQ(2, FakeSamples::queries);
-    EXPECT_EQ(2, FakeSamples::reads);
-    EXPECT_EQ(2u, samples.size());
+    EXPECT_EQ(1, FakeSamples::queries);
+    EXPECT_EQ(1, FakeSamples::reads);
+    ASSERT_EQ(3u, samples.size());
+    EXPECT_EQ(45u, samples[2].timeStamp);
 }
 
-TEST_F(GpuSampleRead, RetryIsBounded)
+TEST_F(GpuSampleRead, StillTooSmallReturnsErrorForNextPoll)
 {
     FakeSamples::always_grows = true;
     EXPECT_EQ(NvmlRet::ErrorInsufficientSize, Read());
-    EXPECT_EQ(3, FakeSamples::reads);
+    EXPECT_EQ(1, FakeSamples::queries);
+    EXPECT_EQ(1, FakeSamples::reads);
     EXPECT_TRUE(samples.empty());
 }
 
