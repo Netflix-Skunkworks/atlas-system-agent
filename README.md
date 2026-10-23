@@ -45,6 +45,34 @@ AGENT_FLAVOR=k8s ./build.sh
     * Enable the CMake `conan-debug` profile.
   * CLion > View > Tool Windows > Conan > (gear) > Conan Executable: `$PROJECT_HOME/venv/bin/conan`
 
+## NVIDIA GPU utilization averages
+
+The system and Titus flavors publish `gpu.utilizationAvg` once per approximately
+60-second collection interval, tagged with `provider=nvidia` and `gpu=<index>`.
+It is a percentage (0-100), computed as the sum of all newly retrieved GPU
+utilization samples divided by their count across the interval. Poll averages
+are not weighted equally: a poll with more samples contributes more weight.
+This is an interval mean, not an exponential moving average or a rolling window.
+The existing `gpu.utilization` and `gpu.memoryActivity` metrics are unchanged.
+
+A dedicated, shutdown-aware worker drains
+[`nvmlDeviceGetSamples(NVML_GPU_UTILIZATION_SAMPLES)`](https://docs.nvidia.com/deploy/nvml-api/latest/api/group__nvmlDeviceQueries.html)
+every five seconds, independently of slow metric collectors. The minute
+publisher also drains any remaining samples before publishing. Each GPU keeps
+its own exclusive last-seen timestamp. The first successful poll establishes a
+baseline without counting retained history from before collection started.
+
+An interval with no new samples emits no average, rather than zero or the
+previous average. Unsupported sampling (including drivers without the symbol)
+disables this new metric for that device; legacy GPU collection continues.
+Transient failures retain the cursor so subsequent polls can recover samples
+still in the driver ring. The cadence is a scheduling target, not a real-time
+guarantee: a process suspension, slow NVML call, or extended failure can exceed
+the driver's roughly 14-second retention. Overwritten samples cannot be
+recovered; the mean then covers only the samples actually retrieved, not an
+inferred full minute. Validate sampling support and cadence on the target GPU
+and driver before relying on this metric.
+
 ## Debugging
 
 ```
