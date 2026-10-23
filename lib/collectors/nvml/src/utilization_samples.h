@@ -44,6 +44,35 @@ enum class NvmlValueType : int
 using NvmlGetSamples = NvmlRet (*)(NvmlDeviceHandle, NvmlSamplingType, unsigned long long, NvmlValueType*,
                                    unsigned int*, NvmlSample*);
 
+namespace detail
+{
+
+inline NvmlRet GetGpuUtilizationSampleCount(NvmlGetSamples get_samples, NvmlDeviceHandle device,
+                                            unsigned long long last_seen, unsigned int* count)
+{
+    NvmlValueType value_type{};
+    return get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, count, nullptr);
+}
+
+inline NvmlRet GetGpuUtilizationSamples(NvmlGetSamples get_samples, NvmlDeviceHandle device,
+                                        unsigned long long last_seen, std::vector<NvmlSample>* buffer)
+{
+    auto count = static_cast<unsigned int>(buffer->size());
+    NvmlValueType value_type{};
+    auto result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, buffer->data());
+    if (result == NvmlRet::Success)
+    {
+        if (value_type != NvmlValueType::UnsignedInt || count > buffer->size())
+        {
+            return NvmlRet::ErrorInvalidArgument;
+        }
+        buffer->resize(count);
+    }
+    return result;
+}
+
+}  // namespace detail
+
 // Leave room for samples added between the size query and retrieval. If even
 // that is insufficient, the next poll retries with the same cursor.
 inline NvmlRet ReadGpuUtilizationSamples(NvmlGetSamples get_samples, NvmlDeviceHandle device,
@@ -56,8 +85,7 @@ inline NvmlRet ReadGpuUtilizationSamples(NvmlGetSamples get_samples, NvmlDeviceH
     }
 
     unsigned int count = 0;
-    NvmlValueType value_type{};
-    auto result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, nullptr);
+    auto result = detail::GetGpuUtilizationSampleCount(get_samples, device, last_seen, &count);
     if (result == NvmlRet::ErrorNotFound)
     {
         return NvmlRet::Success;  // no new data, not a zero-utilization sample
@@ -74,7 +102,7 @@ inline NvmlRet ReadGpuUtilizationSamples(NvmlGetSamples get_samples, NvmlDeviceH
     constexpr unsigned int kHeadroom = 16;
     count += std::min(kHeadroom, std::numeric_limits<unsigned int>::max() - count);
     std::vector<NvmlSample> buffer(count);
-    result = get_samples(device, NvmlSamplingType::GpuUtilization, last_seen, &value_type, &count, buffer.data());
+    result = detail::GetGpuUtilizationSamples(get_samples, device, last_seen, &buffer);
     if (result == NvmlRet::ErrorNotFound)
     {
         return NvmlRet::Success;
@@ -83,11 +111,6 @@ inline NvmlRet ReadGpuUtilizationSamples(NvmlGetSamples get_samples, NvmlDeviceH
     {
         return result;
     }
-    if (value_type != NvmlValueType::UnsignedInt || count > buffer.size())
-    {
-        return NvmlRet::ErrorInvalidArgument;
-    }
-    buffer.resize(count);
     *samples = std::move(buffer);
     return NvmlRet::Success;
 }
