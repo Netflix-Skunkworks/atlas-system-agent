@@ -15,6 +15,7 @@
 #include <optional>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace atlasagent
 {
@@ -119,6 +120,7 @@ class GpuMetrics
         {
             return;
         }
+        sample_data_->states.resize(count);
         for (auto i = 0u; i < count; ++i)
         {
             NvmlDeviceHandle device;
@@ -126,9 +128,8 @@ class GpuMetrics
             {
                 continue;
             }
-            auto [it, inserted] = sample_data_->states.try_emplace(i);
-            auto& state = it->second;
-            if (!inserted && state.device != device)
+            auto& state = sample_data_->states[i];
+            if (state.device != device)
             {
                 state = SampleState{};
             }
@@ -153,8 +154,6 @@ class GpuMetrics
                 Logger()->warn("GPU {} utilization sample poll failed: {}", i, static_cast<int>(result));
             }
         }
-        // Do not retain a removed GPU's samples or unsupported status.
-        std::erase_if(sample_data_->states, [count](const auto& entry) { return entry.first >= count; });
     }
 
     void gpu_metrics() noexcept
@@ -171,9 +170,9 @@ class GpuMetrics
         std::vector<std::pair<unsigned int, double>> averages;
         {
             absl::MutexLock lock(&sample_data_->mutex);
-            for (auto& [index, state] : sample_data_->states)
+            for (auto index = 0u; index < sample_data_->states.size(); ++index)
             {
-                if (auto average = state.window.Publish())
+                if (auto average = sample_data_->states[index].window.Publish())
                 {
                     averages.emplace_back(index, *average);
                 }
@@ -239,7 +238,7 @@ class GpuMetrics
     {
         // TODO: Build with Clang -Wthread-safety to check the guard annotation.
         absl::Mutex mutex;
-        std::unordered_map<unsigned int, SampleState> states ABSL_GUARDED_BY(mutex);
+        std::vector<SampleState> states ABSL_GUARDED_BY(mutex);
     };
 
     // Heap storage keeps the collector movable for the availability factory.
