@@ -54,7 +54,7 @@ class AtlasSystemAgentConan(ConanFile):
     def get_spectator_cpp(self):
         thirdparty_dir = "thirdparty"
         repo = "Netflix/spectator-cpp"
-        commit = "256fa73e4f5a3df75c9151c69e0310190e91af24"
+        commit = "fed96bf8633d581bec57fb01f4fe3b24223e7046"  # v2.4.1
 
         zip_path = os.path.join(thirdparty_dir, f"spectator-cpp-{commit}.zip")
         dir_path = os.path.join(thirdparty_dir, "spectator-cpp")
@@ -64,7 +64,7 @@ class AtlasSystemAgentConan(ConanFile):
         self.maybe_remove_dir(dir_path)
 
         download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_path)
-        check_sha256(self, zip_path, "01be2a3b9a345dcd8f5dea6abb6d4c0dcf996b4134d0a8f6755bde8d9d208714")
+        check_sha256(self, zip_path, "91fb4e568eca6ae5fd5b89676a598689e40a098f58f77f1718620b619d33b9ca")
         unzip(self, zip_path, destination=dir_path, strip_root=True)
         self.maybe_remove_file(zip_path)
 
