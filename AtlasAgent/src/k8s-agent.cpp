@@ -5,8 +5,10 @@
 
 #include "atlas-agent.h"
 
+#include <lib/collectors/amd_smi/gpumetrics.h>
 #include <lib/collectors/aws/src/aws.h>
 #include <lib/collectors/cpu_freq/src/cpu_freq.h>
+#include <lib/collectors/dcgm/src/dcgm_stats.h>
 #include <lib/collectors/disk/src/disk.h>
 #include <lib/collectors/ebs/src/ebs.h>
 #include <lib/collectors/ethtool/src/ethtool.h>
@@ -80,8 +82,11 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     atlasagent::PressureStall pressureStall{registry};
     atlasagent::Proc proc{registry, net_tags};
 
+    auto gpu = GpuMetrics::Create(registry);
+    auto gpuDCGM = GpuMetricsDCGM::Create(registry);
     auto perfspectMetrics = Perfspect::Create(registry);
     auto ebsMetrics = EBSCollector::Create(registry);
+    auto gpuAMD = atlasagent::GpuMetricsAMD::Create(registry);
 
     // Initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
@@ -142,6 +147,9 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
             Logger()->debug("Gathering 60 second metrics");
             gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
             perf_metrics.collect();
+            GpuMetrics::Collect(gpu);
+            atlasagent::GpuMetricsAMD::Collect(gpuAMD);
+            GpuMetricsDCGM::Collect(gpuDCGM);
             EBSCollector::Collect(ebsMetrics);
             podMonitor.CollectMemoryStats();
 

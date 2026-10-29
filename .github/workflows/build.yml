@@ -9,7 +9,9 @@ on:
 jobs:
   build:
     if: ${{ github.repository == 'Netflix-Skunkworks/atlas-system-agent' }}
-    runs-on: ubuntu-latest
+    # Pinned: libsystemd/255.10 fails to build on newer kernel headers (EFSBADCRC/EFSCORRUPTED
+    # aliases trip -Werror=override-init in errno-list.c). Unpin once libsystemd is bumped.
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         agent: [system, titus, k8s]
