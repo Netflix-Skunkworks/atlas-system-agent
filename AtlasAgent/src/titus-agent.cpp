@@ -66,6 +66,7 @@ void collect_titus_metrics(Registry* registry, const std::unordered_map<std::str
     auto next_run = now;
     auto next_sixty_second_run = now + std::chrono::seconds(60);
     auto next_five_second_run = now + std::chrono::seconds(5);
+    auto gpu_sampler = GpuMetrics::StartPolling(gpu);  // joins before gpu is destroyed
     std::chrono::nanoseconds time_to_sleep;
 
     do

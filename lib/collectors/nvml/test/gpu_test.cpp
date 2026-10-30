@@ -5,6 +5,9 @@
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 #include <gtest/gtest.h>
 
+#include <condition_variable>
+#include <mutex>
+
 using atlasagent::NvmlDeviceHandle;
 using atlasagent::NvmlMemory;
 using atlasagent::NvmlPerfState;
@@ -24,13 +27,13 @@ class TestNvml
    public:
     bool get_count(unsigned int* count) noexcept
     {
-        *count = 2;
+        *count = device_count;
         return true;
     }
 
     bool get_by_index(unsigned int index, NvmlDeviceHandle* device) noexcept
     {
-        *device = reinterpret_cast<NvmlDeviceHandle>(index);
+        *device = reinterpret_cast<NvmlDeviceHandle>(index + handle_offset);
         return true;
     }
 
@@ -64,6 +67,32 @@ class TestNvml
             utilization->gpu = 0;
         }
         return true;
+    }
+
+    unsigned int device_count{2};
+    unsigned int handle_offset{0};
+    atlasagent::NvmlRet sample_result{atlasagent::NvmlRet::ErrorNotSupported};
+    std::vector<atlasagent::NvmlSample> sample_batch;
+    std::vector<unsigned long long> cursors;
+    std::mutex sample_mutex;
+    std::condition_variable sample_polled;
+
+    atlasagent::NvmlRet get_gpu_utilization_samples(NvmlDeviceHandle, unsigned long long last_seen,
+                                                    std::vector<atlasagent::NvmlSample>* samples)
+    {
+        {
+            std::lock_guard lock(sample_mutex);
+            cursors.push_back(last_seen);
+        }
+        sample_polled.notify_all();
+        *samples = sample_batch;
+        return sample_result;
+    }
+
+    bool WaitForPolls(std::size_t count, std::chrono::steady_clock::duration timeout)
+    {
+        std::unique_lock lock(sample_mutex);
+        return sample_polled.wait_for(lock, timeout, [&] { return cursors.size() >= count; });
     }
 
     bool get_performance_state(NvmlDeviceHandle device, NvmlPerfState* perf_state) noexcept
@@ -127,6 +156,137 @@ TEST(Gpu, Metrics)
     EXPECT_EQ(messages.at(12), "g:gpu.memoryActivity,provider=nvidia,gpu=1:25.000000\n");
     EXPECT_EQ(messages.at(13), "g:gpu.perfState,provider=nvidia,gpu=1:10.000000\n");
     EXPECT_EQ(messages.at(14), "d:gpu.temperature,provider=nvidia:72.000000\n");
+}
+
+class GpuSampleMetrics : public testing::Test
+{
+   protected:
+    Registry registry{Config(WriterConfig(WriterTypes::Memory))};
+    TestNvml* nvml{new TestNvml};
+    atlasagent::GpuMetrics<TestNvml> metrics{&registry, std::unique_ptr<TestNvml>(nvml)};
+
+    void SetUp() override
+    {
+        nvml->sample_result = atlasagent::NvmlRet::Success;
+        nvml->device_count = 1;
+        Writer()->Clear();
+    }
+    static MemoryWriter* Writer() { return static_cast<MemoryWriter*>(WriterTestHelper::GetImpl()); }
+    void Poll(unsigned long long timestamp, unsigned int value)
+    {
+        atlasagent::NvmlSample sample{};
+        sample.timeStamp = timestamp;
+        sample.sampleValue.uiVal = value;
+        nvml->sample_batch = {sample};
+        metrics.poll_samples();
+    }
+    std::vector<std::string> Averages()
+    {
+        std::vector<std::string> averages;
+        for (const auto& message : Writer()->GetMessages())
+        {
+            if (message.find("g:gpu.utilizationAvg,") == 0)
+            {
+                averages.push_back(message);
+            }
+        }
+        return averages;
+    }
+};
+
+TEST_F(GpuSampleMetrics, PollsDoNotPublishAndMinuteMeanResets)
+{
+    Poll(10, 100);  // baseline, not counted
+    Poll(20, 100);
+    Poll(30, 0);
+    EXPECT_TRUE(Writer()->GetMessages().empty());
+    metrics.gpu_metrics();
+    ASSERT_EQ(1u, Averages().size());
+    EXPECT_EQ("g:gpu.utilizationAvg,provider=nvidia,gpu=0:50.000000\n", Averages()[0]);
+    EXPECT_EQ((std::vector<unsigned long long>{0, 10, 20, 30}), nvml->cursors);
+    Writer()->Clear();
+    metrics.gpu_metrics();
+    EXPECT_TRUE(Averages().empty());
+    Poll(40, 25);
+    metrics.gpu_metrics();
+    ASSERT_EQ(1u, Averages().size());
+    EXPECT_EQ("g:gpu.utilizationAvg,provider=nvidia,gpu=0:25.000000\n", Averages()[0]);
+}
+
+TEST_F(GpuSampleMetrics, UnsupportedIsDisabledOnceWithoutAffectingLegacyMetrics)
+{
+    nvml->sample_result = atlasagent::NvmlRet::ErrorNotSupported;
+    metrics.poll_samples();
+    metrics.poll_samples();
+    EXPECT_EQ(1u, nvml->cursors.size());
+    metrics.gpu_metrics();
+    EXPECT_TRUE(Averages().empty());
+    EXPECT_FALSE(Writer()->GetMessages().empty());
+}
+
+TEST_F(GpuSampleMetrics, TransientFailurePreservesCursorAndAccumulatedSamples)
+{
+    Poll(10, 100);
+    Poll(20, 25);
+    nvml->sample_result = atlasagent::NvmlRet::ErrorGpuIsLost;
+    Poll(30, 100);
+    nvml->sample_result = atlasagent::NvmlRet::Success;
+    Poll(40, 75);
+    metrics.gpu_metrics();
+    EXPECT_EQ((std::vector<unsigned long long>{0, 10, 20, 20, 40}), nvml->cursors);
+    ASSERT_EQ(1u, Averages().size());
+    EXPECT_EQ("g:gpu.utilizationAvg,provider=nvidia,gpu=0:50.000000\n", Averages()[0]);
+}
+
+TEST_F(GpuSampleMetrics, ChangedDeviceHandleRebaselines)
+{
+    Poll(10, 0);
+    Poll(20, 100);
+    nvml->handle_offset = 100;
+    Poll(30, 50);
+    metrics.gpu_metrics();
+    EXPECT_TRUE(Averages().empty());
+    Poll(40, 25);
+    metrics.gpu_metrics();
+    ASSERT_EQ(1u, Averages().size());
+    EXPECT_EQ("g:gpu.utilizationAvg,provider=nvidia,gpu=0:25.000000\n", Averages()[0]);
+}
+
+TEST_F(GpuSampleMetrics, RemovedDeviceDoesNotPublishOldSamples)
+{
+    Poll(10, 0);
+    Poll(20, 100);
+    nvml->device_count = 0;
+    metrics.poll_samples();
+    metrics.gpu_metrics();
+    EXPECT_TRUE(Averages().empty());
+    nvml->device_count = 1;
+    Poll(30, 100);  // a returning device must establish a new baseline
+    metrics.gpu_metrics();
+    EXPECT_TRUE(Averages().empty());
+}
+
+TEST(GpuSamplingWorker, DisabledCollectorHasNoWorker)
+{
+    std::optional<atlasagent::GpuMetrics<TestNvml>> absent;
+    auto worker = atlasagent::GpuMetrics<TestNvml>::StartPolling(absent);
+    EXPECT_FALSE(worker.joinable());
+}
+
+TEST(GpuSamplingWorker, PollsWhileMinutePublisherIsIdleAndStopsPromptly)
+{
+    Registry registry{Config(WriterConfig(WriterTypes::Memory))};
+    auto lib = std::make_unique<TestNvml>();
+    auto* nvml = lib.get();
+    nvml->sample_result = atlasagent::NvmlRet::Success;
+    nvml->device_count = 1;
+    std::optional<atlasagent::GpuMetrics<TestNvml>> collector{std::in_place, &registry, std::move(lib)};
+    auto worker = atlasagent::GpuMetrics<TestNvml>::StartPolling(collector);
+    auto polled = nvml->WaitForPolls(2, std::chrono::seconds(10));
+    auto start = std::chrono::steady_clock::now();
+    worker = std::jthread{};  // request stop and join, interrupting the 5s wait
+    EXPECT_TRUE(polled);  // initial baseline plus a background poll
+    EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(1));
 }
 
 }  // namespace

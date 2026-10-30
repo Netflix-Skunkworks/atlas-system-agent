@@ -1,6 +1,8 @@
 #include "nvml.h"
 #include "config.h"
+#include "utilization_samples.h"
 #include <lib/logger/src/logger.h>
+#include <array>
 #include <dlfcn.h>
 
 namespace atlasagent
@@ -66,10 +68,11 @@ enum NvmlIndex
     DeviceGetTemperature,
     DeviceGetUtilizationRates,
     DeviceGetMemoryInfo,
-    DeviceGetPerformanceState
+    DeviceGetPerformanceState,
+    DeviceGetSamples
 };
 
-std::array<sym_handle, 11> nvml_symtab = {{
+std::array<sym_handle, 12> nvml_symtab = {{
     {"nvmlInit", nullptr},
     {"nvmlShutdown", nullptr},
     {"nvmlDeviceGetCount", nullptr},
@@ -81,6 +84,7 @@ std::array<sym_handle, 11> nvml_symtab = {{
     {"nvmlDeviceGetUtilizationRates", nullptr},
     {"nvmlDeviceGetMemoryInfo", nullptr},
     {"nvmlDeviceGetPerformanceState", nullptr},
+    {"nvmlDeviceGetSamples", nullptr},
 }};
 
 NvmlRet Nvml::resolve_symbols()
@@ -207,6 +211,13 @@ bool Nvml::get_utilization_rates(NvmlDeviceHandle device, NvmlUtilization* utili
         return to_bool(kFuncName, nvml_get_rates(device, utilization));
     }
     return to_bool(kFuncName, NvmlRet::ErrorFunctionNotFound);
+}
+
+NvmlRet Nvml::get_gpu_utilization_samples(NvmlDeviceHandle device, unsigned long long last_seen,
+                                          std::vector<NvmlSample>* samples)
+{
+    auto get_samples = reinterpret_cast<NvmlGetSamples>(nvml_symtab[NvmlIndex::DeviceGetSamples].handle);
+    return ReadGpuUtilizationSamples(get_samples, device, last_seen, samples);
 }
 
 bool Nvml::get_performance_state(NvmlDeviceHandle device, NvmlPerfState* perf_state) noexcept
