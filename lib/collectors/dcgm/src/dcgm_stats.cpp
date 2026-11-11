@@ -5,9 +5,49 @@
 #include "dcgm_stats.h"
 #include <lib/util/src/util.h>
 
+#include <boost/asio.hpp>
+#include <chrono>
+
 using atlasagent::GetLogger;
 using atlasagent::Logger;
 using spectator::Registry;
+
+// Why this exists: the DCGM systemd service is not the only way nv-hostengine gets started. It can also be launched
+// directly or by something other than systemd, and on those hosts checking the service alone would leave DCGM
+// metrics off even though dcgmi works. So this asks the host engine itself.
+//
+// nv-hostengine counts as reachable when it accepts a TCP connection on the address dcgmi uses. Connecting to it
+// directly, rather than running dcgmi to find out, is deliberate: dcgmi does not fail fast. With no host engine it
+// retries the connection for 5 seconds, which would stall the agent's single-threaded collection loop that long on
+// every cycle. A connection to the local host is accepted or refused at once, and starts no process.
+//
+// This shows only that something is listening on the port. Whether it is a working host engine is settled by the
+// dcgmi call in gather_metrics(), which logs its own failure.
+//
+// The address and port are parameters only so that a test can point this at a socket of its own.
+inline bool is_hostengine_reachable(const char* address = DCGMConstants::HostEngineAddress,
+                                    int port = DCGMConstants::HostEnginePort)
+try
+{
+    // Stays an error unless the connection completes in the time allowed
+    boost::system::error_code outcome = boost::asio::error::timed_out;
+
+    boost::asio::io_context io;
+    boost::asio::ip::tcp::socket socket(io);
+    const boost::asio::ip::tcp::endpoint target(boost::asio::ip::make_address(address),
+                                                static_cast<unsigned short>(port));
+
+    // Started asynchronously and run for a bounded time, so that a host engine which has stopped answering cannot
+    // hold up the collection loop. An attempt still pending when the time is up is abandoned as the socket closes.
+    socket.async_connect(target, [&outcome](const boost::system::error_code& error) { outcome = error; });
+    io.run_for(std::chrono::milliseconds(DCGMConstants::HostEngineConnectTimeoutMillis));
+    return !outcome;
+}
+catch (const std::exception& e)
+{
+    atlasagent::Logger()->error("Exception thrown in is_hostengine_reachable: {}", e.what());
+    return false;
+}
 
 std::optional<GpuMetricsDCGM> GpuMetricsDCGM::Create(Registry* registry)
 {
@@ -17,14 +57,19 @@ std::optional<GpuMetricsDCGM> GpuMetricsDCGM::Create(Registry* registry)
         return std::nullopt;
     }
     std::string serviceStatus = atlasagent::is_service_running(DCGMConstants::ServiceName) ? "ON" : "OFF";
-    Logger()->info("DCGMI binary present. Agent will collect DCGM metrics if service is ON. DCGM service state: {}.",
-                   serviceStatus);
+    std::string hostEngineStatus = is_hostengine_reachable() ? "REACHABLE" : "UNREACHABLE";
+    Logger()->info(
+        "DCGMI binary present. Agent will collect DCGM metrics if service is ON or nv-hostengine is REACHABLE. "
+        "DCGM service state: {}. nv-hostengine state: {}.",
+        serviceStatus, hostEngineStatus);
     return std::optional<GpuMetricsDCGM>{std::in_place, registry};
 }
 
 void GpuMetricsDCGM::Collect(std::optional<GpuMetricsDCGM>& self)
 {
-    if (self.has_value() && atlasagent::is_service_running(DCGMConstants::ServiceName))
+    // Either signal is enough to collect: the DCGM service being active, or nv-hostengine accepting connections when
+    // it is not run by that service.
+    if (self.has_value() && (atlasagent::is_service_running(DCGMConstants::ServiceName) || is_hostengine_reachable()))
     {
         if (self->gather_metrics() == false)
         {

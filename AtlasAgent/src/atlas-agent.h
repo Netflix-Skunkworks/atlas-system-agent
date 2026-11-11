@@ -62,12 +62,18 @@ long initial_polling_delay();
 void collect_titus_metrics(spectator::Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,
                            const int& max_monitored_services);
 #elif defined(AGENT_FLAVOR_K8S)
-// The spectatord socket both k8s Registries publish to -- main()'s shared one and PodMonitor's own
-// (which deliberately omits this node's identity tags; see k8s-agent.cpp) -- named once so the two
-// cannot drift apart.
 struct K8sAgentConstants
 {
+    // The spectatord socket both k8s Registries publish to -- main()'s shared one and PodMonitor's own
+    // (which deliberately omits this node's identity tags; see k8s-agent.cpp) -- named once so the two
+    // cannot drift apart.
     static constexpr auto SpectatordSocket = "unix:///run/spectatord-notags/spectatord.unix";
+
+    // How many times GpuMetrics::Create() is retried, once per 60-second cycle, after failing at startup. The
+    // retry exists because the GPU Operator can load the NVIDIA driver after this agent has started, which
+    // would otherwise leave GPU metrics off until the agent restarts. It is capped so that a node with no
+    // NVIDIA GPU stops retrying, and logging the failure, after a few minutes.
+    static constexpr unsigned int GpuCreateRetries = 3;
 };
 
 void collect_k8s_metrics(spectator::Registry* registry, const std::unordered_map<std::string, std::string>& net_tags,

@@ -133,13 +133,17 @@ void Nvml::initialize()
     {
         throw NvmlException(res);
     }
+    initialized_ = true;
     fprintf(stderr, "Successfully initialized NVIDIA library\n");
 }
 
 Nvml::~Nvml() noexcept
 {
+    // nvmlShutdown is only owed after a successful nvmlInit. GpuMetrics::Create() destroys this object when
+    // nvmlInit fails, and GpuMetrics::RetryCreate() can make that happen several times; calling nvmlShutdown
+    // then would only log a misleading shutdown error for each failed attempt.
     void* func;
-    if ((func = nvml_symtab[NvmlIndex::Shutdown].handle) != nullptr)
+    if (initialized_ && (func = nvml_symtab[NvmlIndex::Shutdown].handle) != nullptr)
     {
         auto shutdown = reinterpret_cast<NvmlRet (*)()>(func);
         auto ret = shutdown();
@@ -148,6 +152,14 @@ Nvml::~Nvml() noexcept
             Logger()->info("Unable to shutdown nvml: {}", to_string(ret));
         }
     }
+
+    // Release the library so that a later attempt (see GpuMetrics::RetryCreate) loads whatever is installed
+    // by then, instead of being handed this copy back. The symbol table points into it, so clear that first.
+    for (auto& sh : nvml_symtab)
+    {
+        sh.handle = nullptr;
+    }
+    dlclose(nvml_dso_);
 }
 
 static bool to_bool(const char* name, NvmlRet code)

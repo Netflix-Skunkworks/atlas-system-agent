@@ -67,6 +67,28 @@ class GpuMetrics
         return std::nullopt;
     }
 
+    // Retries Create() for a collector that could not be built at startup, e.g. because the NVIDIA driver was
+    // loaded after the agent started. Create() runs only once, so without this a late driver would leave GPU
+    // metrics off for the life of the process. Each call makes at most one attempt and spends one of
+    // `retries_left`. A no-op once `self` holds a collector or the retries are spent, so it can be called on
+    // every cycle; the limit keeps a host with no NVIDIA GPU from attempting a load forever.
+    static void RetryCreate(std::optional<GpuMetrics>& self, spectator::Registry* registry, unsigned int& retries_left)
+    {
+        if (self.has_value() || retries_left == 0)
+        {
+            return;
+        }
+
+        --retries_left;
+        Logger()->info("GPU metrics are not being collected. Retrying setup, {} retries left after this one",
+                       retries_left);
+        self = Create(registry);
+        if (!self.has_value() && retries_left == 0)
+        {
+            Logger()->info("GPU metrics setup retries are spent. GPU metrics stay off until the agent restarts");
+        }
+    }
+
     // Gathers metrics from `self` only when present; a no-op when GPU collection is disabled. The
     // mirror of Create(): it owns the has_value() guard so callers don't repeat it.
     static void Collect(std::optional<GpuMetrics>& self) noexcept
