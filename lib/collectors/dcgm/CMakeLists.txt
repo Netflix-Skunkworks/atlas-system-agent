@@ -11,6 +11,7 @@ target_include_directories(dcgm
 target_link_libraries(dcgm
     fmt::fmt
     abseil::abseil
+    Boost::boost
     spectator-registry
 )
 

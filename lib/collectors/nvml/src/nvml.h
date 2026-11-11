@@ -70,6 +70,9 @@ class Nvml
 
    private:
     void* nvml_dso_{nullptr};
+    // Set once nvmlInit succeeds. The destructor needs it because an Nvml whose nvmlInit failed is destroyed
+    // too (see GpuMetrics::Create), and nvmlShutdown must not be called for that one.
+    bool initialized_{false};
     NvmlRet resolve_symbols();
 };
 

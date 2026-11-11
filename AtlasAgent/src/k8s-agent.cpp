@@ -83,6 +83,8 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     atlasagent::Proc proc{registry, net_tags};
 
     auto gpu = GpuMetrics::Create(registry);
+    // Retries left for the Create() above, spent in the 60-second block below when it failed.
+    unsigned int gpuCreateRetries = K8sAgentConstants::GpuCreateRetries;
     auto gpuDCGM = GpuMetricsDCGM::Create(registry);
     auto perfspectMetrics = Perfspect::Create(registry);
     auto ebsMetrics = EBSCollector::Create(registry);
@@ -147,6 +149,10 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
             Logger()->debug("Gathering 60 second metrics");
             gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
             perf_metrics.collect();
+            // The GPU Operator can load the NVIDIA driver after this agent starts, so a failed startup
+            // Create() is retried here until it succeeds or the retries are spent. Without this, GPU
+            // metrics would stay off until the agent restarts.
+            GpuMetrics::RetryCreate(gpu, registry, gpuCreateRetries);
             GpuMetrics::Collect(gpu);
             atlasagent::GpuMetricsAMD::Collect(gpuAMD);
             GpuMetricsDCGM::Collect(gpuDCGM);

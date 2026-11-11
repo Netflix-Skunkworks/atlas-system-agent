@@ -129,4 +129,88 @@ TEST(Gpu, Metrics)
     EXPECT_EQ(messages.at(14), "d:gpu.temperature,provider=nvidia:72.000000\n");
 }
 
+// Stands in for an NVML library that cannot be loaded until the NVIDIA driver shows up, so the retry logic can
+// be tested without a GPU or a driver: construction fails while failures_left is positive.
+//
+// GpuMetrics::Create() constructs the library object itself (std::make_unique<Lib>()), so a test never holds
+// one. That is why both counters are static: the test sets failures_left before calling Create(), and every
+// construction Create() attempts bumps load_attempts, whether or not it then throws.
+class LateNvml : public TestNvml
+{
+   public:
+    static inline int failures_left = 0;
+    static inline int load_attempts = 0;
+
+    LateNvml()
+    {
+        ++load_attempts;
+        if (failures_left > 0)
+        {
+            --failures_left;
+            // The exception type the real Nvml throws when the library cannot be loaded. Create() catches it
+            // and returns an empty optional, so it never reaches the test
+            throw atlasagent::NvmlException("NVIDIA driver is not loaded");
+        }
+    }
+
+    // Create() calls this after construction; the fake has nothing to initialize
+    void initialize() {}
+};
+
+using LateGpuMetrics = atlasagent::GpuMetrics<LateNvml>;
+
+// The case RetryCreate() exists for: the driver is loaded after the agent has started, so the startup Create()
+// fails and a later retry has to bring the collector up.
+TEST(Gpu, RetryCreateLoadsOnceTheLibraryIsAvailable)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+
+    // The load fails at startup and on the first retry, then succeeds
+    LateNvml::failures_left = 2;
+    LateNvml::load_attempts = 0;
+
+    auto gpu = LateGpuMetrics::Create(&r);
+    EXPECT_FALSE(gpu.has_value());
+
+    unsigned int retries_left = 3;
+    LateGpuMetrics::RetryCreate(gpu, &r, retries_left);
+    EXPECT_FALSE(gpu.has_value());
+    EXPECT_EQ(retries_left, 2u);
+
+    LateGpuMetrics::RetryCreate(gpu, &r, retries_left);
+    EXPECT_TRUE(gpu.has_value());
+    EXPECT_EQ(retries_left, 1u);
+
+    // With a collector in place, further calls neither load again nor spend a retry
+    LateGpuMetrics::RetryCreate(gpu, &r, retries_left);
+    EXPECT_TRUE(gpu.has_value());
+    EXPECT_EQ(retries_left, 1u);
+    EXPECT_EQ(LateNvml::load_attempts, 3);
+}
+
+// A host where the driver never arrives, e.g. one without an NVIDIA GPU: the retries must stop at the limit
+// rather than attempt a load on every cycle forever.
+TEST(Gpu, RetryCreateGivesUpOnceRetriesAreSpent)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+
+    // The load never succeeds
+    LateNvml::failures_left = 100;
+    LateNvml::load_attempts = 0;
+
+    auto gpu = LateGpuMetrics::Create(&r);
+    unsigned int retries_left = 3;
+    for (int cycle = 0; cycle < 10; ++cycle)
+    {
+        LateGpuMetrics::RetryCreate(gpu, &r, retries_left);
+    }
+
+    EXPECT_FALSE(gpu.has_value());
+    EXPECT_EQ(retries_left, 0u);
+    // The startup attempt plus the three retries
+    EXPECT_EQ(LateNvml::load_attempts, 4);
+}
+
 }  // namespace
