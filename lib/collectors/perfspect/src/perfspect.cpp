@@ -177,10 +177,17 @@ bool Perfspect::CleanupProcess() try
     }
 
     this->scriptProcess.reset();
-    this->ioContext.reset();
+    // Order matters: the pipe must be closed while its io_context is still alive. ~async_pipe
+    // deregisters its descriptor through the io_context's reactive_descriptor_service and
+    // epoll_reactor; destroying the io_context first turns that into a use-after-free that writes
+    // epoll_reactor::descriptor_state::shutdown_ into a freed malloc chunk and corrupts the heap
+    // ("malloc(): mismatching next->prev_size (unsorted)"). Destroying the io_context before the
+    // buffer also discards the aborted read handler, which references the buffer, without running it.
     this->asyncPipe.reset();
+    this->ioContext.reset();
     this->buffer.reset();
     this->pendingLine.clear();
+    this->lastAsyncError.clear();
     this->firstIteration = true;
     return true;
 }
