@@ -5,6 +5,7 @@
 #include <boost/process.hpp>
 #include <boost/asio.hpp>
 
+#include <chrono>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -156,6 +157,43 @@ catch (const std::exception& e)
     return false;
 }
 
+// Ends a run that failed and stops PerfSpect. The next GatherMetrics call launches a fresh run, unless
+// too many runs have now failed in a row, in which case PerfSpect stays stopped until the backoff
+// expires and then gets a fresh set of attempts.
+void Perfspect::EndFailedRun(std::chrono::steady_clock::time_point now)
+{
+    if (this->CleanupProcess() == false)
+    {
+        atlasagent::Logger()->error("Failed to stop PerfSpect after a failed run, it may still be running");
+    }
+
+    ++this->failedRuns;
+    if (this->failedRuns < PerfspectConstants::maxFailedRuns)
+    {
+        return;
+    }
+
+    atlasagent::Logger()->error("PerfSpect failed {} runs in a row, retrying in {} minutes",
+                                PerfspectConstants::maxFailedRuns, PerfspectConstants::backoffDuration.count());
+    this->failedRuns = 0;
+    this->backoffUntil = now + PerfspectConstants::backoffDuration;
+}
+
+// Called when a running PerfSpect gave no metrics on this GatherMetrics call. That alone is normal, so
+// the run only fails once metricsDeadline has passed. Returns false when the run was ended for that.
+bool Perfspect::CheckOutputTimeout(std::chrono::steady_clock::time_point now)
+{
+    if (now < this->metricsDeadline)
+    {
+        return true;
+    }
+
+    atlasagent::Logger()->error("PerfSpect produced no metrics for {} seconds",
+                                PerfspectConstants::outputTimeout.count());
+    this->EndFailedRun(now);
+    return false;
+}
+
 bool Perfspect::CleanupProcess() try
 {
     if (this->scriptProcess && this->scriptProcess->running())
@@ -193,7 +231,7 @@ bool Perfspect::CleanupProcess() try
 }
 catch (const std::exception& e)
 {
-    atlasagent::Logger()->error("Failed to cleanup child process", e.what());
+    atlasagent::Logger()->error("Failed to cleanup child process: {}", e.what());
     return false;
 }
 
@@ -323,12 +361,33 @@ void Perfspect::SendMetrics(const PerfspectData& data)
 
 bool Perfspect::GatherMetrics()
 {
-    // If the perfspect process has not been started or is no longer running start it
-    if (!this->scriptProcess || this->scriptProcess->running() == false)
+    const auto now = std::chrono::steady_clock::now();
+
+    // Too many PerfSpect runs failed in a row, leave it stopped until the backoff expires
+    if (now < this->backoffUntil)
+    {
+        return false;
+    }
+
+    // There is no run to poll on the first call, or once a failed run has been cleaned up
+    if (!this->scriptProcess)
     {
         atlasagent::Logger()->debug("No active PerfSpect process found, starting a new one");
-        this->StartScript();
+        this->runStartedAt = now;
+        this->metricsDeadline = now + PerfspectConstants::outputTimeout;
+        if (this->StartScript() == false)
+        {
+            this->EndFailedRun(now);
+            return false;
+        }
         return true;
+    }
+
+    if (this->scriptProcess->running() == false)
+    {
+        atlasagent::Logger()->error("PerfSpect process exited");
+        this->EndFailedRun(now);
+        return false;
     }
 
     atlasagent::Logger()->debug("Checking for PerfSpect metrics...");
@@ -338,18 +397,18 @@ bool Perfspect::GatherMetrics()
     if (result.error.failed())
     {
         atlasagent::Logger()->error("Failed to read PerfSpect output: {}", result.error.message());
-        bool restartSuccess = this->StartScript();
-        atlasagent::Logger()->debug("Restarting PerfSpect process: {}", restartSuccess ? "Success" : "Failed");
+        this->EndFailedRun(now);
         return false;
     }
 
     // PerfSpect requires 4-7 seconds to startup
     // We may try to GatherMetrics and read from the stream 
-    // before it has produced any output, so we need to handle that case gracefully
+    // before it has produced any output. That is expected, the run only fails once it has gone
+    // outputTimeout without producing metrics
     if (result.data.has_value() == false)
     {
         atlasagent::Logger()->debug("No new perfspect output available yet");
-        return true;
+        return this->CheckOutputTimeout(now);
     }
 
     // Parse the output line into a struct of data we can report
@@ -357,9 +416,18 @@ bool Perfspect::GatherMetrics()
     if (parsedDataOpt.has_value() == false)
     {
         atlasagent::Logger()->error("Failed to parse perfspect output line: {}", result.data.value());
+        this->CheckOutputTimeout(now);
         return false;
     }
 
+    // PerfSpect produced metrics, so it has outputTimeout to produce the next ones. The failed runs
+    // before this one stop counting once it has kept that up for stableRunDuration. One good line is
+    // not enough for that, or a PerfSpect that emits a line and then dies would never be backed off.
+    this->metricsDeadline = now + PerfspectConstants::outputTimeout;
+    if (now - this->runStartedAt >= PerfspectConstants::stableRunDuration)
+    {
+        this->failedRuns = 0;
+    }
     SendMetrics(parsedDataOpt.value());
     return true;
 }
