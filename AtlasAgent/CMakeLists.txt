@@ -18,7 +18,6 @@ target_include_directories(atlas_system_agent
 
 
 target_link_libraries(atlas_system_agent 
-    Backward::Backward
     fmt::fmt
     abseil::abseil
     amd_smi_collector

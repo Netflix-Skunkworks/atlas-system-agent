@@ -10,15 +10,15 @@
 #include <lib/http_client/src/http_client.h>
 #include <lib/util/src/util.h>
 
-#include "backward.hpp"
-
 #include <cassert>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <execinfo.h>
 #include <getopt.h>
 #include <random>
+#include <unistd.h>
 #include <utility>
 
 using spectator::Config;
@@ -55,6 +55,37 @@ static void init_signals()
     sigfillset(&sa.sa_mask);
     sigaction(SIGINT, &sa, nullptr);
     sigaction(SIGTERM, &sa, nullptr);
+}
+
+// Fatal signals must be handled without allocating. glibc raises SIGABRT for heap corruption while
+// it still holds the malloc arena lock. backward::SignalHandling opened /proc/self/cmdline with an
+// std::ifstream at that point, which blocked forever on the same lock. The agent stayed "active
+// (running)", stopped publishing, and Restart=on-failure never fired.
+static void fatal_signal_handler(int signal)
+{
+    void* frames[64];
+    const int count = backtrace(frames, 64);
+    backtrace_symbols_fd(frames, count, STDERR_FILENO);  // async-signal-safe, no malloc
+    // SA_RESETHAND already restored the default action and SA_NODEFER leaves the signal unblocked, so
+    // this terminates the process with the original signal: core dump, non-zero exit, systemd restart.
+    raise(signal);
+}
+
+static void init_fatal_signals()
+{
+    // backtrace() dlopen()s libgcc_s and allocates on its first call, so make that call here.
+    void* warmup[1];
+    backtrace(warmup, 1);
+
+    struct sigaction sa{};
+    sa.sa_handler = &fatal_signal_handler;
+    sa.sa_flags = SA_RESETHAND | SA_NODEFER;
+    sigemptyset(&sa.sa_mask);
+    const int fatal_signals[] = {SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV};
+    for (int signal : fatal_signals)
+    {
+        sigaction(signal, &sa, nullptr);
+    }
 }
 
 long initial_polling_delay()
@@ -178,7 +209,7 @@ int main(int argc, char* const argv[])
 #endif
 
     init_signals();
-    backward::SignalHandling sh;
+    init_fatal_signals();
 
     std::unordered_map<std::string, std::string> common_tags{{"xatlas.process", process}};
 #if defined(AGENT_FLAVOR_TITUS)

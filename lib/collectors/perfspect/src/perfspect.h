@@ -3,6 +3,7 @@
 #include <boost/process.hpp>
 #include <boost/asio.hpp>
 
+#include <chrono>
 #include <string>
 #include <memory>
 #include <optional>
@@ -29,6 +30,10 @@ struct PerfspectConstants
     static constexpr auto metricInstructions{"cpu.perfspect.instructions"};
     static constexpr auto metricL2CacheMisses{"cpu.perfspect.l2CacheMisses"};
     static constexpr auto interval{5};
+    static constexpr auto maxFailedRuns{5};
+    static constexpr std::chrono::seconds outputTimeout{60};
+    static constexpr std::chrono::seconds stableRunDuration{60};
+    static constexpr std::chrono::minutes backoffDuration{10};
     static constexpr auto minGeneration{7};
     static constexpr auto amdSymbol{'a'};
     static constexpr auto intelSymbol{'i'};
@@ -65,6 +70,8 @@ class Perfspect
     Perfspect(Perfspect&& other) = delete;
     Perfspect& operator=(Perfspect&& other) = delete;
 
+    // Returns false when PerfSpect is stopped for a backoff, or when this call found a failure: the
+    // launch failed, the process exited, a read or parse error, or no metrics for outputTimeout.
     bool GatherMetrics();
     static std::optional<std::pair<char, char>> IsValidInstance();
 
@@ -78,7 +85,9 @@ class Perfspect
 
    private:
     void AsyncRead();
+    bool CheckOutputTimeout(std::chrono::steady_clock::time_point now);
     bool CleanupProcess();
+    void EndFailedRun(std::chrono::steady_clock::time_point now);
     void ExtractLine(const boost::system::error_code& ec, std::size_t bytes_transferred);
     ReadResult ReadOutput();
     void SendMetrics(const PerfspectData& data);
@@ -88,6 +97,15 @@ class Perfspect
     bool firstIteration{true};
     bool isAmd{false};
     char version;
+
+    // A run is one launch of PerfSpect. It fails when the launch fails, the process exits, its output
+    // stream breaks, or metricsDeadline passes without it producing metrics. failedRuns counts failed
+    // runs in a row: a run still producing metrics stableRunDuration after its launch clears it, and
+    // reaching maxFailedRuns stops PerfSpect until backoffUntil.
+    int failedRuns{0};
+    std::chrono::steady_clock::time_point runStartedAt{};
+    std::chrono::steady_clock::time_point metricsDeadline{};
+    std::chrono::steady_clock::time_point backoffUntil{std::chrono::steady_clock::time_point::min()};
 
     std::unique_ptr<boost::process::child> scriptProcess;
 

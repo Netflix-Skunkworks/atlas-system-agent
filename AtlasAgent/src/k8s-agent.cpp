@@ -5,8 +5,10 @@
 
 #include "atlas-agent.h"
 
+#include <lib/collectors/amd_smi/gpumetrics.h>
 #include <lib/collectors/aws/src/aws.h>
 #include <lib/collectors/cpu_freq/src/cpu_freq.h>
+#include <lib/collectors/dcgm/src/dcgm_stats.h>
 #include <lib/collectors/disk/src/disk.h>
 #include <lib/collectors/ebs/src/ebs.h>
 #include <lib/collectors/ethtool/src/ethtool.h>
@@ -80,8 +82,13 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     atlasagent::PressureStall pressureStall{registry};
     atlasagent::Proc proc{registry, net_tags};
 
+    auto gpu = GpuMetrics::Create(registry);
+    // Retries left for the Create() above, spent in the 60-second block below when it failed.
+    unsigned int gpuCreateRetries = K8sAgentConstants::GpuCreateRetries;
+    auto gpuDCGM = GpuMetricsDCGM::Create(registry);
     auto perfspectMetrics = Perfspect::Create(registry);
     auto ebsMetrics = EBSCollector::Create(registry);
+    auto gpuAMD = atlasagent::GpuMetricsAMD::Create(registry);
 
     // Initial polling delay, to prevent publishing too close to a minute boundary
     auto delay = initial_polling_delay();
@@ -105,6 +112,7 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
     auto next_run = now;
     auto next_sixty_second_run = now + std::chrono::seconds(60);
     auto next_five_second_run = now + std::chrono::seconds(5);
+    auto gpu_sampler = GpuMetrics::StartPolling(gpu);  // joins before gpu is destroyed
     std::chrono::nanoseconds time_to_sleep;
 
     do
@@ -142,6 +150,17 @@ void collect_k8s_metrics(Registry* registry, const std::unordered_map<std::strin
             Logger()->debug("Gathering 60 second metrics");
             gather_slow_system_metrics(&proc, &disk, &ethtool, &ntp, &pressureStall, &aws);
             perf_metrics.collect();
+            // The GPU Operator can load the NVIDIA driver after this agent starts, so a failed startup
+            // Create() is retried here until it succeeds or the retries are spent. Without this, GPU
+            // metrics would stay off until the agent restarts.
+            GpuMetrics::RetryCreate(gpu, registry, gpuCreateRetries);
+            if (!gpu_sampler.joinable())
+            {
+                gpu_sampler = GpuMetrics::StartPolling(gpu);
+            }
+            GpuMetrics::Collect(gpu);
+            atlasagent::GpuMetricsAMD::Collect(gpuAMD);
+            GpuMetricsDCGM::Collect(gpuDCGM);
             EBSCollector::Collect(ebsMetrics);
             podMonitor.CollectMemoryStats();
 

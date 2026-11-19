@@ -15,6 +15,14 @@ struct DCGMConstants
     static constexpr auto ServiceName{"nvidia-dcgm.service"};
     static constexpr auto dcgmiPath{"/usr/bin/dcgmi"};
     static constexpr auto dcgmiArgs{"dmon -c 1 -e 1001,1002,1003,1004,1005,1007,1008,1009,1010,1011,1012"};
+    /* Where nv-hostengine listens by default, which is also where dcgmi looks for it when no --host is
+      given. Connected to directly to learn whether the host engine is reachable. If dcgmi is ever pointed
+      at another host or port, these have to change with it */
+    static constexpr auto HostEngineAddress{"127.0.0.1"};
+    static constexpr auto HostEnginePort{5555};
+    /* A connection to the local host is accepted or refused at once. This only bounds the wait for a host
+      engine that has stopped answering */
+    static constexpr auto HostEngineConnectTimeoutMillis{250};
     static constexpr auto ConsecutiveFailureThreshold{5};
     static constexpr auto ExpectedCountOfTokens{13};
     static constexpr auto ExpectedCountOfProfileValues{11};
@@ -73,11 +81,12 @@ class GpuMetricsDCGM
     bool gather_metrics();
 
     // Availability-aware factory: builds a collector only when the dcgmi binary is present (logging the
-    // decision and the current service state), otherwise returns nullopt.
+    // decision and the current service and nv-hostengine states), otherwise returns nullopt.
     static std::optional<GpuMetricsDCGM> Create(spectator::Registry* registry);
 
-    // Gathers metrics from `self` only when present and the DCGM service is running; a no-op otherwise,
-    // logging on gather failure. The mirror of Create(): it owns the has_value() guard.
+    // Gathers metrics from `self` only when present and DCGM is available: the DCGM service is running or,
+    // failing that, nv-hostengine accepts a connection on its port. A no-op otherwise, logging on gather
+    // failure. The mirror of Create(): it owns the has_value() guard.
     static void Collect(std::optional<GpuMetricsDCGM>& self);
 
    private:

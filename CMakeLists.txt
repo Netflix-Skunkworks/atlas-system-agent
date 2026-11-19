@@ -13,7 +13,6 @@ include(CTest)
 
 find_package(absl REQUIRED)
 find_package(asio REQUIRED)
-find_package(Backward REQUIRED)
 find_package(Boost REQUIRED)
 find_package(fmt REQUIRED)
 find_package(GTest REQUIRED)

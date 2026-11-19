@@ -10,7 +10,6 @@ class AtlasSystemAgentConan(ConanFile):
     requires = (
         "abseil/20240116.2",
         "asio/1.32.0",
-        "backward-cpp/1.6",
         "boost/1.83.0",
         "fmt/11.0.2",
         "gtest/1.15.0",
@@ -35,11 +34,6 @@ class AtlasSystemAgentConan(ConanFile):
     def configure(self):
         self.options["libcurl"].with_c_ares = True
         self.options["libcurl"].with_ssl = "openssl"
-        # backward-cpp defaults to stack_details=dw on Linux, which pulls in elfutils.
-        # elfutils fetches its tarball from sourceware.org, which 403s the cloud build
-        # egress IPs. backtrace_symbol has no dependencies; we lose file/line numbers in
-        # crash traces but keep symbol names.
-        self.options["backward-cpp"].stack_details = "backtrace_symbol"
 
     @staticmethod
     def maybe_remove_dir(path: str):
@@ -54,7 +48,7 @@ class AtlasSystemAgentConan(ConanFile):
     def get_spectator_cpp(self):
         thirdparty_dir = "thirdparty"
         repo = "Netflix/spectator-cpp"
-        commit = "256fa73e4f5a3df75c9151c69e0310190e91af24"
+        commit = "00bc7c727e47f3c08b1a714deb1358c0e49eed80"  # v2.4.2
 
         zip_path = os.path.join(thirdparty_dir, f"spectator-cpp-{commit}.zip")
         dir_path = os.path.join(thirdparty_dir, "spectator-cpp")
@@ -64,7 +58,7 @@ class AtlasSystemAgentConan(ConanFile):
         self.maybe_remove_dir(dir_path)
 
         download(self, f"https://github.com/{repo}/archive/{commit}.zip", zip_path)
-        check_sha256(self, zip_path, "01be2a3b9a345dcd8f5dea6abb6d4c0dcf996b4134d0a8f6755bde8d9d208714")
+        check_sha256(self, zip_path, "3f9343218214c49c0d8f00f2f9c594280e5279d05c2e921f4b4b08de28c3c08b")
         unzip(self, zip_path, destination=dir_path, strip_root=True)
         self.maybe_remove_file(zip_path)
 
