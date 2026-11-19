@@ -47,7 +47,7 @@ AGENT_FLAVOR=k8s ./build.sh
 
 ## NVIDIA GPU utilization averages
 
-The system and Titus flavors publish `gpu.utilizationAvg` once per approximately
+The system, Titus, and Kubernetes flavors publish `gpu.utilizationAvg` once per approximately
 60-second collection interval, tagged with `provider=nvidia` and `gpu=<index>`.
 It is a percentage (0-100), computed as the sum of all newly retrieved GPU
 utilization samples divided by their count across the interval. Poll averages
