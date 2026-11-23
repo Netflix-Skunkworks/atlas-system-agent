@@ -6,6 +6,7 @@
 #include <absl/time/time.h>
 
 #include <string>
+#include <string_view>
 
 namespace atlasagent
 {
@@ -21,7 +22,7 @@ class Aws
 
    protected:
     // for testing
-    void update_stats_from(absl::Time now, const std::string& json) noexcept;
+    void update_stats_from(absl::Time now, std::string_view json) const noexcept;
 
    private:
     spectator::Registry* registry_;
@@ -29,6 +30,7 @@ class Aws
     std::string token_endpoint_;
     std::string iam_endpoint_;
     std::string creds_url_;
+    bool profile_resolved_ = false;
     HttpClient http_client_;
 };
 
