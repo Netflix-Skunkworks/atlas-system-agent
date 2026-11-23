@@ -3,6 +3,7 @@
 #include <lib/logger/src/logger.h>
 
 #include <absl/strings/ascii.h>
+#include <absl/strings/match.h>
 #include <absl/time/clock.h>
 #include <fmt/format.h>
 #include <rapidjson/document.h>
@@ -24,7 +25,7 @@ constexpr std::string_view kDefaultExecutor = "unknown";
 constexpr std::string_view kDefaultMetadataEndpoint = "http://169.254.169.254";
 constexpr std::string_view kCredsPath = "latest/meta-data/iam/security-credentials/";
 constexpr std::string_view kTokenPath = "latest/api/token";
-constexpr const char* kZonelessTimestampFormat = "%Y-%m-%d%ET%H:%M:%E*S";
+constexpr std::string_view kZonelessTimestampFormat = "%Y-%m-%d%ET%H:%M:%E*S";
 constexpr absl::Duration kMetadataTimeout = absl::Seconds(1);
 constexpr int kHttpOk = 200;
 
@@ -50,23 +51,23 @@ void count_refresh_error(const spectator::Registry& registry)
     registry.CreateCounter("aws.credentialsRefreshErrors").Increment();
 }
 
-// Returns the named member of the object if it is a string, otherwise nullptr.
-const char* string_member(const rapidjson::Value& object, const char* name)
+// Returns the named member of the object if it is a string. The view is only valid while the object is.
+std::optional<std::string_view> string_member(const rapidjson::Value& object, const char* name)
 {
     const auto member = object.FindMember(name);
     if (member == object.MemberEnd() || !member->value.IsString())
     {
-        return nullptr;
+        return std::nullopt;
     }
-    return member->value.GetString();
+    return std::string_view{member->value.GetString(), member->value.GetStringLength()};
 }
 
 // Returns the timestamp stored in the named member of the credentials object, or nullopt if the
 // member is missing, is not a string, does not parse, or is not a finite time after the Unix epoch.
 std::optional<absl::Time> timestamp_member(const rapidjson::Value& creds, const char* name)
 {
-    const char* text = string_member(creds, name);
-    if (text == nullptr)
+    const auto text = string_member(creds, name);
+    if (!text)
     {
         return std::nullopt;
     }
@@ -74,10 +75,10 @@ std::optional<absl::Time> timestamp_member(const rapidjson::Value& creds, const 
     // RFC 3339 is expected; a timestamp that carries no zone is read as UTC
     absl::Time timestamp;
     std::string error;
-    if (!absl::ParseTime(absl::RFC3339_full, text, &timestamp, &error) &&
-        !absl::ParseTime(kZonelessTimestampFormat, text, &timestamp, &error))
+    if (!absl::ParseTime(absl::RFC3339_full, *text, &timestamp, &error) &&
+        !absl::ParseTime(kZonelessTimestampFormat, *text, &timestamp, &error))
     {
-        Logger()->warn("Unable to parse {} value {} as a timestamp: {}", name, text, error);
+        Logger()->warn("Unable to parse {} value {} as a timestamp: {}", name, *text, error);
         return std::nullopt;
     }
 
@@ -145,16 +146,17 @@ void Aws::collect() noexcept
     {
         // get the instance profile
         const auto profile_resp = http_client_.Get(iam_endpoint_, token_header);
-        if (profile_resp.status != kHttpOk)
-        {
-            return;
-        }
-
         const std::string profile{absl::StripAsciiWhitespace(profile_resp.raw_body)};
-        if (profile.empty())
+        if (profile_resp.status != kHttpOk || profile.empty())
         {
+            // an instance without a profile is not an error, but losing one we already found is
+            if (profile_resolved_)
+            {
+                count_refresh_error(*registry_);
+            }
             return;
         }
+        profile_resolved_ = true;
 
         // save the resulting URL now that we know the instance profile
         creds_url_ = fmt::format("{}{}", iam_endpoint_, profile);
@@ -173,15 +175,15 @@ void Aws::collect() noexcept
     update_stats_from(absl::Now(), creds_resp.raw_body);
 }
 
-void Aws::update_stats_from(absl::Time now, const std::string& json) noexcept
+void Aws::update_stats_from(absl::Time now, std::string_view json) const noexcept
 {
     // The response carries the secret key and session token, so it is never written to the log.
     rapidjson::Document creds;
-    creds.Parse(json.c_str(), json.length());
+    creds.Parse(json.data(), json.size());
     if (creds.HasParseError())
     {
         Logger()->warn("Unable to parse the credentials response as JSON: {} at offset {} of {}",
-                       rapidjson::GetParseError_En(creds.GetParseError()), creds.GetErrorOffset(), json.length());
+                       rapidjson::GetParseError_En(creds.GetParseError()), creds.GetErrorOffset(), json.size());
         count_refresh_error(*registry_);
         return;
     }
@@ -194,11 +196,11 @@ void Aws::update_stats_from(absl::Time now, const std::string& json) noexcept
     }
 
     // the metadata service can answer 200 with an error document, e.g. when EC2 cannot assume the role
-    const char* code = string_member(creds, "Code");
-    if (code != nullptr && std::string_view{code} != "Success")
+    const auto code = string_member(creds, "Code");
+    if (code && !absl::EqualsIgnoreCase(*code, "Success"))
     {
-        const char* message = string_member(creds, "Message");
-        Logger()->warn("The credentials response reports {}: {}", code, message != nullptr ? message : "");
+        const auto message = string_member(creds, "Message");
+        Logger()->warn("The credentials response reports {}: {}", *code, message.value_or(""));
         count_refresh_error(*registry_);
         return;
     }
