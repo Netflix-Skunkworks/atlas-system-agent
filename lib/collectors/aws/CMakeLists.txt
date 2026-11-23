@@ -1,17 +1,21 @@
-add_library(aws INTERFACE
+add_library(aws
     src/aws.h
+    src/aws.cpp
 )
 
 target_include_directories(aws
-    INTERFACE ${CMAKE_SOURCE_DIR}
+    PUBLIC ${CMAKE_SOURCE_DIR}
 )
 
 # Add dependencies
 target_link_libraries(aws
-    INTERFACE
+    PUBLIC
+    abseil::abseil
     fmt::fmt
     rapidjson
     spectator-registry
+    HttpClient
+    logger
 )
 
 # Add aws test executable
