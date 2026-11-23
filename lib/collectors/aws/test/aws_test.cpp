@@ -40,6 +40,8 @@ class AwsTest : public atlasagent::Aws
    public:
     explicit AwsTest(Registry* registry) : atlasagent::Aws{registry} {}
 
+    using atlasagent::Aws::update_stats_from;
+
     void update_stats_for_test(absl::Time now, absl::Time lastUpdated, absl::Time expires)
     {
         auto lastUpdatedStr = to_str(lastUpdated);
@@ -103,4 +105,61 @@ TEST(Aws, UpdateStats)
     EXPECT_EQ(messages.at(0), AwsTestingConstants::expectedMessage7);
     EXPECT_EQ(messages.at(1), AwsTestingConstants::expectedMessage8);
     EXPECT_EQ(messages.at(2), AwsTestingConstants::expectedMessage9);
+}
+
+TEST(Aws, IgnoresUnsetAndInfiniteTimestamps)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    AwsTest aws(&r);
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    auto now = currentTime();
+    aws.update_stats_from(now, R"({"LastUpdated": "0001-01-01T00:00:00Z", "Expiration": "1970-01-01T00:00:00Z"})");
+    aws.update_stats_from(now, R"({"LastUpdated": "infinite-past", "Expiration": "infinite-future"})");
+
+    EXPECT_TRUE(memoryWriter->GetMessages().empty());
+}
+
+TEST(Aws, TimestampWithoutZoneIsUtc)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    AwsTest aws(&r);
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    auto now = currentTime();
+    auto lastUpdated = absl::FormatTime("%Y-%m-%dT%H:%M:%S", now - absl::Minutes(10), absl::UTCTimeZone());
+    auto expires = absl::FormatTime("%Y-%m-%dT%H:%M:%E6S", now + absl::Minutes(15), absl::UTCTimeZone());
+    aws.update_stats_from(
+        now, fmt::format(R"json({{"LastUpdated": "{}", "Expiration": "{}"}})json", lastUpdated, expires));
+
+    auto messages = memoryWriter->GetMessages();
+    ASSERT_EQ(messages.size(), 3);
+    EXPECT_EQ(messages.at(0), "g:aws.credentialsAge:600.000000\n");
+    EXPECT_EQ(messages.at(1), "g:aws.credentialsTtl:900.000000\n");
+    EXPECT_EQ(messages.at(2), "c:aws.credentialsTtlBucket,bucket=30min:1.000000\n");
+}
+
+TEST(Aws, ErrorDocumentCountsAsRefreshError)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    AwsTest aws(&r);
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+
+    auto now = currentTime();
+    auto lastUpdated = to_str(now - absl::Minutes(10));
+    aws.update_stats_from(now, fmt::format(R"json(
+{{
+  "Code" : "AssumeRoleUnauthorizedAccess",
+  "Message" : "EC2 cannot assume the role",
+  "LastUpdated" : "{}"
+}}
+  )json",
+                                           lastUpdated));
+
+    auto messages = memoryWriter->GetMessages();
+    ASSERT_EQ(messages.size(), 1);
+    EXPECT_EQ(messages.at(0), "c:aws.credentialsRefreshErrors:1.000000\n");
 }
