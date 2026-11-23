@@ -2,40 +2,26 @@
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <lib/http_client/src/http_client.h>
-#include <lib/logger/src/logger.h>
-#include <rapidjson/document.h>
 
-#include "absl/time/clock.h"
+#include <absl/time/time.h>
+
+#include <string>
 
 namespace atlasagent
 {
 
-namespace detail
-{
-
-static constexpr const char* const kDefaultExecutor = "unknown";
-static constexpr const char* const kDefaultMetadataEndpoint = "http://169.254.169.254";
-static constexpr const char* const kCredsPath = "latest/meta-data/iam/security-credentials/";
-static constexpr const char* const kTokenPath = "latest/api/token";
-
-absl::Time getDateFrom(const rapidjson::Document& doc, const char* dateStr);
-
-std::string get_netflix_executor();
-
-std::string get_metadata_endpoint();
-
-std::string get_token_endpoint();
-
-std::string get_iam_endpoint();
-
-}  // namespace detail
-
+// Publishes the age and remaining lifetime of the instance's IAM credentials, as reported by the
+// EC2 instance metadata service.
 class Aws
 {
    public:
     explicit Aws(spectator::Registry* registry) noexcept;
 
     void collect() noexcept;
+
+   protected:
+    // for testing
+    void update_stats_from(absl::Time now, const std::string& json) noexcept;
 
    private:
     spectator::Registry* registry_;
@@ -44,9 +30,6 @@ class Aws
     std::string iam_endpoint_;
     std::string creds_url_;
     HttpClient http_client_;
-
-   protected:
-    void update_stats_from(absl::Time now, const std::string& json) noexcept;
 };
 
 }  // namespace atlasagent
