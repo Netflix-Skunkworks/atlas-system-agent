@@ -11,6 +11,7 @@ target_link_libraries(cpu_freq
     abseil::abseil
     fmt::fmt
     spectator-registry
+    util
 )
 
 add_executable(cpu_freq_test
