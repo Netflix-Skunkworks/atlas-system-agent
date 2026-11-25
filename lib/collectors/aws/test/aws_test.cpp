@@ -4,7 +4,12 @@
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 #include <thirdparty/spectator-cpp/libs/writer/writer_wrapper/writer_test_helper.h>
 
+#include <absl/time/clock.h>
+#include <absl/time/time.h>
+#include <fmt/format.h>
 #include <gtest/gtest.h>
+
+#include <string>
 
 using spectator::Config;
 using spectator::MemoryWriter;

@@ -1,6 +1,6 @@
 add_library(aws
-    src/aws.h
     src/aws.cpp
+    src/aws.h
 )
 
 target_include_directories(aws
@@ -11,11 +11,12 @@ target_include_directories(aws
 target_link_libraries(aws
     PUBLIC
     abseil::abseil
-    fmt::fmt
-    rapidjson
-    spectator-registry
     HttpClient
+    spectator-registry
+    PRIVATE
+    fmt::fmt
     logger
+    rapidjson
 )
 
 # Add aws test executable
