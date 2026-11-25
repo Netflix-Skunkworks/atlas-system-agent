@@ -2,7 +2,6 @@
 
 #include <lib/logger/src/logger.h>
 #include <cstdio>
-#include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -78,30 +77,5 @@ class UnixFile
 
    private:
     int fd_;
-};
-
-class DirHandle
-{
-   public:
-    explicit DirHandle(const char* name) noexcept : dh_{opendir(name)}
-    {
-        if (dh_ == nullptr)
-        {
-            Logger()->warn("Unable to opendir {}: {}", name, strerror(errno));
-        }
-    }
-    DirHandle(const DirHandle&) = delete;
-    ~DirHandle()
-    {
-        if (dh_ != nullptr)
-        {
-            closedir(dh_);
-        }
-    }
-
-    operator DIR*() const { return dh_; }
-
-   private:
-    DIR* dh_;
 };
 }  // namespace atlasagent
