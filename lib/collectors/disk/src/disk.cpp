@@ -164,12 +164,11 @@ std::string get_dev_from_device(const std::string& device)
     return device;
 }
 
-void Disk::stats_for_interesting_mps(std::function<void(Disk*, const MountPoint&)> stats_fn) noexcept
+void Disk::mount_point_stats() noexcept
 {
-    auto mount_points = filter_interesting_mount_points(get_mount_points());
-    for (const auto& mp : mount_points)
+    for (const auto& mp : filter_interesting_mount_points(get_mount_points()))
     {
-        stats_fn(this, mp);
+        update_stats_for(mp);
     }
 }
 
@@ -177,8 +176,7 @@ void Disk::disk_stats() noexcept { do_disk_stats(absl::Now()); }
 
 void Disk::do_disk_stats(absl::Time start) noexcept
 {
-    stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
-
+    mount_point_stats();
     diskio_stats(start);
     last_updated_ = absl::Now();
 }
@@ -299,10 +297,7 @@ void Disk::diskio_stats(absl::Time start) noexcept
     }
 }
 
-void Disk::titus_disk_stats() noexcept
-{
-    stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
-}
+void Disk::titus_disk_stats() noexcept { mount_point_stats(); }
 
 void Disk::update_stats_for(const MountPoint& mp) noexcept
 {
