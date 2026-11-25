@@ -57,6 +57,8 @@ class Disk
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
 
    private:
+    void mount_point_stats() noexcept;
+
     spectator::Registry* registry_;
     std::string path_prefix_;
     absl::Time last_updated_{absl::UnixEpoch()};
@@ -66,7 +68,6 @@ class Disk
    protected:
     // protected for testing
     void do_disk_stats(absl::Time start) noexcept;
-    void stats_for_interesting_mps(std::function<void(Disk*, const MountPoint&)> stats_fn) noexcept;
     [[nodiscard]] std::vector<MountPoint> filter_interesting_mount_points(
         const std::vector<MountPoint>& mount_points) const noexcept;
     [[nodiscard]] std::vector<MountPoint> get_mount_points() const noexcept;
