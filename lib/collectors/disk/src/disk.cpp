@@ -1,6 +1,8 @@
 #include "disk.h"
 #include <lib/util/src/util.h>
 #include <absl/strings/str_split.h>
+#include <cerrno>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <sys/statvfs.h>
@@ -10,6 +12,11 @@ using spectator::MeterId;
 
 namespace atlasagent
 {
+
+namespace
+{
+using Tags = std::unordered_map<std::string, std::string>;
+}  // namespace
 
 std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
 {
@@ -147,21 +154,12 @@ std::vector<MountPoint> Disk::filter_interesting_mount_points(
     return interesting;
 }
 
-std::string get_id_from_mountpoint(const std::string& mp)
-{
-    const auto& mp_len = mp.length();
-    return mp_len == 1 ? std::string("root") : mp.substr(1);
-}
+std::string get_id_from_mountpoint(const std::string& mp) { return mp.length() == 1 ? "root" : mp.substr(1); }
 
 std::string get_dev_from_device(const std::string& device)
 {
-    if (device.substr(0, 5) == "/dev/")
-    {
-        return device.substr(5);
-    }
-
-    // should be very rare
-    return device;
+    // a device outside /dev should be very rare
+    return device.starts_with("/dev/") ? device.substr(5) : device;
 }
 
 void Disk::mount_point_stats() noexcept
@@ -314,8 +312,7 @@ void Disk::update_stats_for(const MountPoint& mp) noexcept
         return;
     }
 
-    auto id = get_id_from_mountpoint(mp.mount_point);
-    std::unordered_map<std::string, std::string> tags = {{"id", id}, {"dev", get_dev_from_device(mp.device)}};
+    const Tags tags{{"id", get_id_from_mountpoint(mp.mount_point)}, {"dev", get_dev_from_device(mp.device)}};
 
     auto bytes_total = st.f_blocks * st.f_bsize;
     auto bytes_free = st.f_bfree * st.f_bsize;
