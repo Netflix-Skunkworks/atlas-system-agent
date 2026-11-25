@@ -38,8 +38,6 @@ class TestDisk : public atlasagent::Disk
 
     std::vector<DiskIo> get_disk_stats() const noexcept { return Disk::get_disk_stats(); }
 
-    void update_titus_stats_for(const MountPoint& mp) noexcept { Disk::update_titus_stats_for(mp); }
-
     void diskio_stats(absl::Time start) noexcept { Disk::diskio_stats(start); }
 
     void do_disk_stats(absl::Time start) noexcept { Disk::do_disk_stats(start); }
