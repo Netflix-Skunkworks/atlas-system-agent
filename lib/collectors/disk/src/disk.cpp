@@ -2,7 +2,6 @@
 #include <lib/util/src/util.h>
 #include <absl/strings/str_split.h>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <sys/statvfs.h>
 #include <unordered_set>
@@ -12,7 +11,7 @@ using spectator::MeterId;
 namespace atlasagent
 {
 
-inline std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
+std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
 {
     std::unordered_set<std::string> res;
     auto fp = open_file(prefix, "proc/filesystems");
@@ -47,7 +46,6 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept
     unwanted_filesystems.erase("tmpfs");
 #if defined(AGENT_FLAVOR_TITUS)
     // for titus and k8s (both container flavors) we generate metrics for overlay fs
-    // see overlay_stats()
     unwanted_filesystems.erase("overlay");
 #endif
 
@@ -305,7 +303,6 @@ void Disk::titus_disk_stats() noexcept
 {
     stats_for_interesting_mps([](Disk* disk, const MountPoint& mp) { disk->update_stats_for(mp); });
 }
-
 
 void Disk::update_stats_for(const MountPoint& mp) noexcept
 {

@@ -51,10 +51,11 @@ class Disk
         : registry_(registry), path_prefix_(std::move(path_prefix))
     {
     }
-    
+
     void titus_disk_stats() noexcept;
     void disk_stats() noexcept;
     void set_prefix(const std::string& new_prefix) noexcept;  // for testing
+
    private:
     spectator::Registry* registry_;
     std::string path_prefix_;
@@ -70,7 +71,6 @@ class Disk
         const std::vector<MountPoint>& mount_points) const noexcept;
     [[nodiscard]] std::vector<MountPoint> get_mount_points() const noexcept;
     [[nodiscard]] std::vector<DiskIo> get_disk_stats() const noexcept;
-    void update_titus_stats_for(const MountPoint& mp) noexcept;
     void update_stats_for(const MountPoint& mp) noexcept;
 
     void diskio_stats(absl::Time start) noexcept;
