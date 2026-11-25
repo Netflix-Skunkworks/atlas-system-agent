@@ -1,27 +1,11 @@
 #pragma once
 
-#include <lib/files/src/files.h>
-#include <lib/util/src/util.h>
-#include <sys/stat.h>
+#include <string>
 
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
 namespace atlasagent
 {
-
-namespace detail
-{
-inline bool is_directory(const std::string& directory)
-{
-    struct stat st;
-    if (stat(directory.c_str(), &st) != 0)
-    {
-        return false;
-    }
-
-    return st.st_mode & S_IFDIR;
-}
-}  // namespace detail
 
 class CpuFreq
 {
@@ -29,11 +13,12 @@ class CpuFreq
     explicit CpuFreq(spectator::Registry* registry,
                      std::string path_prefix = "/sys/devices/system/cpu/cpufreq") noexcept;
 
-    void Stats() noexcept;
+    void Stats() const noexcept;
 
    private:
-    spectator::Registry* registry_;
     std::string path_prefix_;
-    bool enabled_;
+    spectator::DistributionSummary min_freq_;
+    spectator::DistributionSummary max_freq_;
+    spectator::DistributionSummary cur_freq_;
 };
 }  // namespace atlasagent
