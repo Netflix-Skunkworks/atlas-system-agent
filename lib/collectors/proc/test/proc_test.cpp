@@ -476,6 +476,20 @@ TEST(Proc, ProcessStats)
     EXPECT_EQ(messages.at(1), "g:sys.currentThreads:5.000000\n");
 }
 
+TEST(Proc, ProcessStatsMissingDirectoryRecordsNothing)
+{
+    auto config = Config(WriterConfig(WriterTypes::Memory));
+    auto r = Registry(config);
+    auto memoryWriter = static_cast<MemoryWriter*>(WriterTestHelper::GetImpl());
+    memoryWriter->Clear();
+
+    // process_stats() is noexcept, so a missing directory must not throw
+    TestProc proc{&r, {{"nf.test", "extra"}}, "testdata/resources/proc/does-not-exist"};
+    proc.process_stats();
+
+    EXPECT_TRUE(memoryWriter->GetMessages().empty());
+}
+
 TEST(Proc, ParseProcStat)
 {
     auto config = Config(WriterConfig(WriterTypes::Memory));

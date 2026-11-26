@@ -7,6 +7,7 @@
 #include <absl/strings/numbers.h>
 #include <cinttypes>
 #include <cstring>
+#include <filesystem>
 #include <utility>
 
 using spectator::Gauge;
@@ -1002,21 +1003,22 @@ static bool all_digits(const char* str)
     return true;
 }
 
+// The directory iterators below use the error_code overloads because a throw from the noexcept
+// process_stats() would terminate. An error while iterating ends the loop early, as readdir did.
 int32_t count_tasks(const std::string& dirname)
 {
-    DirHandle dh{dirname.c_str()};
-    if (!dh)
+    std::error_code ec;
+    std::filesystem::directory_iterator it{dirname, ec};
+    if (ec)
     {
+        Logger()->warn("Unable to opendir {}: {}", dirname, ec.message());
         return 0;
     }
 
     auto count = 0;
-    for (;;)
+    for (const std::filesystem::directory_iterator end; !ec && it != end; it.increment(ec))
     {
-        auto entry = readdir(dh);
-        if (entry == nullptr) break;
-
-        if (all_digits(entry->d_name))
+        if (all_digits(it->path().filename().c_str()))
         {
             ++count;
         }
@@ -1029,21 +1031,22 @@ void Proc::process_stats() noexcept
     static auto cur_pids = registry_->CreateGauge("sys.currentProcesses");
     static auto cur_threads = registry_->CreateGauge("sys.currentThreads");
 
-    DirHandle dir_handle{path_prefix_.c_str()};
-    if (!dir_handle)
+    std::error_code ec;
+    std::filesystem::directory_iterator it{path_prefix_, ec};
+    if (ec)
     {
+        Logger()->warn("Unable to opendir {}: {}", path_prefix_, ec.message());
         return;
     }
 
     auto pids = 0, tasks = 0;
-    for (;;)
+    for (const std::filesystem::directory_iterator end; !ec && it != end; it.increment(ec))
     {
-        auto entry = readdir(dir_handle);
-        if (entry == nullptr) break;
-        if (all_digits(entry->d_name))
+        const auto name = it->path().filename().string();
+        if (all_digits(name.c_str()))
         {
             ++pids;
-            auto task_dir = fmt::format("{}/{}/task", path_prefix_, entry->d_name);
+            auto task_dir = fmt::format("{}/{}/task", path_prefix_, name);
             tasks += count_tasks(task_dir);
         }
     }
