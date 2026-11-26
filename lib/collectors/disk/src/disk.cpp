@@ -1,6 +1,8 @@
 #include "disk.h"
 #include <lib/util/src/util.h>
 #include <absl/strings/str_split.h>
+#include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
@@ -16,6 +18,21 @@ namespace atlasagent
 namespace
 {
 using Tags = std::unordered_map<std::string, std::string>;
+
+constexpr int kMultipleDevice = 9;
+constexpr int kLoopDevice = 7;
+constexpr int kRamDevice = 1;
+
+constexpr std::array kIgnoredMountPrefixes{"/dev",  "/mnt/docker", "/mnt/jenkins",  "/mnt/kubelet", "/proc",
+                                           "/run",  "/sys",        "/tmp/buildkit", "/var/lib"};
+
+constexpr bool is_loop_or_ram(int major) { return major == kLoopDevice || major == kRamDevice; }
+
+bool is_ignored_mount_point(const std::string& mount_point)
+{
+    return std::ranges::any_of(kIgnoredMountPrefixes,
+                               [&](const char* prefix) { return starts_with(mount_point.c_str(), prefix); });
+}
 }  // namespace
 
 std::unordered_set<std::string> get_nodev_filesystems(const std::string& prefix)
@@ -102,50 +119,29 @@ std::vector<MountPoint> Disk::get_mount_points() const noexcept
     return res;
 }
 
-static constexpr int kMultipleDevice = 9;
-static constexpr int kLoopDevice = 7;
-static constexpr int kRamDevice = 1;
-
 std::vector<MountPoint> Disk::filter_interesting_mount_points(
     const std::vector<MountPoint>& mount_points) const noexcept
 {
-    std::vector<MountPoint> interesting;
     std::unordered_map<uint64_t, const MountPoint*> candidates;
 
     for (const auto& mp : mount_points)
     {
-        if (mp.device_major == kLoopDevice || mp.device_major == kRamDevice)
+        if (is_loop_or_ram(mp.device_major) || is_ignored_mount_point(mp.mount_point))
         {
             continue;
         }
 
-        if (starts_with(mp.mount_point.c_str(), "/dev") || starts_with(mp.mount_point.c_str(), "/mnt/docker") ||
-            starts_with(mp.mount_point.c_str(), "/mnt/jenkins") ||
-            starts_with(mp.mount_point.c_str(), "/mnt/kubelet") || starts_with(mp.mount_point.c_str(), "/proc") ||
-            starts_with(mp.mount_point.c_str(), "/run") || starts_with(mp.mount_point.c_str(), "/sys") ||
-            starts_with(mp.mount_point.c_str(), "/tmp/buildkit") || starts_with(mp.mount_point.c_str(), "/var/lib"))
-        {
-            continue;
-        }
-
+        // keep the shortest path if more than one mount point refers to the same device
+        // if both /foo and /foo/bar are mounted on /dev/xvda we just keep /foo
         auto key = static_cast<uint64_t>(mp.device_major) << 32u | mp.device_minor;
-        auto candidate = candidates[key];
-        if (candidate != nullptr)
+        auto& candidate = candidates[key];
+        if (candidate == nullptr || mp.mount_point.length() < candidate->mount_point.length())
         {
-            // keep the shortest path if more than one mount point refers to the same device
-            // if both /foo and /foo/bar are mounted on /dev/xvda we just keep /foo
-            auto mp_len = mp.mount_point.length();
-            auto candidate_len = candidate->mount_point.length();
-            if (mp_len < candidate_len)
-            {
-                candidates[key] = &mp;
-            }
-        }
-        else
-        {
-            candidates[key] = &mp;
+            candidate = &mp;
         }
     }
+
+    std::vector<MountPoint> interesting;
     interesting.reserve(candidates.size());
     for (const auto& kv : candidates)
     {
