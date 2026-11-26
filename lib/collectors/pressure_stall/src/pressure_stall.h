@@ -1,7 +1,6 @@
 #pragma once
 
-#include <absl/strings/str_split.h>
-#include <lib/util/src/util.h>
+#include <string>
 #include <thirdparty/spectator-cpp/spectator/registry.h>
 
 namespace atlasagent
@@ -17,8 +16,11 @@ class PressureStall
     void collect() noexcept;
 
    private:
-    spectator::Registry* registry_;
     std::string path_prefix_;
-    static constexpr double MICROS = 1000 * 1000.0;
+    spectator::MonotonicCounter cpu_some_;
+    spectator::MonotonicCounter io_some_;
+    spectator::MonotonicCounter io_full_;
+    spectator::MonotonicCounter memory_some_;
+    spectator::MonotonicCounter memory_full_;
 };
 }  // namespace atlasagent
